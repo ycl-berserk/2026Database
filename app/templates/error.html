@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}{{ error_title }}{% endblock %}
+{% block page_title %}{{ error_title }}{% endblock %}
+{% block page_subtitle %}操作未能完成{% endblock %}
+
+{% block content %}
+<section class="panel panel-narrow">
+  <p class="error-code">{{ error_status | default(400) }}</p>
+  <p class="error-message">{{ error_message }}</p>
+  <div class="form-actions">
+    <a class="btn" href="/dashboard">回到概览</a>
+    <button class="btn btn-ghost" type="button" onclick="history.back()">返回上一页</button>
+  </div>
+</section>
+{% endblock %}

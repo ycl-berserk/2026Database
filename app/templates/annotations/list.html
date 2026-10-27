@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}批注{% endblock %}
+{% block page_title %}批注{% endblock %}
+{% block page_subtitle %}把问答里的重点、疑问与纠错沉淀下来，再送入复习队列{% endblock %}
+
+{% block content %}
+<form method="get" action="/annotations" class="filter-bar">
+  <label class="field">
+    <span>状态</span>
+    <select name="status">
+      <option value="">全部状态</option>
+      {% for status in statuses %}
+        <option value="{{ status }}" {% if status == status_filter %}selected{% endif %}>{{ status_label(status) }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="field">
+    <span>类型</span>
+    <select name="kind">
+      <option value="">全部类型</option>
+      {% for kind in kinds %}
+        <option value="{{ kind }}" {% if kind == kind_filter %}selected{% endif %}>{{ kind_label(kind) }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <div class="form-actions">
+    <button class="btn" type="submit">筛选</button>
+    <a class="btn btn-ghost" href="/annotations">重置</a>
+  </div>
+</form>
+
+<div class="result-head">
+  <p>共 <b>{{ total }}</b> 条批注{% if total_pages %} · 第 {{ page }} / {{ total_pages }} 页{% endif %}</p>
+  {% if status_filter %}<span class="chip">状态：{{ status_label(status_filter) }}</span>{% endif %}
+  {% if kind_filter %}<span class="chip">类型：{{ kind_label(kind_filter) }}</span>{% endif %}
+</div>
+
+{% if rows %}
+  <div class="annotation-list">
+    {% for row in rows %}
+      <article class="card annotation-card">
+        <header class="annotation-card-head">
+          <span class="chip chip-seal">{{ kind_label(row.kind) }}</span>
+          <span class="badge {% if row.status == 'resolved' %}badge-ok{% endif %}">{{ status_label(row.status) }}</span>
+          {% if row.course_code %}<span class="chip chip-soft">{{ row.course_code }}</span>{% endif %}
+          <span class="muted">更新于 {{ row.updated_at | dt }}</span>
+          {% if row.review_id %}
+            <span class="badge">复习：{{ status_label(row.review_status) }} · {{ row.due_date | date }}</span>
+          {% endif %}
+        </header>
+
+        <div class="annotation-card-body">{{ row.content }}</div>
+
+        <blockquote class="quote">
+          <span class="snippet-role">{{ sender_label(row.sender) }} · #{{ row.seq_no }}</span>
+          {{ row.snippet }}
+        </blockquote>
+
+        <footer class="annotation-card-foot">
+          <a class="btn btn-ghost btn-sm" href="/conversations/{{ row.conversation_id }}#m{{ row.seq_no }}">
+            打开会话：{{ row.conversation_title }}
+          </a>
+
+          {% if not row.review_id %}
+            <form method="post" action="/annotations/{{ row.id }}/review" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="back" value="/annotations?page={{ page }}">
+              <button class="btn btn-sm" type="submit">加入复习</button>
+            </form>
+          {% endif %}
+
+          <details class="inline-edit">
+            <summary>编辑</summary>
+            <form method="post" action="/annotations/{{ row.id }}/edit" class="inline-edit-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="back" value="/annotations?page={{ page }}">
+              <select name="kind">
+                {% for kind in kinds %}
+                  <option value="{{ kind }}" {% if row.kind == kind %}selected{% endif %}>{{ kind_label(kind) }}</option>
+                {% endfor %}
+              </select>
+              <select name="status">
+                {% for status in statuses %}
+                  <option value="{{ status }}" {% if row.status == status %}selected{% endif %}>{{ status_label(status) }}</option>
+                {% endfor %}
+              </select>
+              <input name="content" value="{{ row.content }}" maxlength="4000" required>
+              <button class="btn btn-sm" type="submit">保存</button>
+            </form>
+          </details>
+
+          <form method="post" action="/annotations/{{ row.id }}/delete" class="inline-form"
+                data-confirm="删除这条批注？对应的复习项也会一并移除。">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="back" value="/annotations?page={{ page }}">
+            <button class="btn btn-danger btn-sm" type="submit">删除</button>
+          </form>
+        </footer>
+      </article>
+    {% endfor %}
+  </div>
+
+  {% if total_pages > 1 %}
+    <nav class="pagination">
+      {% if prev_url %}<a class="page-link" href="{{ prev_url }}">上一页</a>{% endif %}
+      {% for item in pages %}
+        {% if item.active %}
+          <span class="page-link active">{{ item.n }}</span>
+        {% else %}
+          <a class="page-link" href="{{ item.url }}">{{ item.n }}</a>
+        {% endif %}
+      {% endfor %}
+      {% if next_url %}<a class="page-link" href="{{ next_url }}">下一页</a>{% endif %}
+    </nav>
+  {% endif %}
+{% else %}
+  <section class="panel">
+    <div class="empty-block">
+      <p>还没有批注</p>
+      <p class="muted">打开任意<a class="link" href="/conversations">会话</a>，在消息下方添加笔记、疑问、纠错或总结。</p>
+    </div>
+  </section>
+{% endif %}
+{% endblock %}

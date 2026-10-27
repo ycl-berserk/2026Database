@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}会话{% endblock %}
+{% block page_title %}会话{% endblock %}
+{% block page_subtitle %}按课程、标签、日期与关键词检索问答记录{% endblock %}
+
+{% block content %}
+<form method="get" action="/conversations" class="filter-bar">
+  <label class="field field-search">
+    <span>关键词</span>
+    <input name="q" value="{{ q }}" maxlength="100" placeholder="搜索标题或消息内容">
+  </label>
+  <label class="field">
+    <span>课程</span>
+    <select name="course_id">
+      <option value="">全部课程</option>
+      <option value="none" {% if course_id == 'none' %}selected{% endif %}>未归类</option>
+      {% for course in courses %}
+        <option value="{{ course.id }}" {% if course_id == course.id | string %}selected{% endif %}>
+          {{ course.code }} · {{ course.name }}
+        </option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="field">
+    <span>标签</span>
+    <select name="tag_id">
+      <option value="">全部标签</option>
+      {% for tag in tags %}
+        <option value="{{ tag.id }}" {% if tag_id == tag.id | string %}selected{% endif %}>
+          {{ tag.name }}（{{ tag.usage_count }}）
+        </option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="field field-date">
+    <span>开始日期</span>
+    <input type="date" name="date_from" value="{{ date_from }}">
+  </label>
+  <label class="field field-date">
+    <span>结束日期</span>
+    <input type="date" name="date_to" value="{{ date_to }}">
+  </label>
+  <div class="form-actions">
+    <button class="btn" type="submit">筛选</button>
+    <a class="btn btn-ghost" href="/conversations">重置</a>
+  </div>
+</form>
+
+<div class="result-head">
+  <p>共 <b>{{ total }}</b> 个会话{% if total_pages %} · 第 {{ page }} / {{ total_pages }} 页{% endif %}</p>
+  {% if q %}<span class="chip chip-seal">关键词：{{ q }}</span>{% endif %}
+  {% if course_id %}<span class="chip">课程筛选已启用</span>{% endif %}
+  {% if tag_id %}<span class="chip">标签筛选已启用</span>{% endif %}
+</div>
+
+{% if rows %}
+  <div class="conv-list">
+    {% for row in rows %}
+      {% set link = '/conversations/' ~ row.id %}
+      {% if q %}{% set link = link ~ '?q=' ~ (q | urlencode) ~ '#m' ~ (row.hit_seq or 1) %}{% endif %}
+      <article class="conv-card">
+        <div class="conv-card-main">
+          <div class="conv-card-head">
+            <a class="conv-title" href="{{ link }}">{{ row.title | highlight(q) }}</a>
+            <div class="record-meta">
+              {% if row.course_code %}<span class="chip chip-soft">{{ row.course_code }} · {{ row.course_name }}</span>{% else %}<span class="chip">未归类</span>{% endif %}
+              <span class="chip">{{ platform_label(row.platform) }}</span>
+              {% if row.is_archived %}<span class="badge">已归档</span>{% endif %}
+            </div>
+          </div>
+          {% if row.snippet %}
+            <p class="conv-snippet">
+              {% if row.hit_sender %}<span class="snippet-role">{{ sender_label(row.hit_sender) }} · #{{ row.hit_seq }}</span>{% endif %}
+              {{ row.snippet | highlight(q) }}
+            </p>
+          {% else %}
+            <p class="muted">该会话暂无消息。</p>
+          {% endif %}
+          <div class="record-meta">
+            {% for name in row.tag_names %}
+              <span class="chip">{{ name }}</span>
+            {% endfor %}
+            <span>{{ row.message_count }} 条消息</span>
+            <span class="muted">最近 {{ row.last_message_at | dt }}</span>
+            {% if row.started_at %}<span class="muted">开始 {{ row.started_at | dt }}</span>{% endif %}
+          </div>
+        </div>
+        <a class="btn btn-ghost btn-sm" href="{{ link }}">阅读</a>
+      </article>
+    {% endfor %}
+  </div>
+
+  {% if total_pages > 1 %}
+    <nav class="pagination">
+      {% if prev_url %}<a class="page-link" href="{{ prev_url }}">上一页</a>{% endif %}
+      {% for item in pages %}
+        {% if item.n == page %}
+          <span class="page-link active">{{ item.n }}</span>
+        {% else %}
+          <a class="page-link" href="{{ item.url }}">{{ item.n }}</a>
+        {% endif %}
+      {% endfor %}
+      {% if next_url %}<a class="page-link" href="{{ next_url }}">下一页</a>{% endif %}
+    </nav>
+  {% endif %}
+{% else %}
+  <section class="panel">
+    <div class="empty-block">
+      <p>没有找到符合条件的会话</p>
+      <p class="muted">试试减少筛选条件，或先 <a class="link" href="/imports">导入聊天记录</a>。</p>
+    </div>
+  </section>
+{% endif %}
+{% endblock %}

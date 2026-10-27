@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}用户与系统{% endblock %}
+{% block page_title %}用户与系统{% endblock %}
+{% block page_subtitle %}仅展示账号状态与聚合统计，不读取他人消息正文或批注内容{% endblock %}
+
+{% block content %}
+<section class="stat-grid">
+  <div class="stat-card">
+    <span class="stat-label">用户</span>
+    <strong class="stat-value">{{ stats.user_count | num }}</strong>
+    <small class="muted">启用 {{ stats.active_user_count | num }} 人</small>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">课程 / 成员</span>
+    <strong class="stat-value">{{ stats.course_count | num }}</strong>
+    <small class="muted">成员关系 {{ stats.membership_count | num }} 条</small>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">来源 / 会话</span>
+    <strong class="stat-value">{{ stats.source_count | num }}</strong>
+    <small class="muted">会话 {{ stats.conversation_count | num }} 个</small>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">消息 / 批注</span>
+    <strong class="stat-value">{{ stats.message_count | num }}</strong>
+    <small class="muted">批注 {{ stats.annotation_count | num }} 条</small>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>用户账号</h2>
+    <form method="get" action="/admin" class="inline-form">
+      <input name="q" value="{{ q }}" maxlength="50" placeholder="搜索用户名或显示名">
+      <button class="btn btn-sm" type="submit">搜索</button>
+      {% if q %}<a class="btn btn-ghost btn-sm" href="/admin">重置</a>{% endif %}
+    </form>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>用户</th><th>系统角色</th><th>状态</th><th>课程</th><th>来源</th>
+          <th>会话</th><th>批注</th><th>注册时间</th><th class="col-actions">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in users %}
+          <tr>
+            <td>
+              <strong>{{ row.display_name }}</strong>
+              <div class="mono muted">@{{ row.username }}</div>
+            </td>
+            <td><span class="chip">{{ role_label(row.system_role) }}</span></td>
+            <td>
+              <span class="badge {% if row.is_active %}badge-ok{% endif %}">
+                {{ '启用' if row.is_active else '已停用' }}
+              </span>
+            </td>
+            <td>{{ row.course_count }}</td>
+            <td>{{ row.source_count }}</td>
+            <td>{{ row.conversation_count }}</td>
+            <td>{{ row.annotation_count }}</td>
+            <td class="muted">{{ row.created_at | dt }}</td>
+            <td class="col-actions">
+              {% if row.id == current_user.id %}
+                <span class="muted">当前账号</span>
+              {% else %}
+                <form method="post" action="/admin/users/{{ row.id }}/toggle" class="inline-form"
+                      data-confirm="{{ '停用' if row.is_active else '启用' }}账号 {{ row.username }}？">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <input type="hidden" name="active" value="{{ '0' if row.is_active else '1' }}">
+                  <button class="btn btn-sm {% if row.is_active %}btn-danger{% endif %}" type="submit">
+                    {{ '停用' if row.is_active else '启用' }}
+                  </button>
+                </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="9" class="empty">没有匹配的用户</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted hint">停用账号会阻止其登录，但不会删除其课程、会话与批注，历史数据保持完整。</p>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>最近导入批次</h2>
+    <span class="muted">仅文件名、状态与计数摘要</span>
+  </div>
+  {% if imports %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>时间</th><th>用户</th><th>文件</th><th>平台</th><th>状态</th><th>摘要</th></tr></thead>
+        <tbody>
+          {% for row in imports %}
+            <tr>
+              <td class="muted">{{ row.created_at | dt }}</td>
+              <td>{{ row.display_name }}</td>
+              <td class="mono">{{ row.file_name }}</td>
+              <td><span class="chip">{{ platform_label(row.platform) }}</span></td>
+              <td><span class="badge {% if row.status == 'imported' %}badge-ok{% elif row.status == 'failed' %}badge-bad{% endif %}">{{ status_label(row.status) }}</span></td>
+              <td class="muted">
+                {% if row.summary %}
+                  {{ row.summary.get('messages_new', 0) }} 条新消息 ·
+                  {{ row.summary.get('conversations_new', 0) }} 个新会话
+                {% else %}—{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">还没有导入记录。</p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}统计{% endblock %}
+{% block page_title %}学习统计{% endblock %}
+{% block page_subtitle %}课程、消息、标签、批注与复习的聚合视图；全部计数实时计算{% endblock %}
+
+{% block topbar_actions %}
+  <a class="btn" href="/exports/stats.csv">导出统计 CSV</a>
+{% endblock %}
+
+{% block content %}
+<section class="stat-grid">
+  <div class="stat-card">
+    <span class="stat-label">课程</span>
+    <strong class="stat-value">{{ overview.course_count | num }}</strong>
+    <small class="muted">含共享课程</small>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">会话</span>
+    <strong class="stat-value">{{ overview.conversation_count | num }}</strong>
+    <small class="muted">可访问范围</small>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">消息</span>
+    <strong class="stat-value">{{ overview.message_count | num }}</strong>
+    <small class="muted">提问与回答</small>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">批注</span>
+    <strong class="stat-value">{{ overview.annotation_count | num }}</strong>
+    <small class="muted">标签 {{ overview.tag_count | num }} 个</small>
+  </div>
+</section>
+
+<div class="two-col">
+  <section class="panel">
+    <div class="panel-head">
+      <h2>课程维度</h2>
+      <span class="muted">按消息数排名</span>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>排名</th><th>课程</th><th>范围</th><th>会话</th><th>消息</th><th>提问 / 回答</th><th>批注</th><th>复习</th></tr>
+        </thead>
+        <tbody>
+          {% for course in courses %}
+            <tr>
+              <td class="mono">{{ course.msg_rank }}</td>
+              <td>
+                <a href="/courses/{{ course.id }}">{{ course.code }} · {{ course.name }}</a>
+              </td>
+              <td><span class="chip">{{ role_label(course.role) }}</span></td>
+              <td>{{ course.conversation_count }}</td>
+              <td>{{ course.message_count }}</td>
+              <td>{{ course.user_messages }} / {{ course.assistant_messages }}</td>
+              <td>{{ course.annotation_count }}</td>
+              <td>{{ course.review_count }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="8" class="empty">还没有课程数据</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>近 8 个月活跃度</h2>
+      <span class="muted">按消息数</span>
+    </div>
+    <div class="bar-chart">
+      {% for row in activity %}
+        <div class="bar-col" title="{{ row.month }}：{{ row.message_count }} 条消息">
+          <span class="bar-value">{{ row.message_count }}</span>
+          <div class="bar-track">
+            <div class="bar-fill" style="height: {{ (100 * row.message_count / activity_max) if activity_max else 0 }}%"></div>
+          </div>
+          <span class="bar-label">{{ row.month[5:] }}月</span>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<div class="two-col">
+  <section class="panel">
+    <div class="panel-head">
+      <h2>标签 Top 12</h2>
+      <span class="muted">按关联会话数</span>
+    </div>
+    {% if tags %}
+      <ul class="rank-list">
+        {% for tag in tags %}
+          <li>
+            <span class="rank-no">{{ loop.index }}</span>
+            <span class="tag-pill">
+              <span class="tag-dot" style="background: {{ tag.color or '#2f5d4e' }}"></span>{{ tag.name }}
+            </span>
+            <span class="rank-bar"><span style="width: {{ (100 * tag.conversation_count / tags[0].conversation_count) if tags[0].conversation_count else 0 }}%"></span></span>
+            <span class="rank-value">{{ tag.conversation_count }} 会话 / {{ tag.link_count }} 次</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">还没有会话标签。</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>批注与复习</h2>
+      <span class="muted">解决率与队列状态</span>
+    </div>
+    {% if annotation_kinds %}
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>批注类型</th><th>总数</th><th>已解决</th><th>解决率</th></tr></thead>
+          <tbody>
+            {% for kind in annotation_kinds %}
+              <tr>
+                <td><span class="chip">{{ kind_label(kind.kind) }}</span></td>
+                <td>{{ kind.total }}</td>
+                <td>{{ kind.resolved }}</td>
+                <td>{{ '%.0f%%' | format(100 * kind.resolved / kind.total) if kind.total else '—' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="empty">还没有批注。</p>
+    {% endif %}
+
+    <div class="mini-stats">
+      <div><strong>{{ review_summary.total }}</strong><span>复习项</span></div>
+      <div><strong>{{ review_summary.pending }}</strong><span>待复习</span></div>
+      <div><strong>{{ review_summary.reviewing }}</strong><span>复习中</span></div>
+      <div><strong>{{ review_summary.due }}</strong><span>今日到期</span></div>
+    </div>
+  </section>
+</div>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>重复消息检测</h2>
+    <span class="muted">GROUP BY md5(content) HAVING count(*) &gt; 1</span>
+  </div>
+  {% if duplicates %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>内容摘要</th><th>出现次数</th><th>涉及会话</th><th>内容指纹</th></tr></thead>
+        <tbody>
+          {% for row in duplicates %}
+            <tr>
+              <td class="clamp-2">{{ row.sample }}</td>
+              <td>{{ row.occurrences }}</td>
+              <td>{{ row.conversation_count }}</td>
+              <td class="mono">{{ row.hash[:12] }}…</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">当前可访问范围内没有完全重复的消息。</p>
+  {% endif %}
+</section>
+{% endblock %}

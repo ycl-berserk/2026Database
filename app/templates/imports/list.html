@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block title %}导入记录{% endblock %}
+{% block page_title %}导入记录{% endblock %}
+{% block page_subtitle %}解析聊天导出文件，预览、查重后事务入库{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h2>导入聊天记录</h2>
+    <span class="muted">支持 JSON / Markdown，单文件 ≤ 5 MB、≤ 2000 条消息</span>
+  </div>
+
+  {% if errors %}
+    <div class="notice notice-error">
+      <strong>文件未被接受</strong>
+      <ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
+    </div>
+  {% endif %}
+  {% if warnings %}
+    <div class="notice notice-warning">
+      <strong>解析警告</strong>
+      <ul>{% for warning in warnings %}<li>{{ warning }}</li>{% endfor %}</ul>
+    </div>
+  {% endif %}
+
+  <form method="post" action="/imports/preview" enctype="multipart/form-data" class="upload-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="field field-file">
+      <span>聊天记录文件 *</span>
+      <input type="file" name="file" accept=".json,.md,.markdown,.txt" required>
+      <small class="muted">{{ form.file_name if form and form.file_name else '选择从 Qoder / ChatGPT / DeepSeek 导出的文件' }}</small>
+    </label>
+    <label class="field">
+      <span>来源平台</span>
+      <select name="platform">
+        <option value="auto" {% if form and form.platform == 'auto' %}selected{% endif %}>跟随文件 / 手动选择</option>
+        {% for platform in platforms %}
+          <option value="{{ platform }}" {% if form and form.platform == platform %}selected{% endif %}>
+            {{ platform_label(platform) }}
+          </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="field">
+      <span>账号标识</span>
+      <input name="account_label" maxlength="100" placeholder="如 alice@qoder（可留空）"
+             value="{{ form.account_label if form else '' }}">
+    </label>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">上传并解析</button>
+    </div>
+  </form>
+
+  <details class="format-help">
+    <summary>导入格式说明</summary>
+    <div class="format-grid">
+      <div>
+        <h3>JSON</h3>
+        <pre class="code-block">{
+  "platform": "qoder",
+  "account_label": "alice@qoder",
+  "conversations": [{
+    "external_id": "qoder-db-001",
+    "title": "SQL 查询执行顺序",
+    "course_code": "DB",
+    "started_at": "2026-09-20T10:00:00+08:00",
+    "tags": ["SQL"],
+    "messages": [
+      {"role": "user", "content": "…", "created_at": "…"},
+      {"role": "assistant", "content": "…", "created_at": "…"}
+    ]
+  }]
+}</pre>
+      </div>
+      <div>
+        <h3>Markdown</h3>
+        <pre class="code-block"># SQL 查询执行顺序
+- 课程: DB
+- 标签: SQL, 查询优化
+- 开始: 2026-09-20 10:00
+
+## 用户 [2026-09-20 10:00]
+…
+
+## 助手 [2026-09-20 10:01]
+…</pre>
+      </div>
+    </div>
+  </details>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>最近导入批次</h2>
+    <span class="muted">{{ batches | length }} 条</span>
+  </div>
+  {% if batches %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>文件</th><th>来源</th><th>状态</th><th>结果</th><th>时间</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for batch in batches %}
+            <tr>
+              <td>
+                <div class="record-title">{{ batch.file_name }}</div>
+                <small class="muted">{{ batch.file_size | num }} 字节</small>
+              </td>
+              <td>
+                <span class="chip">{{ platform_label(batch.platform) }}</span>
+                <small class="muted mono">{{ batch.account_label }}</small>
+              </td>
+              <td>
+                <span class="badge {% if batch.status == 'imported' %}badge-ok{% elif batch.status == 'preview' %}badge-warn{% elif batch.status in ('failed', 'expired') %}badge-bad{% endif %}">
+                  {{ status_label(batch.status) }}
+                </span>
+              </td>
+              <td>
+                <small class="muted">
+                  {% if batch.summary and 'conversations_new' in batch.summary %}
+                    新增 {{ batch.summary.conversations_new }} 会话 /
+                    {{ batch.summary.messages_new }} 消息
+                  {% elif batch.summary %}
+                    {{ batch.summary.conversation_count | default(0) }} 会话 /
+                    {{ batch.summary.message_count | default(0) }} 消息
+                  {% else %}—{% endif %}
+                </small>
+              </td>
+              <td class="muted">{{ batch.created_at | dt }}</td>
+              <td>
+                {% if batch.status == 'preview' %}
+                  <a class="btn btn-sm" href="/imports/preview/{{ batch.preview_token }}">继续预览</a>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">还没有导入记录。</p>
+  {% endif %}
+</section>
+{% endblock %}

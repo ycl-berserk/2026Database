@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Text2SQL{% endblock %}
+{% block page_title %}Text2SQL{% endblock %}
+{% block page_subtitle %}用自然语言查询自己的学习数据；生成结果先校验，再交给只读角色执行{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h2>提问</h2>
+    <span class="badge {% if mode == 'llm' %}badge-ok{% endif %}">{{ mode_label }}</span>
+  </div>
+
+  <form id="t2s-form" class="t2s-form">
+    <label class="field">
+      <span>你的问题</span>
+      <input id="t2s-question" name="question" maxlength="300" autocomplete="off"
+             placeholder="例如：每个课程有多少会话和消息？">
+    </label>
+    <button class="btn btn-primary" id="t2s-submit" type="submit">生成并执行</button>
+  </form>
+
+  <div class="example-chips">
+    {% for example in examples %}
+      <button class="chip chip-button" type="button" data-example="{{ example }}">{{ example }}</button>
+    {% endfor %}
+  </div>
+
+  <div class="notice">
+    <p>安全边界：只允许单条 SELECT / WITH；仅能访问 <span class="mono">t2s</span> 权限视图；以只读角色执行；3 秒超时；最多返回 200 行。执行失败或被拒绝的语句都会写入审计日志。</p>
+  </div>
+</section>
+
+<section class="panel" id="t2s-result" hidden>
+  <div class="panel-head">
+    <h2>查询结果</h2>
+    <span class="muted" id="t2s-meta"></span>
+  </div>
+  <div class="notice notice-error" id="t2s-error" hidden></div>
+  <div class="notice notice-warning" id="t2s-truncated" hidden>
+    结果超过 200 行，已截断显示。
+  </div>
+  <p id="t2s-explanation" class="t2s-explanation"></p>
+  <div class="sql-head">
+    <span class="eyebrow">生成的 SQL</span>
+    <button class="btn btn-ghost btn-sm" type="button" id="t2s-copy">复制 SQL</button>
+  </div>
+  <pre class="code-block t2s-sql" id="t2s-sql"></pre>
+  <div class="table-wrap" id="t2s-table-wrap">
+    <table class="table" id="t2s-table">
+      <thead></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <p class="empty" id="t2s-empty" hidden>查询成功，但没有匹配的数据。</p>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>最近查询</h2>
+    <span class="muted">含成功、被拒绝与执行失败</span>
+  </div>
+  {% if history %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>时间</th><th>问题</th><th>状态</th><th>行数</th><th>耗时</th><th>SQL / 错误</th></tr>
+        </thead>
+        <tbody>
+          {% for row in history %}
+            <tr>
+              <td class="muted">{{ row.created_at | dt }}</td>
+              <td>{{ row.question }}</td>
+              <td>
+                <span class="badge {% if row.status == 'success' %}badge-ok{% elif row.status == 'rejected' %}badge-warn{% else %}badge-bad{% endif %}">
+                  {{ status_label(row.status) }}
+                </span>
+              </td>
+              <td>{{ row.row_count if row.row_count is not none else '—' }}</td>
+              <td>{{ (row.latency_ms ~ ' ms') if row.latency_ms is not none else '—' }}</td>
+              <td>
+                {% if row.status == 'success' %}
+                  <details class="inline-edit">
+                    <summary>查看 SQL</summary>
+                    <pre class="code-block">{{ row.generated_sql }}</pre>
+                  </details>
+                {% else %}
+                  <span class="muted">{{ row.error_message or '—' }}</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">还没有查询记录。</p>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/text2sql.js"></script>
+{% endblock %}

@@ -1,0 +1,13 @@
+{
+  "name": "learning-space-capture",
+  "private": true,
+  "type": "module",
+  "description": "Playwright scripts for screenshots and demo recording of the 学习空间 demo.",
+  "scripts": {
+    "screenshots": "node scripts/screenshots.mjs",
+    "record": "node scripts/screenshots.mjs --record"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}

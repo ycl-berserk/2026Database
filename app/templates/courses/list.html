@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}课程{% endblock %}
+{% block page_title %}课程{% endblock %}
+{% block page_subtitle %}你创建或参与的课程，以及课程内的共享范围{% endblock %}
+
+{% block topbar_actions %}
+  <a class="btn" href="/courses/new">新建课程</a>
+{% endblock %}
+
+{% block content %}
+{% if courses %}
+  <div class="card-grid">
+    {% for course in courses %}
+      <a class="course-card" href="/courses/{{ course.id }}">
+        <div class="course-card-head">
+          <span class="course-code">{{ course.code }}</span>
+          <span class="chip {% if course.role == 'owner' %}chip-seal{% else %}chip-soft{% endif %}">
+            {{ role_label(course.role) }}
+          </span>
+        </div>
+        <h2>{{ course.name }}</h2>
+        <p class="course-meta">{{ course.semester }}{% if course.instructor %} · {{ course.instructor }}{% endif %}</p>
+        <p class="course-desc clamp-2">{{ course.description or '暂无课程描述' }}</p>
+        <div class="course-stats">
+          <span><b>{{ course.conversation_count }}</b> 会话</span>
+          <span><b>{{ course.message_count }}</b> 消息</span>
+          <span><b>{{ course.member_count }}</b> 成员</span>
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+{% else %}
+  <section class="panel">
+    <div class="empty-block">
+      <p>还没有课程</p>
+      <p class="muted">创建课程后，聊天记录会按课程归档，并可共享给同学一起复习。</p>
+      <p><a class="btn" href="/courses/new">新建第一门课程</a></p>
+    </div>
+  </section>
+{% endif %}
+{% endblock %}

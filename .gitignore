@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+node_modules/
+.env
+data/uploads/*
+!data/uploads/.gitkeep
+data/verification/*
+!data/verification/.gitkeep
+!data/verification/report.json
+docs/video-tmp/
+docs/汇报-preview.pdf

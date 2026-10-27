@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}复习队列{% endblock %}
+{% block page_title %}复习队列{% endblock %}
+{% block page_subtitle %}按间隔重复安排到期复习；逾期项会优先显示{% endblock %}
+
+{% block content %}
+<section class="stat-grid stat-grid-5">
+  <div class="stat-card">
+    <span class="stat-label">全部复习项</span>
+    <strong class="stat-value">{{ summary.total }}</strong>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">待复习</span>
+    <strong class="stat-value">{{ summary.pending }}</strong>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">复习中</span>
+    <strong class="stat-value">{{ summary.reviewing }}</strong>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">今日到期</span>
+    <strong class="stat-value">{{ summary.due }}</strong>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">已掌握</span>
+    <strong class="stat-value">{{ summary.mastered }}</strong>
+  </div>
+</section>
+
+<div class="sender-tabs">
+  <a class="sender-tab {% if scope == 'active' %}active{% endif %}" href="/reviews?scope=active">待复习</a>
+  <a class="sender-tab {% if scope == 'mastered' %}active{% endif %}" href="/reviews?scope=mastered">已掌握</a>
+  <a class="sender-tab {% if scope == 'all' %}active{% endif %}" href="/reviews?scope=all">全部</a>
+</div>
+
+{% if rows %}
+  <div class="review-list">
+    {% for row in rows %}
+      <article class="card review-card {% if row.is_due and row.status != 'mastered' %}review-due{% endif %}">
+        <header class="review-head">
+          <span class="chip chip-seal">{{ kind_label(row.kind) }}</span>
+          <span class="badge {% if row.status == 'mastered' %}badge-ok{% endif %}">{{ status_label(row.status) }}</span>
+          {% if row.course_code %}<span class="chip chip-soft">{{ row.course_code }}</span>{% endif %}
+          {% if row.status != 'mastered' %}
+            {% if row.is_overdue %}
+              <span class="badge badge-warn">逾期 {{ row.due_date | date }}</span>
+            {% elif row.is_due %}
+              <span class="badge badge-warn">今日到期</span>
+            {% else %}
+              <span class="badge">下次 {{ row.due_date | date }}</span>
+            {% endif %}
+          {% endif %}
+          <span class="muted">间隔 {{ row.interval_days }} 天 · 已复习 {{ row.review_count }} 次</span>
+        </header>
+
+        <div class="review-body">{{ row.annotation_content }}</div>
+
+        <blockquote class="quote">
+          <span class="snippet-role">{{ sender_label(row.sender) }} · #{{ row.seq_no }}</span>
+          {{ row.snippet }}
+        </blockquote>
+
+        <footer class="review-foot">
+          <a class="btn btn-ghost btn-sm" href="/conversations/{{ row.conversation_id }}#m{{ row.seq_no }}">
+            回到原文：{{ row.conversation_title }}
+          </a>
+          <span class="muted">批注作者 {{ row.author_name }}</span>
+
+          {% if row.status != 'mastered' %}
+            <form method="post" action="/reviews/{{ row.id }}/done" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="scope" value="{{ scope }}">
+              <button class="btn btn-primary btn-sm" type="submit">复习一次</button>
+            </form>
+            <form method="post" action="/reviews/{{ row.id }}/mastered" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="scope" value="{{ scope }}">
+              <button class="btn btn-sm" type="submit">标记掌握</button>
+            </form>
+          {% else %}
+            <form method="post" action="/reviews/{{ row.id }}/reset" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="scope" value="{{ scope }}">
+              <button class="btn btn-ghost btn-sm" type="submit">重新开始</button>
+            </form>
+          {% endif %}
+          <form method="post" action="/reviews/{{ row.id }}/delete" class="inline-form"
+                data-confirm="把这个复习项移出队列？原批注会保留。">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="scope" value="{{ scope }}">
+            <button class="btn btn-danger btn-sm" type="submit">移出</button>
+          </form>
+        </footer>
+      </article>
+    {% endfor %}
+  </div>
+{% else %}
+  <section class="panel">
+    <div class="empty-block">
+      <p>当前列表为空</p>
+      <p class="muted">先到<a class="link" href="/annotations">批注</a>页，把需要反复看的条目加入复习队列。</p>
+    </div>
+  </section>
+{% endif %}
+{% endblock %}

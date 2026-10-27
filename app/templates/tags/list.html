@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}标签{% endblock %}
+{% block page_title %}标签{% endblock %}
+{% block page_subtitle %}标签属于个人，可用于跨课程标记知识点与主题{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h2>新建标签</h2>
+    <span class="muted">同名标签在个人范围内唯一</span>
+  </div>
+  <form method="post" action="/tags" class="tag-create">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="field">
+      <span>名称</span>
+      <input name="name" maxlength="40" placeholder="如 事务 / 索引 / 错题" required>
+    </label>
+    <label class="field">
+      <span>类型</span>
+      <select name="kind">
+        <option value="knowledge_point">知识点</option>
+        <option value="topic" selected>主题</option>
+        <option value="custom">自定义</option>
+      </select>
+    </label>
+    <label class="field field-color">
+      <span>颜色</span>
+      <input type="color" name="color" value="#2f5d4e">
+    </label>
+    <button class="btn" type="submit">创建标签</button>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>我的标签</h2>
+    <span class="muted">{{ tags | length }} 个</span>
+  </div>
+  {% if tags %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>标签</th><th>类型</th><th>使用会话</th><th>创建时间</th><th class="col-actions">操作</th></tr>
+        </thead>
+        <tbody>
+          {% for tag in tags %}
+            <tr>
+              <td>
+                <span class="tag-pill">
+                  <span class="tag-dot" style="background: {{ tag.color or '#2f5d4e' }}"></span>
+                  {{ tag.name }}
+                </span>
+              </td>
+              <td><span class="chip">{{ kind_label(tag.kind) }}</span></td>
+              <td>{{ tag.usage_count }}</td>
+              <td class="muted">{{ tag.created_at | dt }}</td>
+              <td class="col-actions">
+                <details class="inline-edit">
+                  <summary>编辑</summary>
+                  <form method="post" action="/tags/{{ tag.id }}/edit" class="inline-edit-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input name="name" value="{{ tag.name }}" maxlength="40" required>
+                    <select name="kind">
+                      {% for kind in kinds %}
+                        <option value="{{ kind }}" {% if tag.kind == kind %}selected{% endif %}>{{ kind_label(kind) }}</option>
+                      {% endfor %}
+                    </select>
+                    <input type="color" name="color" value="{{ tag.color or '#2f5d4e' }}">
+                    <button class="btn btn-sm" type="submit">保存</button>
+                  </form>
+                </details>
+                <form method="post" action="/tags/{{ tag.id }}/delete" class="inline-form"
+                      data-confirm="删除标签「{{ tag.name }}」？相关会话的该标签会被移除。">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <button class="btn btn-danger btn-sm" type="submit">删除</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">还没有标签。标签会随导入的聊天记录自动创建，也可以在这里手动添加。</p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% set is_edit = mode == 'edit' %}
+{% block title %}{{ '编辑课程' if is_edit else '新建课程' }}{% endblock %}
+{% block page_title %}{{ '编辑课程' if is_edit else '新建课程' }}{% endblock %}
+{% block page_subtitle %}
+  {% if is_edit %}修改课程元信息；课程编号、学期与创建者共同唯一{% else %}课程是本系统组织聊天记录与共享权限的第一层{% endif %}
+{% endblock %}
+
+{% block topbar_actions %}
+  <a class="btn btn-ghost" href="{{ '/courses/' ~ course.id if is_edit else '/courses' }}">返回</a>
+{% endblock %}
+
+{% block content %}
+<section class="panel panel-narrow">
+  <form method="post" action="{{ '/courses/' ~ course.id ~ '/edit' if is_edit else '/courses' }}" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="form-grid">
+      <label class="field">
+        <span>课程编号 *</span>
+        <input name="code" value="{{ course.code if course else '' }}" maxlength="20" placeholder="如 DB" required>
+      </label>
+      <label class="field">
+        <span>学期 *</span>
+        <input name="semester" value="{{ course.semester if course else '2026 秋' }}" maxlength="20" required>
+      </label>
+      <label class="field field-full">
+        <span>课程名称 *</span>
+        <input name="name" value="{{ course.name if course else '' }}" maxlength="100" placeholder="如 数据库系统概论" required>
+      </label>
+      <label class="field field-full">
+        <span>任课教师</span>
+        <input name="instructor" value="{{ course.instructor or '' if course else '' }}" maxlength="100">
+      </label>
+      <label class="field field-full">
+        <span>课程描述</span>
+        <textarea name="description" rows="4" placeholder="简要说明课程内容，便于区分同名课程">{{ course.description or '' if course else '' }}</textarea>
+      </label>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">{{ '保存修改' if is_edit else '创建课程' }}</button>
+      <a class="btn btn-ghost" href="{{ '/courses/' ~ course.id if is_edit else '/courses' }}">取消</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

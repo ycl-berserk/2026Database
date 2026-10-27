@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}导入预览{% endblock %}
+{% block page_title %}导入预览{% endblock %}
+{% block page_subtitle %}{{ batch.file_name }} · {{ platform_label(batch.platform) }} · {{ batch.account_label }}{% endblock %}
+
+{% block topbar_actions %}
+  <a class="btn btn-ghost" href="/imports">返回导入记录</a>
+{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="preview-summary">
+    <div class="mini-stats">
+      <div><strong>{{ rows | length }}</strong><span>会话</span></div>
+      <div><strong>{{ summary.message_count | default(0) }}</strong><span>消息</span></div>
+      <div><strong>{{ counts["new"] }}</strong><span>新增</span></div>
+      <div><strong>{{ counts["update"] }}</strong><span>可更新</span></div>
+      <div><strong>{{ counts["duplicate"] }}</strong><span>完全重复</span></div>
+    </div>
+    <p class="muted">预览有效期至 {{ batch.expires_at | dt }}。确认前不会写入会话与消息。</p>
+  </div>
+
+  {% if expired %}
+    <div class="notice notice-error">
+      <strong>预览已过期</strong>
+      <p>请返回导入页重新上传文件。过期预览不会被写入数据库。</p>
+    </div>
+  {% endif %}
+  {% if warnings %}
+    <div class="notice notice-warning">
+      <strong>解析警告</strong>
+      <ul>{% for warning in warnings %}<li>{{ warning }}</li>{% endfor %}</ul>
+    </div>
+  {% endif %}
+</section>
+
+{% if not expired %}
+<form method="post" action="/imports/confirm" id="confirm-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="token" value="{{ token }}">
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>选择会话与课程归类</h2>
+      <label class="checkline">
+        <input type="checkbox" id="select-all" checked>
+        <span>全选</span>
+      </label>
+    </div>
+
+    <div class="table-wrap">
+      <table class="table preview-table">
+        <thead>
+          <tr>
+            <th class="col-check"></th>
+            <th>会话</th>
+            <th>消息</th>
+            <th>标签</th>
+            <th>查重</th>
+            <th>归类课程</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr class="{% if row.status == 'duplicate' %}row-duplicate{% endif %}">
+              <td class="col-check">
+                <input type="checkbox" name="selected" value="{{ row.index }}" checked>
+              </td>
+              <td>
+                <div class="record-title">{{ row.title }}</div>
+                <small class="muted mono">{{ row.external_id }}</small>
+                {% if row.started_at %}<small class="muted"> · {{ row.started_at | dt }}</small>{% endif %}
+              </td>
+              <td>{{ row.messages | length }}</td>
+              <td>
+                {% for tag in row.tags %}
+                  <span class="chip">{{ tag }}</span>
+                {% else %}
+                  <span class="muted">—</span>
+                {% endfor %}
+              </td>
+              <td>
+                {% if row.status == 'new' %}
+                  <span class="badge badge-ok">新增</span>
+                {% elif row.status == 'update' %}
+                  <span class="badge badge-warn">更新</span>
+                  <small class="muted">+{{ row.new_messages }} 条</small>
+                {% else %}
+                  <span class="badge">重复</span>
+                {% endif %}
+                {% if row.conflict_messages %}
+                  <div><small class="conflict-text">内容冲突 {{ row.conflict_messages }} 条</small></div>
+                {% endif %}
+              </td>
+              <td>
+                <select name="course_{{ row.index }}">
+                  <option value="">不归类</option>
+                  {% for course in courses %}
+                    <option value="{{ course.id }}" {% if row.suggested_course_id == course.id %}selected{% endif %}>
+                      {{ course.code }} · {{ course.name }}
+                    </option>
+                  {% endfor %}
+                </select>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">确认导入所选会话</button>
+      <span class="muted">只补充缺失消息；相同消息按会话 + 序号去重</span>
+    </div>
+  </section>
+</form>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var all = document.getElementById("select-all");
+    if (!all) return;
+    all.addEventListener("change", function () {
+      document.querySelectorAll('input[name="selected"]').forEach(function (box) {
+        box.checked = all.checked;
+      });
+    });
+    document.querySelectorAll('input[name="selected"]').forEach(function (box) {
+      box.addEventListener("change", function () {
+        var boxes = Array.from(document.querySelectorAll('input[name="selected"]'));
+        all.checked = boxes.every(function (b) { return b.checked; });
+      });
+    });
+  })();
+</script>
+{% endblock %}

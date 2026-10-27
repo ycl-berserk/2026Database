@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}{{ course.name }}{% endblock %}
+{% block page_title %}{{ course.name }}{% endblock %}
+{% block page_subtitle %}{{ course.code }} · {{ course.semester }}{% if course.instructor %} · {{ course.instructor }}{% endif %}{% endblock %}
+
+{% block topbar_actions %}
+  <a class="btn btn-ghost" href="/courses">返回课程</a>
+  <a class="btn btn-ghost" href="/conversations?course_id={{ course.id }}">查看会话</a>
+  {% if role == 'owner' %}
+    <a class="btn" href="/courses/{{ course.id }}/edit">编辑课程</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="course-detail-head">
+    <div>
+      <div class="record-meta">
+        <span class="chip chip-seal">{{ role_label(role) }}</span>
+        <span class="chip">{{ course.code }}</span>
+        <span class="chip">{{ course.semester }}</span>
+      </div>
+      <p class="course-detail-desc">{{ course.description or '暂无课程描述。' }}</p>
+      <p class="muted">创建者：{{ course.creator_name }} · 创建于 {{ course.created_at | dt }}</p>
+    </div>
+    <div class="mini-stats">
+      <div><strong>{{ counts.conversation_count }}</strong><span>会话</span></div>
+      <div><strong>{{ counts.message_count }}</strong><span>消息</span></div>
+      <div><strong>{{ counts.annotation_count }}</strong><span>批注</span></div>
+    </div>
+  </div>
+</section>
+
+<div class="two-col">
+  <section class="panel">
+    <div class="panel-head">
+      <h2>课程成员</h2>
+      <span class="muted">{{ members | length }} 人</span>
+    </div>
+    <ul class="member-list">
+      {% for member in members %}
+        <li class="member-row">
+          <span class="member-avatar">{{ member.display_name[:1] }}</span>
+          <div class="member-main">
+            <strong>{{ member.display_name }}</strong>
+            <small class="mono">@{{ member.username }} · 加入于 {{ member.joined_at | date }}</small>
+          </div>
+          {% if role == 'owner' and member.role != 'owner' %}
+            <form method="post" action="/courses/{{ course.id }}/members/{{ member.id }}/role" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <select name="role" class="select-sm" onchange="this.form.requestSubmit()">
+                <option value="editor" {% if member.role == 'editor' %}selected{% endif %}>编辑者</option>
+                <option value="viewer" {% if member.role == 'viewer' %}selected{% endif %}>只读成员</option>
+              </select>
+            </form>
+            <form method="post" action="/courses/{{ course.id }}/members/{{ member.id }}/remove"
+                  data-confirm="确定移除 {{ member.display_name }}？">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn btn-danger btn-sm" type="submit">移除</button>
+            </form>
+          {% else %}
+            <span class="chip {% if member.role == 'owner' %}chip-seal{% else %}chip-soft{% endif %}">
+              {{ role_label(member.role) }}
+            </span>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+
+    {% if role == 'owner' %}
+      <form method="post" action="/courses/{{ course.id }}/members" class="member-add">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="field">
+          <span>添加成员（用户名）</span>
+          <input name="username" list="candidate-users" placeholder="如 bob" required>
+          <datalist id="candidate-users">
+            {% for candidate in candidates %}
+              <option value="{{ candidate.username }}">{{ candidate.display_name }}</option>
+            {% endfor %}
+          </datalist>
+        </label>
+        <label class="field">
+          <span>角色</span>
+          <select name="role">
+            <option value="viewer">只读成员</option>
+            <option value="editor">编辑者</option>
+          </select>
+        </label>
+        <button class="btn btn-sm" type="submit">添加</button>
+      </form>
+      <p class="muted hint">编辑者可导入、归类会话并添加批注；只读成员只能浏览。</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>课程标签</h2>
+      <a class="link" href="/tags">管理标签 →</a>
+    </div>
+    {% if tags %}
+      <div class="tag-cloud">
+        {% for tag in tags %}
+          <a class="tag-pill" href="/conversations?course_id={{ course.id }}&tag_id={{ tag.id }}">
+            <span class="tag-dot" style="background: {{ tag.color or '#2f5d4e' }}"></span>
+            {{ tag.name }}
+            <span class="tag-count">{{ tag.usage_count }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="empty">该课程下的会话还没有标签。</p>
+    {% endif %}
+  </section>
+</div>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>课程会话</h2>
+    <a class="link" href="/conversations?course_id={{ course.id }}">全部 →</a>
+  </div>
+  {% if conversations %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>标题</th><th>平台</th><th>消息</th><th>开始时间</th><th>最近消息</th></tr>
+        </thead>
+        <tbody>
+          {% for conv in conversations %}
+            <tr>
+              <td><a class="record-title" href="/conversations/{{ conv.id }}">{{ conv.title }}</a></td>
+              <td><span class="chip">{{ platform_label(conv.platform) }}</span></td>
+              <td>{{ conv.message_count }}</td>
+              <td class="muted">{{ conv.started_at | dt }}</td>
+              <td class="muted">{{ conv.last_message_at | dt }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">还没有会话。导入聊天记录时可以将会话映射到本课程。</p>
+  {% endif %}
+</section>
+
+{% if role == 'owner' %}
+  <section class="panel danger-zone">
+    <div>
+      <h2>删除课程</h2>
+      <p class="muted">删除课程不会删除已导入的会话与消息，它们会变为未归类状态。</p>
+    </div>
+    <form method="post" action="/courses/{{ course.id }}/delete"
+          data-confirm="确定删除课程「{{ course.name }}」？会话会保留但解除归类。">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn btn-danger" type="submit">删除课程</button>
+    </form>
+  </section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,98 @@
+erDiagram
+    users ||--o{ courses : "创建"
+    users ||--o{ course_members : "加入"
+    courses ||--o{ course_members : "包含"
+    users ||--o{ sources : "拥有"
+    sources ||--o{ conversations : "导出"
+    courses |o--o{ conversations : "归属"
+    conversations ||--o{ messages : "包含"
+    users ||--o{ tags : "定义"
+    conversations ||--o{ conversation_tags : "打标签"
+    tags ||--o{ conversation_tags : "被使用"
+    messages ||--o{ annotations : "被批注"
+    users ||--o{ annotations : "撰写"
+    annotations ||--o{ review_items : "复习"
+    users ||--o{ review_items : "加入复习"
+    sources ||--o{ import_batches : "导入"
+    users ||--o{ import_batches : "发起"
+    users ||--o{ text2sql_log : "提问"
+
+    users {
+        bigint id PK
+        varchar username UK
+        varchar display_name
+        varchar system_role
+        boolean is_active
+    }
+    courses {
+        bigint id PK
+        varchar code
+        varchar name
+        varchar semester
+        bigint created_by FK
+    }
+    course_members {
+        bigint course_id PK, FK
+        bigint user_id PK, FK
+        varchar role
+        timestamptz joined_at
+    }
+    sources {
+        bigint id PK
+        bigint owner_id FK
+        varchar platform
+        varchar account_label
+    }
+    import_batches {
+        bigint id PK
+        bigint user_id FK
+        bigint source_id FK
+        varchar status
+        jsonb payload
+    }
+    conversations {
+        bigint id PK
+        bigint source_id FK
+        bigint course_id FK
+        varchar external_id
+        varchar title
+    }
+    messages {
+        bigint id PK
+        bigint conversation_id FK
+        int seq_no
+        varchar sender
+        text content
+    }
+    tags {
+        bigint id PK
+        bigint owner_id FK
+        varchar name
+        varchar kind
+    }
+    conversation_tags {
+        bigint conversation_id PK, FK
+        bigint tag_id PK, FK
+        bigint created_by FK
+    }
+    annotations {
+        bigint id PK
+        bigint message_id FK
+        bigint user_id FK
+        varchar kind
+        varchar status
+    }
+    review_items {
+        bigint id PK
+        bigint user_id FK
+        bigint annotation_id FK
+        varchar status
+        date due_date
+        int interval_days
+    }
+    text2sql_log {
+        bigint id PK
+        bigint user_id FK
+        text question
+        varchar status
+    }

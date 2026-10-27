@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>登录 · {{ app_name }}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="login-page">
+  <main class="login-shell">
+    <section class="login-intro">
+      <div class="brand brand-large">
+        <span class="brand-mark">学</span>
+        <span class="brand-text">
+          <strong>{{ app_name }}</strong>
+          <small>{{ app_tagline }}</small>
+        </span>
+      </div>
+      <h1>把聊天记录<br>变成可复习的课程资料</h1>
+      <p>导入 Qoder、ChatGPT、DeepSeek 的问答记录，按课程、标签和来源整理；搜索上下文、添加批注、安排复习，并用 SQL 统计你的学习轨迹。</p>
+      <ul class="login-points">
+        <li>课程 / 来源 / 会话 / 消息 / 标签 / 批注 的关系模型</li>
+        <li>解析、预览、查重、事务入库</li>
+        <li>课程级权限与 Text2SQL 只读视图</li>
+      </ul>
+    </section>
+
+    <section class="login-card card">
+      <h2>登录学习空间</h2>
+      <p class="muted">使用课程演示账号进入系统。</p>
+      {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+      <form method="post" action="/login" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="next" value="{{ next_url }}">
+        <label class="field">
+          <span>用户名</span>
+          <input name="username" value="{{ username or '' }}" autocomplete="username" required autofocus>
+        </label>
+        <label class="field">
+          <span>密码</span>
+          <input name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <button class="btn btn-primary btn-block" type="submit">登录</button>
+      </form>
+
+      <div class="demo-accounts">
+        <span class="eyebrow">演示账号</span>
+        <div class="demo-row"><code>alice</code><span>Alice123!</span><small>5 门课所有者</small></div>
+        <div class="demo-row"><code>bob</code><span>Bob123!</span><small>共享成员（editor / viewer）</small></div>
+        <div class="demo-row"><code>admin</code><span>Admin123!</span><small>管理员，仅看聚合数据</small></div>
+      </div>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

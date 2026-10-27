@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}{{ conversation.title }}{% endblock %}
+{% block page_title %}{{ conversation.title }}{% endblock %}
+{% block page_subtitle %}
+  {% if conversation.course_name %}{{ conversation.course_code }} · {{ conversation.course_name }}{% else %}未归类会话{% endif %}
+  · {{ platform_label(conversation.platform) }} · {{ conversation.account_label }}
+{% endblock %}
+
+{% block topbar_actions %}
+  <a class="btn" href="/exports/conversations/{{ conversation.id }}.md">导出 Markdown</a>
+  {% if conversation.course_id %}
+    <a class="btn btn-ghost" href="/courses/{{ conversation.course_id }}">所属课程</a>
+  {% endif %}
+  <a class="btn btn-ghost" href="/conversations{% if conversation.course_id %}?course_id={{ conversation.course_id }}{% endif %}">返回会话列表</a>
+{% endblock %}
+
+{% block content %}
+<section class="panel conv-header">
+  <div class="record-meta">
+    {% if conversation.course_code %}
+      <span class="chip chip-soft">{{ conversation.course_code }} · {{ conversation.course_name }}</span>
+    {% else %}
+      <span class="chip">未归类</span>
+    {% endif %}
+    <span class="chip">{{ platform_label(conversation.platform) }}</span>
+    <span class="chip mono">{{ conversation.account_label }}</span>
+    {% if conversation.is_archived %}<span class="badge">已归档</span>{% endif %}
+    {% if can_edit %}
+      <span class="badge badge-ok">{{ role_label(course_role) if course_role else '导入者' }} · 可编辑</span>
+    {% else %}
+      <span class="badge">只读访问</span>
+    {% endif %}
+  </div>
+  <div class="conv-facts">
+    <span><b>{{ counts.total }}</b> 条消息</span>
+    <span><b>{{ counts.user_count }}</b> 次提问</span>
+    <span><b>{{ counts.assistant_count }}</b> 次回答</span>
+    <span class="muted">开始 {{ conversation.started_at | dt }}</span>
+    <span class="muted">结束 {{ conversation.ended_at | dt }}</span>
+  </div>
+  {% if tags %}
+    <div class="tag-cloud">
+      {% for tag in tags %}
+        <a class="tag-pill" href="/conversations?tag_id={{ tag.id }}">
+          <span class="tag-dot" style="background: {{ tag.color or '#2f5d4e' }}"></span>{{ tag.name }}
+        </a>
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>
+
+{% if can_edit %}
+<section class="panel organize-panel">
+  <div class="panel-head">
+    <h2>归类与标签</h2>
+    <span class="muted">课程归类、个人标签都只影响自己的整理方式</span>
+  </div>
+  <form method="post" action="/conversations/{{ conversation.id }}/organize" class="organize-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="field">
+      <span>所属课程</span>
+      <select name="course_id">
+        <option value="none" {% if not conversation.course_id %}selected{% endif %}>未归类</option>
+        {% for course in manage_courses %}
+          <option value="{{ course.id }}" {% if conversation.course_id == course.id %}selected{% endif %}>
+            {{ course.code }} · {{ course.name }}
+          </option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="field field-tags">
+      <span>我的标签</span>
+      {% if my_tags %}
+        <div class="tag-checks">
+          {% for tag in my_tags %}
+            <label class="checkline">
+              <input type="checkbox" name="tag_ids" value="{{ tag.id }}"
+                     {% if tag.id in selected_tag_ids %}checked{% endif %}>
+              <span class="tag-dot" style="background: {{ tag.color or '#2f5d4e' }}"></span>{{ tag.name }}
+            </label>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="muted">还没有标签，先到 <a class="link" href="/tags">标签页</a>创建。</p>
+      {% endif %}
+    </div>
+    <button class="btn" type="submit">保存归类</button>
+  </form>
+</section>
+{% endif %}
+
+<section class="panel">
+  {% set base = '/conversations/' ~ conversation.id %}
+  {% set q_part = ('q=' ~ (q | urlencode)) if q else '' %}
+  <div class="sender-tabs">
+    <a class="sender-tab {% if not sender %}active{% endif %}" href="{{ base }}{{ ('?' ~ q_part) if q_part else '' }}">全部 {{ counts.total }}</a>
+    <a class="sender-tab {% if sender == 'user' %}active{% endif %}" href="{{ base }}?{{ q_part ~ '&' if q_part else '' }}sender=user">提问 {{ counts.user_count }}</a>
+    <a class="sender-tab {% if sender == 'assistant' %}active{% endif %}" href="{{ base }}?{{ q_part ~ '&' if q_part else '' }}sender=assistant">回答 {{ counts.assistant_count }}</a>
+    <a class="sender-tab {% if sender == 'system' %}active{% endif %}" href="{{ base }}?{{ q_part ~ '&' if q_part else '' }}sender=system">系统</a>
+    {% if q %}<span class="chip chip-seal">高亮：{{ q }}</span>{% endif %}
+  </div>
+
+  {% if messages %}
+    <div class="msg-list">
+      {% for msg in messages %}
+        <article class="msg msg-{{ msg.sender }}" id="m{{ msg.seq_no }}">
+          <header class="msg-head">
+            <span class="msg-role">{{ sender_label(msg.sender) }}</span>
+            <span class="msg-seq">#{{ msg.seq_no }}</span>
+            <time class="muted">{{ msg.created_at | dt }}</time>
+            {% if msg.annotation_count %}<span class="chip">{{ msg.annotation_count }} 条批注</span>{% endif %}
+          </header>
+          <div class="msg-body">{{ msg.content | highlight(q) }}</div>
+          {% if msg.annotations %}
+            <div class="msg-annotations">
+              {% for note in msg.annotations %}
+                <div class="annotation">
+                  <div class="annotation-head">
+                    <span class="chip chip-seal">{{ kind_label(note.kind) }}</span>
+                    <strong>{{ note.display_name }}</strong>
+                    <span class="badge {% if note.status == 'resolved' %}badge-ok{% endif %}">{{ status_label(note.status) }}</span>
+                    <time class="muted">{{ note.created_at | dt }}</time>
+                    {% if can_edit %}
+                      <form method="post" action="/annotations/{{ note.id }}/review" class="inline-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="back" value="/conversations/{{ conversation.id }}#m{{ msg.seq_no }}">
+                        <button class="btn btn-ghost btn-sm" type="submit">加入复习</button>
+                      </form>
+                    {% endif %}
+                  </div>
+                  <div class="annotation-body">{{ note.content }}</div>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+          {% if can_edit %}
+            <details class="annotate">
+              <summary>添加批注</summary>
+              <form method="post" action="/annotations" class="annotate-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="message_id" value="{{ msg.id }}">
+                <input type="hidden" name="back" value="/conversations/{{ conversation.id }}#m{{ msg.seq_no }}">
+                <select name="kind">
+                  <option value="note">笔记</option>
+                  <option value="question">疑问</option>
+                  <option value="correction">纠错</option>
+                  <option value="summary">总结</option>
+                </select>
+                <input name="content" maxlength="4000" placeholder="写下这一条消息的重点、疑问或纠错…" required>
+                <button class="btn btn-sm" type="submit">保存批注</button>
+              </form>
+            </details>
+          {% endif %}
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="empty">该筛选条件下没有消息。</p>
+  {% endif %}
+</section>
+{% endblock %}

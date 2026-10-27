@@ -1,0 +1,21 @@
+{
+  "platform": "unknown-platform",
+  "account_label": "broken",
+  "conversations": [
+    {
+      "title": "",
+      "messages": [
+        {
+          "role": "robot",
+          "content": "",
+          "created_at": "不是时间"
+        }
+      ]
+    },
+    {
+      "external_id": "broken-2",
+      "title": "缺少消息的会话",
+      "messages": []
+    }
+  ]
+}

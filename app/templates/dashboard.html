@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}概览{% endblock %}
+{% block page_title %}{% if is_admin %}系统概览{% else %}学习概览{% endif %}{% endblock %}
+{% block page_subtitle %}
+  {% if is_admin %}仅展示用户与聚合统计，不读取他人消息正文{% else %}按课程整理问答，围绕批注安排复习{% endif %}
+{% endblock %}
+
+{% block topbar_actions %}
+  {% if not is_admin %}
+    <a class="btn" href="/imports">导入聊天记录</a>
+    <a class="btn btn-ghost" href="/text2sql">用一句话查库</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+{% if is_admin %}
+  <section class="stat-grid">
+    <div class="stat-card">
+      <span class="stat-label">用户</span>
+      <strong class="stat-value">{{ stats.user_count | num }}</strong>
+      <small class="muted">启用 {{ stats.active_user_count | num }} 人</small>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">课程</span>
+      <strong class="stat-value">{{ stats.course_count | num }}</strong>
+      <small class="muted">所有用户合计</small>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">会话</span>
+      <strong class="stat-value">{{ stats.conversation_count | num }}</strong>
+      <small class="muted">消息 {{ stats.message_count | num }} 条</small>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">批注 / 待复习</span>
+      <strong class="stat-value">{{ stats.annotation_count | num }}</strong>
+      <small class="muted">待复习 {{ stats.pending_review_count | num }} 项</small>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>最近注册用户</h2>
+      <a class="link" href="/admin">进入管理 →</a>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>用户名</th><th>显示名</th><th>系统角色</th><th>状态</th><th>注册时间</th></tr>
+        </thead>
+        <tbody>
+          {% for user in users %}
+            <tr>
+              <td class="mono">{{ user.username }}</td>
+              <td>{{ user.display_name }}</td>
+              <td><span class="chip">{{ role_label(user.system_role) }}</span></td>
+              <td>
+                {% if user.is_active %}
+                  <span class="badge badge-ok">启用</span>
+                {% else %}
+                  <span class="badge">已停用</span>
+                {% endif %}
+              </td>
+              <td class="muted">{{ user.created_at | dt }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="5" class="empty">暂无用户</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+{% else %}
+  <section class="stat-grid">
+    <div class="stat-card">
+      <span class="stat-label">我的课程</span>
+      <strong class="stat-value">{{ stats.course_count | num }}</strong>
+      <small class="muted">含共享课程</small>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">可访问会话</span>
+      <strong class="stat-value">{{ stats.conversation_count | num }}</strong>
+      <small class="muted">自己导入 + 课程共享</small>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">消息</span>
+      <strong class="stat-value">{{ stats.message_count | num }}</strong>
+      <small class="muted">问答往返记录</small>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">待复习</span>
+      <strong class="stat-value">{{ stats.pending_review_count | num }}</strong>
+      <small class="muted">未标记掌握</small>
+    </div>
+  </section>
+
+  <div class="two-col">
+    <section class="panel">
+      <div class="panel-head">
+        <h2>最近会话</h2>
+        <a class="link" href="/conversations">全部会话 →</a>
+      </div>
+      {% if recent %}
+        <ul class="record-list">
+          {% for row in recent %}
+            <li>
+              <a class="record-title" href="/conversations/{{ row.id }}">{{ row.title }}</a>
+              <div class="record-meta">
+                <span class="chip">{{ platform_label(row.platform) }}</span>
+                {% if row.course_name %}<span class="chip chip-soft">{{ row.course_name }}</span>{% endif %}
+                <span>{{ row.message_count }} 条消息</span>
+                <span class="muted">{{ row.last_message_at | dt }}</span>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="empty-block">
+          <p>还没有会话</p>
+          <p class="muted">从 <a class="link" href="/imports">导入聊天记录</a> 开始，或先创建课程。</p>
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>近 8 个月学习活跃度</h2>
+        <span class="muted">按消息数</span>
+      </div>
+      <div class="bar-chart">
+        {% for row in activity %}
+          <div class="bar-col" title="{{ row.month }}：{{ row.message_count }} 条消息">
+            <span class="bar-value">{{ row.message_count }}</span>
+            <div class="bar-track">
+              <div class="bar-fill" style="height: {{ (100 * row.message_count / activity_max) if activity_max else 0 }}%"></div>
+            </div>
+            <span class="bar-label">{{ row.month[5:] }}月</span>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>今日复习</h2>
+      <a class="link" href="/reviews">复习队列 →</a>
+    </div>
+    {% if reviews %}
+      <ul class="record-list">
+        {% for row in reviews %}
+          <li>
+            <div class="record-meta">
+              <span class="badge {% if row.due_date and row.due_date <= today %}badge-warn{% endif %}">
+                截止 {{ row.due_date | date }}
+              </span>
+              <span class="chip">{{ kind_label(row.kind) }}</span>
+              <span class="muted">{{ row.conversation_title }}</span>
+            </div>
+            <p class="clamp-2">{{ row.content }}</p>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">复习队列为空。给消息添加批注后即可加入复习。</p>
+    {% endif %}
+  </section>
+{% endif %}
+{% endblock %}

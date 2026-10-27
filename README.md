@@ -21,6 +21,8 @@
 | Text2SQL | 自然语言→SQL→校验→只读执行→表格展示、解释、审计历史；无 API Key 时使用本地规则 mock |
 | 管理 | 用户启停、系统聚合统计（不读正文） |
 | 移动端与安装 | 390px 优先的底部标签栏 / 抽屉导航、列表卡片化、专注阅读模式；PWA manifest + Service Worker 应用壳缓存、离线页、桌面安装、分享快捷方式 |
+| 体验与可访问性 | 演示账号一键登录、空账号三步引导、删除类操作 5 秒撤销、可关闭且可播报的提示、错误页原因与恢复路径、键盘焦点可见、`prefers-reduced-motion` |
+| 性能 | GZip 压缩、静态资源版本化与长缓存、首屏 JS < 10KB、移动端 LCP < 0.5s（本地实测） |
 
 > PWA 安装与 Service Worker 只在 `localhost` 或 HTTPS 下启用；通过局域网 HTTP 访问手机时仍可使用完整响应式界面，但不会缓存静态资源。
 
@@ -30,6 +32,7 @@
 - PostgreSQL 16（Docker Compose，宿主端口 5433）
 - psycopg 3 + psycopg_pool，手写参数化 SQL，不使用 ORM
 - `pg_trgm` GIN 索引支持中文子串检索
+- GZip 中间件 + 带版本参数的静态资源长缓存
 - Playwright（可选）用于页面截图与演示录屏
 
 ## 快速开始
@@ -73,7 +76,7 @@ py -3.13 -m venv .venv
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（69 单元 + 68 集成，共 137 项）；集成测试需先初始化测试库
+# 全量测试（78 单元 + 68 集成，共 146 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest -q
 
 # 端到端验收：29 项 PASS/FAIL，写入 data/verification/report.json

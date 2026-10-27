@@ -93,3 +93,31 @@ def test_server_error_page_has_generic_recovery_copy():
     assert "返回上一页" in error
     assert "error_hint" in error
     assert "error_path" in error
+
+
+def test_static_assets_are_compressed_versioned_and_cacheable():
+    from app.main import app
+
+    client = TestClient(app)
+    try:
+        plain = client.get("/static/app.css")
+        versioned = client.get("/static/app.css?v=test")
+        page = client.get("/missing-page")
+    finally:
+        client.close()
+
+    assert plain.status_code == 200
+    assert plain.headers["cache-control"] == "public, max-age=300"
+    assert "gzip" in plain.headers.get("content-encoding", "")
+    assert versioned.headers["cache-control"].endswith("immutable")
+    assert page.headers["cache-control"] == "no-store"
+    assert "/static/app.css?v=" in page.text
+    assert "/static/app.js?v=" in page.text
+
+
+def test_frontend_budget_and_reduced_motion():
+    assert (STATIC / "app.js").stat().st_size < 100 * 1024
+    assert (STATIC / "app.css").stat().st_size < 100 * 1024
+    css = _read(STATIC / "app.css")
+    assert "prefers-reduced-motion" in css
+    assert ":focus-visible" in css

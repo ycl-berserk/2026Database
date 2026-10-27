@@ -12,6 +12,12 @@ from .config import settings
 
 templates = Jinja2Templates(directory=str(settings.templates_dir))
 
+
+def _asset_version() -> str:
+    files = (settings.static_dir / "app.css", settings.static_dir / "app.js")
+    newest = max(int(path.stat().st_mtime) for path in files if path.exists())
+    return format(newest, "x")
+
 ROLE_LABELS = {
     "owner": "所有者",
     "editor": "编辑者",
@@ -140,6 +146,7 @@ templates.env.filters["num"] = format_number
 templates.env.filters["highlight"] = highlight
 templates.env.globals["app_name"] = "学习空间"
 templates.env.globals["app_tagline"] = "把散落的问答，变成能复习的课程资料"
+templates.env.globals["asset_version"] = _asset_version()
 templates.env.globals["role_label"] = lambda v: ROLE_LABELS.get(v or "", v or "—")
 templates.env.globals["kind_label"] = lambda v: KIND_LABELS.get(v or "", v or "—")
 templates.env.globals["status_label"] = lambda v: STATUS_LABELS.get(v or "", v or "—")

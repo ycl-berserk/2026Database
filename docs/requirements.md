@@ -120,6 +120,16 @@
 | R08-F02 | 系统聚合统计 | 管理员 | 用户数、课程数、会话数、消息数、批注数、复习数 | 只返回聚合值，不返回正文 | `admin_service.load_system_stats` | `test_admin.py`、`verify` 管理边界 |
 | R08-F03 | 管理边界 | 管理员访问课程/会话/导入 | 统一 403 | 不能通过直接 URL 绕过 | 各 router `_require_student` | `test_permissions.py` |
 
+## R09 快速采集与使用体验
+
+| ID | 功能 | 输入 | 输出 / 行为 | 异常与边界 | 实现位置 | 验收 |
+| --- | --- | --- | --- | --- | --- | --- |
+| R09-F01 | PWA Share Target | 手机分享的标题/文本/链接 | 解析后暂存 `import_batches`，跳转预览；可保存到课程或收件箱 | 超过 20 万字符拒绝；来源不同源拒绝；最终保存校验 CSRF | `routers/capture.py`、`services/import_service.stage_paste` | `tests/integration/test_capture.py`、`verify.capture.paste` |
+| R09-F02 | 裸文本粘贴导入 | 一段问答文本、可选标题/平台 | 识别中英文角色、时间、课程/标签元信息，输出统一 DTO | 无角色前缀时按单条用户消息兜底；空文本拒绝 | `importers/plain_text_importer.py` | `tests/unit/test_plain_text_importer.py`、`test_capture.py` |
+| R09-F03 | 收件箱批量归类 | 勾选的未归类会话、目标课程 | 仅移动本人且当前未归类的会话 | 非可编辑课程 403；共享课程他人会话不动 | `conversation_service.bulk_organize_inbox`、`routers/capture.py` | `test_capture.py`、`verify.inbox.organize` |
+| R09-F04 | 导入向导与结果页 | 上传/粘贴、勾选、课程映射 | 三步步骤条、逐条错误、新增/跳过/冲突摘要 | 预览 token 过期/越权；失败整体回滚 | `templates/imports/*`、`routers/imports.py` | UI 走查、`test_import.py` |
+| R09-F05 | 反馈与恢复 | 删除、加载失败、越权 | 5 秒撤销、可关闭提示、错误页原因与恢复入口 | 离页兜底提交；错误不自动消失 | `static/app.js`、`templates/error.html`、`main.py` | `tests/unit/test_ui_assets.py`、Playwright 走查 |
+
 ## 非功能需求
 
 | 类别 | 要求 | 实现 |
@@ -129,12 +139,12 @@
 | 性能 | 列表分页、关键查询有索引、统计实时但规模可控 | 索引设计、`LIMIT/OFFSET`、部分索引、trgm |
 | 可维护性 | 关键 SQL 可定位、无 ORM 黑盒 | `sql/` + `services/` + 本文件映射 |
 | 可演示性 | 离线可演示、模拟数据可复现 | mock Text2SQL、`make_samples.py`、`seed_demo.py` |
-| 可验收 | 自动化测试与端到端报告 | 116 个 pytest 用例 + 26 项 `verify.py` 检查 |
+| 可验收 | 自动化测试与端到端报告 | 146 个 pytest 用例 + 29 项 `verify.py` 检查 |
 
 ## 需求到验收命令的映射
 
 ```bash
-# R01 R02 R03 R04 R05 R06 R07 R08 的主要回归
+# R01–R09 的主要回归
 .venv/Scripts/python.exe -m pytest -q
 
 # 端到端 PASS/FAIL（含权限、导入、检索、统计、导出、Text2SQL、事务）

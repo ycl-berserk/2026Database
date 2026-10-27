@@ -9,6 +9,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -99,7 +100,7 @@ def _snapshot(conn) -> dict[str, int]:
         for table in (
             "users", "courses", "course_members", "sources", "conversations",
             "messages", "tags", "conversation_tags", "annotations",
-            "review_items", "import_batches", "text2sql_log",
+            "review_items", "review_logs", "import_batches", "text2sql_log",
         )
     }
 
@@ -122,9 +123,9 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             conn,
             "SELECT count(*) AS n FROM pg_views WHERE schemaname = 't2s'",
         )
-        _ok(tables == 12, f"app 表数量应为 12，实际 {tables}")
+        _ok(tables == 13, f"app 表数量应为 13，实际 {tables}")
         _ok(views == 13, f"t2s 视图数量应为 13，实际 {views}")
-        return f"12 张表、13 个权限视图"
+        return f"13 张表、13 个权限视图"
     report.run("schema.tables", "Schema：12 张业务表与 13 个 t2s 视图", schema_tables)
 
     def schema_constraints():
@@ -142,6 +143,7 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             "sources_owner_platform_label_unique",
             "import_batches_preview_token_key",
             "review_items_status_check",
+            "review_logs_event_unique",
             "messages_sender_check",
         }
         missing = required - constraints
@@ -404,12 +406,35 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             (created["id"], alice["id"]),
         ).fetchone()
         _ok(review is not None, "复习项未写入")
-        first = review_service.review_once(conn, review["id"], alice["id"])
+        event_id = str(uuid4())
+        first = review_service.review_once(
+            conn, review["id"], alice["id"], event_id=event_id
+        )
         _ok(first["interval_days"] == 2, f"首次复习间隔应为 2 天，实际 {first['interval_days']}")
+        replay = review_service.review_once(
+            conn, review["id"], alice["id"], event_id=event_id
+        )
+        _ok(replay["duplicate"] is True, "离线事件重放未被识别为幂等")
+        _ok(replay["review_count"] == first["review_count"], "重放事件重复累加复习次数")
         second = review_service.review_once(conn, review["id"], alice["id"])
         _ok(second["interval_days"] == 4, f"第二次复习间隔应为 4 天，实际 {second['interval_days']}")
-        return "批注 → 复习项 → 间隔 2/4 天递增，全部成功"
+        log_count = _count(
+            conn,
+            "SELECT count(*) AS n FROM app.review_logs WHERE review_item_id = %s",
+            (review["id"],),
+        )
+        _ok(log_count == 2, f"复习事件应为 2 条（重放不落库），实际 {log_count}")
+        return "批注 → 复习项 → 间隔 2/4 天递增，事件幂等落库"
     report.run("annotation.lifecycle", "批注与复习：创建、入队、间隔翻倍", annotation_lifecycle)
+
+    def review_activity():
+        activity = review_service.activity(conn, alice["id"], days=35)
+        _ok(len(activity) == 35, f"热力图应补齐 35 天，实际 {len(activity)}")
+        total = sum(row["count"] for row in activity)
+        _ok(total > 0, "演示数据缺少复习事件")
+        _ok(all(0 <= row["level"] <= 4 for row in activity), "热力图等级越界")
+        return f"近 5 周 {total} 次复习事件，35 天连续补齐"
+    report.run("review.activity", "复习：事件流水与 5 周热力图", review_activity)
 
     def t2s_mock_run():
         result = asyncio.run(

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import uuid
 from datetime import date
 
-from ..errors import NotFoundError
+from ..errors import NotFoundError, ValidationError
 from .conversation_service import make_snippet
 
 
@@ -70,9 +71,70 @@ def _own(conn, review_id: int, user_id: int) -> dict:
     return row
 
 
-def review_once(conn, review_id: int, user_id: int) -> dict:
-    _own(conn, review_id, user_id)
+def _parse_event_id(value: str | None) -> str | None:
+    if not value:
+        return None
+    try:
+        return str(uuid.UUID(str(value)))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise ValidationError("复习事件标识无效") from exc
+
+
+def _existing_event(conn, user_id: int, event_id: str | None) -> dict | None:
+    if not event_id:
+        return None
+    return conn.execute(
+        "SELECT id FROM app.review_logs WHERE user_id = %s AND event_id = %s",
+        (user_id, event_id),
+    ).fetchone()
+
+
+def _log_event(
+    conn,
+    *,
+    user_id: int,
+    review_id: int,
+    action: str,
+    event_id: str | None,
+    interval_days: int,
+    due_date,
+    review_count: int,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO app.review_logs
+            (user_id, review_item_id, action, event_id,
+             interval_days, due_date, review_count)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (user_id, event_id) DO NOTHING
+        """,
+        (
+            user_id, review_id, action, event_id,
+            interval_days, due_date, review_count,
+        ),
+    )
+
+
+def review_once(
+    conn, review_id: int, user_id: int, event_id: str | None = None
+) -> dict:
+    """记录一次复习；同一 event_id 重放时返回当前状态且不重复累加。"""
+    event = _parse_event_id(event_id)
     with conn.transaction():
+        current = conn.execute(
+            """
+            SELECT id, status, interval_days, due_date, review_count
+              FROM app.review_items
+             WHERE id = %s AND user_id = %s
+             FOR UPDATE
+            """,
+            (review_id, user_id),
+        ).fetchone()
+        if current is None:
+            raise NotFoundError("复习项不存在")
+        if _existing_event(conn, user_id, event) is not None:
+            return {**current, "duplicate": True}
+
         row = conn.execute(
             """
             UPDATE app.review_items
@@ -86,31 +148,87 @@ def review_once(conn, review_id: int, user_id: int) -> dict:
             """,
             (review_id, user_id),
         ).fetchone()
-    return row
+        _log_event(
+            conn,
+            user_id=user_id,
+            review_id=review_id,
+            action="review",
+            event_id=event,
+            interval_days=row["interval_days"],
+            due_date=row["due_date"],
+            review_count=row["review_count"],
+        )
+    return {**row, "duplicate": False}
 
 
 def mark_mastered(conn, review_id: int, user_id: int) -> None:
     _own(conn, review_id, user_id)
     with conn.transaction():
-        conn.execute(
-            "UPDATE app.review_items SET status = 'mastered', last_reviewed_at = now() "
-            "WHERE id = %s AND user_id = %s",
+        row = conn.execute(
+            """
+            UPDATE app.review_items
+               SET status = 'mastered', last_reviewed_at = now()
+             WHERE id = %s AND user_id = %s
+             RETURNING interval_days, due_date, review_count
+            """,
             (review_id, user_id),
+        ).fetchone()
+        _log_event(
+            conn,
+            user_id=user_id,
+            review_id=review_id,
+            action="mastered",
+            event_id=None,
+            interval_days=row["interval_days"],
+            due_date=row["due_date"],
+            review_count=row["review_count"],
         )
 
 
 def reset_review(conn, review_id: int, user_id: int) -> None:
     _own(conn, review_id, user_id)
     with conn.transaction():
-        conn.execute(
+        row = conn.execute(
             """
             UPDATE app.review_items
                SET status = 'pending', interval_days = 1, review_count = 0,
                    due_date = current_date, last_reviewed_at = NULL
              WHERE id = %s AND user_id = %s
+             RETURNING interval_days, due_date, review_count
             """,
             (review_id, user_id),
+        ).fetchone()
+        _log_event(
+            conn,
+            user_id=user_id,
+            review_id=review_id,
+            action="reset",
+            event_id=None,
+            interval_days=row["interval_days"],
+            due_date=row["due_date"],
+            review_count=row["review_count"],
         )
+
+
+def activity(conn, user_id: int, days: int = 35) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT d::date AS day, count(l.id) AS count
+          FROM generate_series(
+                   current_date - (%(span)s::int - 1), current_date, interval '1 day'
+               ) AS d
+          LEFT JOIN app.review_logs l
+                 ON l.user_id = %(uid)s
+                AND l.action = 'review'
+                AND l.created_at::date = d::date
+         GROUP BY d
+         ORDER BY d
+        """,
+        {"uid": user_id, "span": max(1, days)},
+    ).fetchall()
+    for row in rows:
+        row["level"] = min(int(row["count"]), 4)
+    return rows
 
 
 def delete_review(conn, review_id: int, user_id: int) -> None:

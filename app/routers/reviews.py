@@ -32,12 +32,15 @@ def review_list(
     if scope not in SCOPES:
         scope = "active"
     rows = review_service.list_reviews(conn, user["id"], scope)
+    activity = review_service.activity(conn, user["id"])
     return render(
         request,
         "reviews/list.html",
         rows=rows,
         scope=scope,
         summary=review_service.summary(conn, user["id"]),
+        activity=activity,
+        activity_total=sum(row["count"] for row in activity),
     )
 
 
@@ -51,12 +54,17 @@ async def review_done(
     _require_student(user)
     form = await request.form()
     verify_csrf(request, form.get("csrf_token"))
-    row = review_service.review_once(conn, review_id, user["id"])
-    add_flash(
-        request,
-        f"本次复习已记录，下次到期 {row['due_date']}（间隔 {row['interval_days']} 天）",
-        "success",
+    row = review_service.review_once(
+        conn, review_id, user["id"], event_id=form.get("event_id")
     )
+    if row["duplicate"]:
+        add_flash(request, "这次复习已经记录过，没有重复累加", "info")
+    else:
+        add_flash(
+            request,
+            f"本次复习已记录，下次到期 {row['due_date']}（间隔 {row['interval_days']} 天）",
+            "success",
+        )
     return RedirectResponse(_back(form.get("scope") or ""), status_code=303)
 
 

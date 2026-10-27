@@ -194,6 +194,20 @@ def seed_annotations(conn, user_ids: dict[str, int]) -> tuple[int, int]:
             ),
         )
 
+    # 为已有复习次数补历史事件，让热力图在演示库里直接可见。
+    conn.execute(
+        """
+        INSERT INTO app.review_logs
+            (user_id, review_item_id, action, interval_days, due_date,
+             review_count, created_at)
+        SELECT ri.user_id, ri.id, 'review', 1, ri.due_date, gs,
+               now() - make_interval(days => (ri.review_count - gs) * 3 + (ri.id % 4))
+          FROM app.review_items ri
+          CROSS JOIN LATERAL generate_series(1, ri.review_count) AS gs
+         WHERE ri.review_count > 0
+        """
+    )
+
     return len(annotation_ids) + len(bob_ids), len(alice_review) + min(4, len(bob_ids))
 
 

@@ -31,6 +31,16 @@
   ],
   "shortcuts": [
     {
+      "name": "收件箱",
+      "short_name": "收件箱",
+      "url": "/inbox"
+    },
+    {
+      "name": "收一段问答",
+      "short_name": "收录",
+      "url": "/share"
+    },
+    {
       "name": "导入聊天记录",
       "short_name": "导入",
       "url": "/imports"
@@ -39,11 +49,16 @@
       "name": "复习队列",
       "short_name": "复习",
       "url": "/reviews"
-    },
-    {
-      "name": "搜索会话",
-      "short_name": "搜索",
-      "url": "/conversations"
     }
-  ]
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
 }

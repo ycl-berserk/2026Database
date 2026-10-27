@@ -10,7 +10,9 @@
 
 | 模块 | 能力 |
 | --- | --- |
-| 记录导入 | JSON / Markdown 上传、解析校验、持久化预览、查重、勾选会话、课程映射、单事务入库、失败回滚 |
+| 记录导入 | JSON / Markdown 上传、裸文本粘贴、三步导入向导（上传/粘贴 → 预览勾选 → 结果摘要）、解析校验、持久化预览、查重、课程映射、单事务入库、失败回滚 |
+| 快速采集 | PWA Share Target：手机从任意 App 分享文本/链接进来；粘贴后直接保存到未归类收件箱或指定课程 |
+| 收件箱 | 未归类会话队列、批量归类到课程、分享落地页与高亮定位 |
 | 课程与标签 | 课程 CRUD、成员共享（owner / editor / viewer）、标签 CRUD、会话归类与打标签 |
 | 检索阅读 | 课程 / 标签 / 日期 / 关键词筛选、分页、消息上下文、关键词高亮、命中片段 |
 | 批注与复习 | 笔记 / 疑问 / 纠错 / 总结四类批注、解决状态、加入复习队列、间隔 1→2→4→8… 天、逾期提示、掌握/重置 |
@@ -18,7 +20,7 @@
 | 用户与权限 | Session 登录、PBKDF2 密码哈希、CSRF、系统角色 + 课程角色、应用层与数据库层双重防护 |
 | Text2SQL | 自然语言→SQL→校验→只读执行→表格展示、解释、审计历史；无 API Key 时使用本地规则 mock |
 | 管理 | 用户启停、系统聚合统计（不读正文） |
-| 移动端与安装 | 390px 优先的底部标签栏 / 抽屉导航、列表卡片化、专注阅读模式；PWA manifest + Service Worker 应用壳缓存、离线页、桌面安装 |
+| 移动端与安装 | 390px 优先的底部标签栏 / 抽屉导航、列表卡片化、专注阅读模式；PWA manifest + Service Worker 应用壳缓存、离线页、桌面安装、分享快捷方式 |
 
 > PWA 安装与 Service Worker 只在 `localhost` 或 HTTPS 下启用；通过局域网 HTTP 访问手机时仍可使用完整响应式界面，但不会缓存静态资源。
 
@@ -71,10 +73,10 @@ py -3.13 -m venv .venv
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（64 单元 + 63 集成）；集成测试需先初始化测试库
+# 全量测试（69 单元 + 68 集成，共 137 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest -q
 
-# 端到端验收：26 项 PASS/FAIL，写入 data/verification/report.json
+# 端到端验收：29 项 PASS/FAIL，写入 data/verification/report.json
 .venv/Scripts/python.exe scripts/verify.py --json data/verification/report.json
 
 # 重新生成导入样例（正常 / 重复 / 损坏）
@@ -102,7 +104,7 @@ learning-space/
 │   ├── permissions.py       # 课程角色 / 会话可见性判定
 │   ├── routers/             # 页面与 JSON API
 │   ├── services/            # 业务 SQL、事务与导出
-│   ├── importers/           # JSON / Markdown 解析与校验
+│   ├── importers/           # JSON / Markdown / 裸文本解析与校验
 │   ├── templates/           # Jinja2 页面
 │   └── static/              # CSS / JS / PWA manifest、Service Worker、离线页与图标
 ├── sql/
@@ -120,7 +122,8 @@ learning-space/
 ## 数据与安全说明
 
 - **模拟数据**：`data/samples/*.json|md` 与 `scripts/seed_demo.py` 生成的内容均为模拟问答，不含真实个人信息。每个导出的 Markdown 和页面页脚都带有“演示数据不含真实个人信息”声明。
-- **导入格式**：JSON 为主（`platform`、`account_label`、`conversations[]`），Markdown 为辅（`# 会话标题` + `- 课程:` / `- 标签:` + `## 用户/助手 [时间]`）。详见导入页的“导入格式说明”。
+- **导入格式**：JSON 为主（`platform`、`account_label`、`conversations[]`），Markdown 与裸文本为辅（`# 会话标题` + `- 课程:` / `- 标签:` + `## 用户/助手 [时间]`，或直接粘贴 `我：… / 助手：…` 对话）。详见导入页的“导入格式说明”。
+- **分享采集**：`POST /share` 复用 `import_batches` 暂存解析结果（30 分钟有效），不把长文本写入 Cookie；最终保存仍需登录会话与 CSRF Token，并校验批次所有权。
 - **权限三层**：页面/服务层角色检查 → SQL 作用域过滤 → 数据库约束与触发器；Text2SQL 额外使用只读角色与 `security_barrier` 视图。
 - **数据库角色**：`ls_app` 只有 `app` schema 的 DML 权限，无 DDL；`t2s_reader` 只能 `SELECT` `t2s` 视图，默认只读事务、3 秒语句超时。
 - **管理边界**：管理员看不到课程 / 会话页面，也不能读取他人消息正文、批注或复习内容。

@@ -9,6 +9,12 @@
 {% endblock %}
 
 {% block content %}
+<ol class="wizard-steps" aria-label="导入步骤">
+  <li class="done"><span>1</span><div><strong>选择内容</strong><small>已解析 {{ rows | length }} 个会话</small></div></li>
+  <li class="active"><span>2</span><div><strong>预览确认</strong><small>勾选并归类</small></div></li>
+  <li><span>3</span><div><strong>完成</strong><small>查看导入结果</small></div></li>
+</ol>
+
 <section class="panel">
   <div class="preview-summary">
     <div class="mini-stats">

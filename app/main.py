@@ -114,6 +114,7 @@ from .routers import (  # noqa: E402
     admin,
     annotations,
     auth,
+    capture,
     conversations,
     courses,
     dashboard,
@@ -126,6 +127,7 @@ from .routers import (  # noqa: E402
 
 app.include_router(auth.router)
 app.include_router(dashboard.router)
+app.include_router(capture.router)
 app.include_router(courses.router)
 app.include_router(conversations.router)
 app.include_router(tags.router)

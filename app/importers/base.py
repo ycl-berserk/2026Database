@@ -9,8 +9,11 @@ from typing import Any
 CST = timezone(timedelta(hours=8))
 PLATFORMS = ("qoder", "chatgpt", "deepseek", "claude", "other")
 SENDERS = {"user": "user", "human": "user", "me": "user", "我": "user", "用户": "user",
+           "提问": "user",
            "assistant": "assistant", "ai": "assistant", "bot": "assistant",
-           "model": "assistant", "助手": "assistant",
+           "model": "assistant", "助手": "assistant", "机器人": "assistant",
+           "chatgpt": "assistant", "qoder": "assistant", "deepseek": "assistant",
+           "claude": "assistant",
            "system": "system", "系统": "system"}
 
 COURSE_CODE_RE = re.compile(r"^[A-Za-z0-9-]{2,20}$")

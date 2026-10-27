@@ -36,6 +36,11 @@ def test_manifest_is_valid_and_installable():
     assert any(icon.get("purpose") == "maskable" for icon in manifest["icons"])
     for icon in manifest["icons"]:
         assert (settings.static_dir / icon["src"].removeprefix("/static/")).is_file()
+    target = manifest["share_target"]
+    assert target["action"] == "/share"
+    assert target["method"] == "POST"
+    assert target["enctype"] == "multipart/form-data"
+    assert target["params"] == {"title": "title", "text": "text", "url": "url"}
 
 
 def test_service_worker_served_from_root_with_scope_header():

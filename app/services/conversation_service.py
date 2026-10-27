@@ -290,6 +290,29 @@ def organize_conversation(
             )
 
 
+def bulk_organize_inbox(
+    conn, conversation_ids: list[int], user: dict, *, course_id: int
+) -> int:
+    allowed = {row["id"] for row in editable_courses(conn, user["id"])}
+    if course_id not in allowed:
+        raise PermissionDenied("只能归类到自己可编辑的课程")
+    if not conversation_ids:
+        return 0
+    row = conn.execute(
+        """
+        UPDATE app.conversations v
+           SET course_id = %s
+          FROM app.sources s
+         WHERE s.id = v.source_id
+           AND v.id = ANY(%s)
+           AND s.owner_id = %s
+           AND v.course_id IS NULL
+        """,
+        (course_id, sorted(set(conversation_ids)), user["id"]),
+    )
+    return row.rowcount
+
+
 def conversation_detail(
     conn,
     conversation_id: int,

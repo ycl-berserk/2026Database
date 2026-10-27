@@ -8,8 +8,8 @@ from psycopg.types.json import Jsonb
 
 from ..config import settings
 from ..errors import ConflictError, NotFoundError, ValidationError
-from ..importers import json_importer, markdown_importer
-from ..importers.base import ImportResult
+from ..importers import json_importer, markdown_importer, plain_text_importer
+from ..importers.base import PLATFORMS, ImportResult
 
 TAG_COLORS = ["#2f5d4e", "#a8432c", "#a6771f", "#4a6fa5", "#7a5b8f", "#5b7d3a", "#3d7a7a"]
 
@@ -37,6 +37,55 @@ def parse_upload(
         platform, account or "default", None,
         errors=["仅支持 .json、.md 或 .txt 文件"],
     )
+
+
+def parse_paste(
+    text: str,
+    *,
+    title: str | None = None,
+    platform: str | None = None,
+    account_label: str | None = None,
+) -> ImportResult:
+    normalized = (platform or "").strip().lower()
+    if normalized in ("", "auto"):
+        normalized = None
+    return plain_text_importer.parse(
+        text.encode("utf-8"),
+        title_override=(title or "").strip() or None,
+        platform_override=normalized,
+        account_override=(account_label or "").strip() or "paste",
+        max_messages=settings.import_max_messages,
+    )
+
+
+def stage_paste(
+    conn,
+    *,
+    user_id: int,
+    text: str,
+    title: str | None = None,
+    platform: str | None = None,
+    account_label: str | None = None,
+    file_name: str = "粘贴内容",
+) -> tuple[ImportResult, dict | None]:
+    result = parse_paste(
+        text, title=title, platform=platform, account_label=account_label
+    )
+    if not result.ok or result.platform not in PLATFORMS:
+        return result, None
+    with conn.transaction():
+        source_id = get_or_create_source(
+            conn, user_id, result.platform, result.account_label
+        )
+        batch = save_preview(
+            conn,
+            user_id=user_id,
+            source_id=source_id,
+            file_name=file_name,
+            raw=text.encode("utf-8"),
+            result=result,
+        )
+    return result, batch
 
 
 def get_or_create_source(conn, user_id: int, platform: str, account_label: str) -> int:
@@ -125,6 +174,21 @@ def load_batch(conn, token: str, user_id: int) -> dict:
     ).fetchone()
     if row is None:
         raise NotFoundError("预览不存在或已失效")
+    return row
+
+
+def get_batch(conn, batch_id: int, user_id: int) -> dict:
+    row = conn.execute(
+        """
+        SELECT b.*, s.platform, s.account_label
+          FROM app.import_batches b
+          JOIN app.sources s ON s.id = b.source_id
+         WHERE b.id = %s AND b.user_id = %s
+        """,
+        (batch_id, user_id),
+    ).fetchone()
+    if row is None:
+        raise NotFoundError("导入记录不存在")
     return row
 
 
@@ -246,6 +310,63 @@ def _get_or_create_tag(conn, user_id: int, name: str) -> tuple[int, bool]:
         (user_id, name[:40], color),
     ).fetchone()
     return row["id"], bool(row["is_new"])
+
+
+def ingest_plain_text(
+    conn,
+    *,
+    user: dict,
+    text: str,
+    title: str | None = None,
+    platform: str | None = None,
+    account_label: str = "share",
+    course_id: int | None = None,
+    file_name: str = "分享内容",
+) -> dict:
+    result = parse_paste(
+        text, title=title, platform=platform, account_label=account_label
+    )
+    if not result.ok:
+        raise ValidationError("；".join(result.errors[:3]) or "没有可保存的内容")
+    if result.platform not in PLATFORMS:
+        raise ValidationError("无法确定来源平台")
+
+    target_course = None
+    if course_id is not None:
+        allowed = {row["id"] for row in editable_courses(conn, user["id"])}
+        if course_id not in allowed:
+            raise ValidationError("只能把内容归类到自己可编辑的课程")
+        target_course = course_id
+
+    with conn.transaction():
+        source_id = get_or_create_source(
+            conn, user["id"], result.platform, result.account_label
+        )
+        batch = save_preview(
+            conn,
+            user_id=user["id"],
+            source_id=source_id,
+            file_name=file_name,
+            raw=text.encode("utf-8"),
+            result=result,
+        )
+        counts = confirm_import(
+            conn,
+            token=str(batch["preview_token"]),
+            user=user,
+            selected={0},
+            course_map={0: target_course},
+        )
+
+    conversation = conn.execute(
+        "SELECT id FROM app.conversations WHERE source_id = %s AND external_id = %s",
+        (source_id, result.conversations[0]["external_id"]),
+    ).fetchone()
+    return {
+        **counts,
+        "conversation_id": conversation["id"],
+        "warnings": result.warnings,
+    }
 
 
 def confirm_import(

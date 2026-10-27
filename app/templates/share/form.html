@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}收一段问答{% endblock %}
+{% block page_title %}收一段问答{% endblock %}
+{% block page_subtitle %}把手机里看到的解释、链接或对话，先放进学习空间{% endblock %}
+
+{% block topbar_actions %}
+  <a class="btn btn-ghost" href="/inbox">去收件箱</a>
+{% endblock %}
+
+{% block content %}
+{% if error %}
+  <div class="notice notice-error">
+    <strong>没有收下这段内容</strong>
+    <p>{{ error }}</p>
+  </div>
+{% endif %}
+
+{% if token and row %}
+  {% if expired %}
+    <section class="panel">
+      <div class="notice notice-error">
+        <strong>这次分享已过期</strong>
+        <p>预览有效期 30 分钟。请重新粘贴内容，不会丢失学习空间里已有的数据。</p>
+      </div>
+      <div class="form-actions"><a class="btn btn-primary" href="/share">重新收一段</a></div>
+    </section>
+  {% else %}
+    <section class="panel share-preview">
+      <div class="share-preview-head">
+        <div>
+          <span class="eyebrow">已识别</span>
+          <h2>{{ row.title }}</h2>
+          <p class="muted">
+            {{ row.messages | length }} 条消息 · {{ platform_label(batch.platform) }}
+            {% if row.started_at %} · {{ row.started_at | dt }}{% endif %}
+          </p>
+        </div>
+        <span class="badge badge-ok">待保存</span>
+      </div>
+
+      {% if warnings %}
+        <div class="notice notice-warning">
+          <ul>{% for warning in warnings %}<li>{{ warning }}</li>{% endfor %}</ul>
+        </div>
+      {% endif %}
+
+      <div class="share-messages">
+        {% for message in row.messages[:4] %}
+          <div class="share-msg share-msg-{{ message.sender }}">
+            <span class="share-msg-role">{{ sender_label(message.sender) }}</span>
+            <p>{{ message.content | truncate(260, true, '…') }}</p>
+          </div>
+        {% endfor %}
+        {% if row.messages | length > 4 %}
+          <p class="muted">还有 {{ row.messages | length - 4 }} 条消息，完整预览里可以查看。</p>
+        {% endif %}
+      </div>
+
+      <form method="post" action="/share/import" class="share-save">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="token" value="{{ token }}">
+        <label class="field">
+          <span>归入课程（可选）</span>
+          <select name="course_id">
+            <option value="none">先放收件箱，稍后整理</option>
+            {% for course in courses %}
+              <option value="{{ course.id }}" {% if row.suggested_course_id == course.id %}selected{% endif %}>
+                {{ course.code }} · {{ course.name }}
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">保存并打开</button>
+          <a class="btn btn-ghost" href="/imports/preview/{{ token }}">完整预览</a>
+          <a class="btn btn-ghost" href="/share">放弃</a>
+        </div>
+      </form>
+    </section>
+  {% endif %}
+{% else %}
+  <div class="capture-grid">
+    <section class="panel">
+      <div class="panel-head">
+        <h2>粘贴一段对话</h2>
+        <span class="muted">不会自动归类，保存后可去收件箱整理</span>
+      </div>
+      <form method="post" action="/share" class="share-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="field">
+          <span>内容 *</span>
+          <textarea name="text" rows="12" required maxlength="200000"
+                    placeholder="我：为什么索引能加速查询？&#10;助手：因为 B+ 树把随机 I/O 变成……">{{ draft | default('') }}</textarea>
+        </label>
+        <div class="form-grid">
+          <label class="field">
+            <span>标题</span>
+            <input name="title" maxlength="255" placeholder="留空则自动提取" value="{{ title | default('') }}">
+          </label>
+          <label class="field">
+            <span>来源平台</span>
+            <select name="platform">
+              <option value="auto" {% if platform == 'auto' %}selected{% endif %}>自动识别</option>
+              {% for value in ['qoder', 'chatgpt', 'deepseek', 'claude', 'other'] %}
+                <option value="{{ value }}" {% if platform == value %}selected{% endif %}>{{ platform_label(value) }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">识别内容</button>
+          <span class="muted">支持「我 / 助手」等角色前缀，也支持纯文本。</span>
+        </div>
+      </form>
+    </section>
+
+    <aside class="panel capture-tip">
+      <span class="eyebrow">手机上更快</span>
+      <h2>从任意 App 分享进来</h2>
+      <p class="muted">把学习空间安装到主屏幕后，在浏览器或聊天 App 中选中文字，选择「分享 → 学习空间」，内容会自动进入待保存预览。</p>
+      <div class="capture-flow">
+        <div><span>1</span><p>选中一段解释或对话</p></div>
+        <div><span>2</span><p>系统分享给「学习空间」</p></div>
+        <div><span>3</span><p>选课程或先放收件箱</p></div>
+      </div>
+      <a class="btn" href="/imports">也可以上传完整导出文件</a>
+    </aside>
+  </div>
+{% endif %}
+{% endblock %}

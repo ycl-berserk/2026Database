@@ -26,7 +26,14 @@ def _require_student(user: dict) -> None:
 def import_list(request: Request, user=Depends(require_user), conn=Depends(get_conn)):
     _require_student(user)
     batches = import_service.list_batches(conn, user["id"])
-    return render(request, "imports/list.html", batches=batches, platforms=PLATFORMS)
+    mode = "paste" if request.query_params.get("mode") == "paste" else "upload"
+    return render(
+        request,
+        "imports/list.html",
+        batches=batches,
+        platforms=PLATFORMS,
+        mode=mode,
+    )
 
 
 @router.post("/preview")
@@ -48,6 +55,7 @@ async def import_preview(
             status_code=status_code,
             batches=batches,
             platforms=PLATFORMS,
+            mode="upload",
             errors=[message],
             form={"platform": platform, "account_label": account_label,
                   "file_name": getattr(upload, "filename", "") or ""},
@@ -79,6 +87,7 @@ async def import_preview(
             status_code=400,
             batches=batches,
             platforms=PLATFORMS,
+            mode="upload",
             errors=result.errors or ["文件中没有可导入的会话"],
             warnings=result.warnings,
             form={"platform": platform, "account_label": account_label,
@@ -111,6 +120,84 @@ def import_preview_page(
     batch = import_service.load_batch(conn, token, user["id"])
     context = import_service.preview_context(conn, batch, user["id"])
     return render(request, "imports/preview.html", **context, token=token)
+
+
+@router.post("/paste")
+async def import_paste(
+    request: Request, user=Depends(require_user), conn=Depends(get_conn)
+):
+    _require_student(user)
+    form = await request.form()
+    verify_csrf(request, form.get("csrf_token"))
+    text = (form.get("text") or "").strip()
+    title = (form.get("title") or "").strip()[:255] or None
+    platform = (form.get("platform") or "auto").strip().lower()
+    account_label = (form.get("account_label") or "").strip() or "paste"
+
+    def fail(message: str):
+        batches = import_service.list_batches(conn, user["id"])
+        return render(
+            request,
+            "imports/list.html",
+            status_code=400,
+            batches=batches,
+            platforms=PLATFORMS,
+            mode="paste",
+            errors=[message],
+            paste_text=text,
+            form={"platform": platform, "account_label": account_label,
+                  "title": title or ""},
+        )
+
+    if not text:
+        return fail("请先粘贴聊天内容")
+    if platform != "auto" and platform not in PLATFORMS:
+        return fail("来源平台无效")
+
+    result, batch = import_service.stage_paste(
+        conn,
+        user_id=user["id"],
+        text=text,
+        title=title,
+        platform=None if platform == "auto" else platform,
+        account_label=account_label,
+        file_name="粘贴内容",
+    )
+    if batch is None:
+        batches = import_service.list_batches(conn, user["id"])
+        return render(
+            request,
+            "imports/list.html",
+            status_code=400,
+            batches=batches,
+            platforms=PLATFORMS,
+            mode="paste",
+            errors=result.errors or ["没有解析出可导入的消息"],
+            warnings=result.warnings,
+            paste_text=text,
+            form={"platform": platform, "account_label": account_label,
+                  "title": title or ""},
+        )
+    add_flash(request, "已识别聊天内容，请检查后确认导入", "info")
+    return RedirectResponse(f"/imports/preview/{batch['preview_token']}", status_code=303)
+
+
+@router.get("/result/{batch_id}")
+def import_result(
+    batch_id: int,
+    request: Request,
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    _require_student(user)
+    batch = import_service.get_batch(conn, batch_id, user["id"])
+    summary = batch["summary"] or {}
+    return render(
+        request,
+        "imports/result.html",
+        batch=batch,
+        summary=summary,
+    )
 
 
 @router.post("/confirm")
@@ -149,4 +236,6 @@ async def import_confirm(
         f"跳过重复 {result['messages_skipped']} 条，内容冲突 {result['conflicts']} 条。"
     )
     add_flash(request, message, "success")
-    return RedirectResponse("/imports", status_code=303)
+    return RedirectResponse(
+        f"/imports/result/{result['batch_id']}", status_code=303
+    )

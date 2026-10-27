@@ -205,6 +205,18 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
         return "5 个批次均已导入，payload 已清理"
     report.run("data.import_batches", "导入批次：状态与 payload 清理", import_batches)
 
+    def inbox_seed():
+        unclassified = conversation_service.list_conversations(
+            conn, alice["id"], course_id="none"
+        )
+        _ok(unclassified["total"] == 3, f"收件箱应有 3 个未归类会话，实际 {unclassified['total']}")
+        _ok(
+            all(row["course_code"] is None for row in unclassified["rows"]),
+            "收件箱列表不应出现已归类会话",
+        )
+        return "收件箱保留 3 个未归类会话，供批量整理演示"
+    report.run("data.inbox", "演示数据：收件箱未归类会话", inbox_seed)
+
     def auth_passwords():
         for account in (ALICE, BOB, ADMIN):
             row = _user(conn, account["username"])
@@ -483,6 +495,51 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
         _ok(writable, "t2s_reader 不应能执行 DDL")
         return "t2s_reader 无法访问 app schema，也无法写入"
     report.run("t2s.role", "Text2SQL：数据库只读角色兜底", t2s_reader_blocked)
+
+    def capture_paste():
+        text = "我：验收用的临时问题\n助手：验收用的临时回答，导入后整体回滚。"
+        result = import_service.parse_paste(text, title="验收速记", account_label="verify-share")
+        _ok(result.ok, f"粘贴解析失败：{result.errors[:2]}")
+        _ok([m["sender"] for m in result.conversations[0]["messages"]] == ["user", "assistant"],
+            "粘贴解析未识别出用户/助手角色")
+        outcome = import_service.ingest_plain_text(
+            conn,
+            user=alice_ctx,
+            text=text,
+            title="验收速记",
+            account_label="verify-share",
+        )
+        _ok(outcome["conversations_new"] == 1, "粘贴收录应新增 1 个会话")
+        _ok(outcome["messages_new"] == 2, "粘贴收录应新增 2 条消息")
+        state["captured_id"] = outcome["conversation_id"]
+        again = import_service.ingest_plain_text(
+            conn,
+            user=alice_ctx,
+            text=text,
+            title="验收速记",
+            account_label="verify-share",
+        )
+        _ok(again["conversation_id"] == outcome["conversation_id"], "重复收录应复用同一会话")
+        _ok(again["messages_new"] == 0 and again["messages_skipped"] == 2,
+            "重复收录应跳过 2 条相同消息")
+        return "粘贴识别 2 条角色消息，重复收录幂等"
+    report.run("capture.paste", "采集：粘贴解析、收录与幂等", capture_paste)
+
+    def inbox_bulk():
+        conversation_id = state.get("captured_id")
+        _ok(conversation_id is not None, "缺少粘贴收录的会话")
+        db_course = conn.execute("SELECT id FROM app.courses WHERE code = 'DB'").fetchone()["id"]
+        moved = conversation_service.bulk_organize_inbox(
+            conn, [conversation_id], alice_ctx, course_id=db_course
+        )
+        _ok(moved == 1, f"收件箱批量归类应移动 1 个会话，实际 {moved}")
+        row = conn.execute(
+            "SELECT course_id FROM app.conversations WHERE id = %s",
+            (conversation_id,),
+        ).fetchone()
+        _ok(row["course_id"] == db_course, "批量归类后课程未更新")
+        return "未归类会话批量归入 DB 课程"
+    report.run("inbox.organize", "收件箱：批量归入课程", inbox_bulk)
 
     def rollback_savepoint():
         before = _count(conn, "SELECT count(*) AS n FROM app.tags")

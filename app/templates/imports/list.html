@@ -97,27 +97,27 @@
   </div>
   {% if batches %}
     <div class="table-wrap">
-      <table class="table">
+      <table class="table table-stack">
         <thead>
           <tr><th>文件</th><th>来源</th><th>状态</th><th>结果</th><th>时间</th><th></th></tr>
         </thead>
         <tbody>
           {% for batch in batches %}
             <tr>
-              <td>
+              <td data-label="文件">
                 <div class="record-title">{{ batch.file_name }}</div>
                 <small class="muted">{{ batch.file_size | num }} 字节</small>
               </td>
-              <td>
+              <td data-label="来源">
                 <span class="chip">{{ platform_label(batch.platform) }}</span>
                 <small class="muted mono">{{ batch.account_label }}</small>
               </td>
-              <td>
+              <td data-label="状态">
                 <span class="badge {% if batch.status == 'imported' %}badge-ok{% elif batch.status == 'preview' %}badge-warn{% elif batch.status in ('failed', 'expired') %}badge-bad{% endif %}">
                   {{ status_label(batch.status) }}
                 </span>
               </td>
-              <td>
+              <td data-label="结果">
                 <small class="muted">
                   {% if batch.summary and 'conversations_new' in batch.summary %}
                     新增 {{ batch.summary.conversations_new }} 会话 /
@@ -128,8 +128,8 @@
                   {% else %}—{% endif %}
                 </small>
               </td>
-              <td class="muted">{{ batch.created_at | dt }}</td>
-              <td>
+              <td data-label="时间" class="muted">{{ batch.created_at | dt }}</td>
+              <td data-label="操作">
                 {% if batch.status == 'preview' %}
                   <a class="btn btn-sm" href="/imports/preview/{{ batch.preview_token }}">继续预览</a>
                 {% endif %}

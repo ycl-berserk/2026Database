@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from urllib.parse import quote
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -80,6 +80,34 @@ def healthz():
 @app.get("/")
 def index():
     return RedirectResponse("/dashboard", status_code=303)
+
+
+@app.get("/manifest.webmanifest", include_in_schema=False)
+def manifest():
+    return FileResponse(
+        settings.static_dir / "manifest.webmanifest",
+        media_type="application/manifest+json",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@app.get("/sw.js", include_in_schema=False)
+def service_worker():
+    # 必须从根路径提供，Service-Worker-Allowed 才能覆盖整个站点。
+    return FileResponse(
+        settings.static_dir / "sw.js",
+        media_type="application/javascript",
+        headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"},
+    )
+
+
+@app.get("/offline", include_in_schema=False)
+def offline_page():
+    return FileResponse(
+        settings.static_dir / "offline.html",
+        media_type="text/html",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 from .routers import (  # noqa: E402

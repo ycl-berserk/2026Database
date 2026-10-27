@@ -44,24 +44,24 @@
       <a class="link" href="/admin">进入管理 →</a>
     </div>
     <div class="table-wrap">
-      <table class="table">
+      <table class="table table-stack">
         <thead>
           <tr><th>用户名</th><th>显示名</th><th>系统角色</th><th>状态</th><th>注册时间</th></tr>
         </thead>
         <tbody>
           {% for user in users %}
             <tr>
-              <td class="mono">{{ user.username }}</td>
-              <td>{{ user.display_name }}</td>
-              <td><span class="chip">{{ role_label(user.system_role) }}</span></td>
-              <td>
+              <td data-label="用户名" class="mono">{{ user.username }}</td>
+              <td data-label="显示名">{{ user.display_name }}</td>
+              <td data-label="系统角色"><span class="chip">{{ role_label(user.system_role) }}</span></td>
+              <td data-label="状态">
                 {% if user.is_active %}
                   <span class="badge badge-ok">启用</span>
                 {% else %}
                   <span class="badge">已停用</span>
                 {% endif %}
               </td>
-              <td class="muted">{{ user.created_at | dt }}</td>
+              <td data-label="注册时间" class="muted">{{ user.created_at | dt }}</td>
             </tr>
           {% else %}
             <tr><td colspan="5" class="empty">暂无用户</td></tr>

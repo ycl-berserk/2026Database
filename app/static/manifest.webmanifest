@@ -1,0 +1,49 @@
+{
+  "name": "学习空间",
+  "short_name": "学习空间",
+  "description": "把与大模型的问答记录整理成可检索、可批注、可复习的课程资料。",
+  "lang": "zh-CN",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f6f2e9",
+  "theme_color": "#232b25",
+  "icons": [
+    {
+      "src": "/static/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "导入聊天记录",
+      "short_name": "导入",
+      "url": "/imports"
+    },
+    {
+      "name": "复习队列",
+      "short_name": "复习",
+      "url": "/reviews"
+    },
+    {
+      "name": "搜索会话",
+      "short_name": "搜索",
+      "url": "/conversations"
+    }
+  ]
+}

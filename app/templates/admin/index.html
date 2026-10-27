@@ -38,7 +38,7 @@
     </form>
   </div>
   <div class="table-wrap">
-    <table class="table">
+    <table class="table table-stack">
       <thead>
         <tr>
           <th>用户</th><th>系统角色</th><th>状态</th><th>课程</th><th>来源</th>
@@ -48,22 +48,22 @@
       <tbody>
         {% for row in users %}
           <tr>
-            <td>
+            <td data-label="用户">
               <strong>{{ row.display_name }}</strong>
               <div class="mono muted">@{{ row.username }}</div>
             </td>
-            <td><span class="chip">{{ role_label(row.system_role) }}</span></td>
-            <td>
+            <td data-label="系统角色"><span class="chip">{{ role_label(row.system_role) }}</span></td>
+            <td data-label="状态">
               <span class="badge {% if row.is_active %}badge-ok{% endif %}">
                 {{ '启用' if row.is_active else '已停用' }}
               </span>
             </td>
-            <td>{{ row.course_count }}</td>
-            <td>{{ row.source_count }}</td>
-            <td>{{ row.conversation_count }}</td>
-            <td>{{ row.annotation_count }}</td>
-            <td class="muted">{{ row.created_at | dt }}</td>
-            <td class="col-actions">
+            <td data-label="课程">{{ row.course_count }}</td>
+            <td data-label="来源">{{ row.source_count }}</td>
+            <td data-label="会话">{{ row.conversation_count }}</td>
+            <td data-label="批注">{{ row.annotation_count }}</td>
+            <td data-label="注册时间" class="muted">{{ row.created_at | dt }}</td>
+            <td class="col-actions" data-label="操作">
               {% if row.id == current_user.id %}
                 <span class="muted">当前账号</span>
               {% else %}
@@ -94,17 +94,17 @@
   </div>
   {% if imports %}
     <div class="table-wrap">
-      <table class="table">
+      <table class="table table-stack">
         <thead><tr><th>时间</th><th>用户</th><th>文件</th><th>平台</th><th>状态</th><th>摘要</th></tr></thead>
         <tbody>
           {% for row in imports %}
             <tr>
-              <td class="muted">{{ row.created_at | dt }}</td>
-              <td>{{ row.display_name }}</td>
-              <td class="mono">{{ row.file_name }}</td>
-              <td><span class="chip">{{ platform_label(row.platform) }}</span></td>
-              <td><span class="badge {% if row.status == 'imported' %}badge-ok{% elif row.status == 'failed' %}badge-bad{% endif %}">{{ status_label(row.status) }}</span></td>
-              <td class="muted">
+              <td data-label="时间" class="muted">{{ row.created_at | dt }}</td>
+              <td data-label="用户">{{ row.display_name }}</td>
+              <td data-label="文件" class="mono">{{ row.file_name }}</td>
+              <td data-label="平台"><span class="chip">{{ platform_label(row.platform) }}</span></td>
+              <td data-label="状态"><span class="badge {% if row.status == 'imported' %}badge-ok{% elif row.status == 'failed' %}badge-bad{% endif %}">{{ status_label(row.status) }}</span></td>
+              <td data-label="摘要" class="muted">
                 {% if row.summary %}
                   {{ row.summary.get('messages_new', 0) }} 条新消息 ·
                   {{ row.summary.get('conversations_new', 0) }} 个新会话

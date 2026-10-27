@@ -39,23 +39,23 @@
   </div>
   {% if tags %}
     <div class="table-wrap">
-      <table class="table">
+      <table class="table table-stack">
         <thead>
           <tr><th>标签</th><th>类型</th><th>使用会话</th><th>创建时间</th><th class="col-actions">操作</th></tr>
         </thead>
         <tbody>
           {% for tag in tags %}
             <tr>
-              <td>
+              <td data-label="标签">
                 <span class="tag-pill">
                   <span class="tag-dot" style="background: {{ tag.color or '#2f5d4e' }}"></span>
                   {{ tag.name }}
                 </span>
               </td>
-              <td><span class="chip">{{ kind_label(tag.kind) }}</span></td>
-              <td>{{ tag.usage_count }}</td>
-              <td class="muted">{{ tag.created_at | dt }}</td>
-              <td class="col-actions">
+              <td data-label="类型"><span class="chip">{{ kind_label(tag.kind) }}</span></td>
+              <td data-label="使用会话">{{ tag.usage_count }}</td>
+              <td data-label="创建时间" class="muted">{{ tag.created_at | dt }}</td>
+              <td class="col-actions" data-label="操作">
                 <details class="inline-edit">
                   <summary>编辑</summary>
                   <form method="post" action="/tags/{{ tag.id }}/edit" class="inline-edit-form">

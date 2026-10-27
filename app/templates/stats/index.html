@@ -39,23 +39,23 @@
       <span class="muted">按消息数排名</span>
     </div>
     <div class="table-wrap">
-      <table class="table">
+      <table class="table table-stack">
         <thead>
           <tr><th>排名</th><th>课程</th><th>范围</th><th>会话</th><th>消息</th><th>提问 / 回答</th><th>批注</th><th>复习</th></tr>
         </thead>
         <tbody>
           {% for course in courses %}
             <tr>
-              <td class="mono">{{ course.msg_rank }}</td>
-              <td>
+              <td data-label="排名" class="mono">{{ course.msg_rank }}</td>
+              <td data-label="课程">
                 <a href="/courses/{{ course.id }}">{{ course.code }} · {{ course.name }}</a>
               </td>
-              <td><span class="chip">{{ role_label(course.role) }}</span></td>
-              <td>{{ course.conversation_count }}</td>
-              <td>{{ course.message_count }}</td>
-              <td>{{ course.user_messages }} / {{ course.assistant_messages }}</td>
-              <td>{{ course.annotation_count }}</td>
-              <td>{{ course.review_count }}</td>
+              <td data-label="范围"><span class="chip">{{ role_label(course.role) }}</span></td>
+              <td data-label="会话">{{ course.conversation_count }}</td>
+              <td data-label="消息">{{ course.message_count }}</td>
+              <td data-label="提问 / 回答">{{ course.user_messages }} / {{ course.assistant_messages }}</td>
+              <td data-label="批注">{{ course.annotation_count }}</td>
+              <td data-label="复习">{{ course.review_count }}</td>
             </tr>
           {% else %}
             <tr><td colspan="8" class="empty">还没有课程数据</td></tr>
@@ -115,15 +115,15 @@
     </div>
     {% if annotation_kinds %}
       <div class="table-wrap">
-        <table class="table">
+        <table class="table table-stack">
           <thead><tr><th>批注类型</th><th>总数</th><th>已解决</th><th>解决率</th></tr></thead>
           <tbody>
             {% for kind in annotation_kinds %}
               <tr>
-                <td><span class="chip">{{ kind_label(kind.kind) }}</span></td>
-                <td>{{ kind.total }}</td>
-                <td>{{ kind.resolved }}</td>
-                <td>{{ '%.0f%%' | format(100 * kind.resolved / kind.total) if kind.total else '—' }}</td>
+                <td data-label="批注类型"><span class="chip">{{ kind_label(kind.kind) }}</span></td>
+                <td data-label="总数">{{ kind.total }}</td>
+                <td data-label="已解决">{{ kind.resolved }}</td>
+                <td data-label="解决率">{{ '%.0f%%' | format(100 * kind.resolved / kind.total) if kind.total else '—' }}</td>
               </tr>
             {% endfor %}
           </tbody>
@@ -149,15 +149,15 @@
   </div>
   {% if duplicates %}
     <div class="table-wrap">
-      <table class="table">
+      <table class="table table-stack">
         <thead><tr><th>内容摘要</th><th>出现次数</th><th>涉及会话</th><th>内容指纹</th></tr></thead>
         <tbody>
           {% for row in duplicates %}
             <tr>
-              <td class="clamp-2">{{ row.sample }}</td>
-              <td>{{ row.occurrences }}</td>
-              <td>{{ row.conversation_count }}</td>
-              <td class="mono">{{ row.hash[:12] }}…</td>
+              <td data-label="内容摘要" class="clamp-2">{{ row.sample }}</td>
+              <td data-label="出现次数">{{ row.occurrences }}</td>
+              <td data-label="涉及会话">{{ row.conversation_count }}</td>
+              <td data-label="内容指纹" class="mono">{{ row.hash[:12] }}…</td>
             </tr>
           {% endfor %}
         </tbody>

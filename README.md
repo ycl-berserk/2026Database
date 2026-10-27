@@ -124,6 +124,26 @@ learning-space/
 
 SQL 经过单语句、首关键字、关键字黑名单、对象白名单、注释禁用、200 行包装等检查，最终由 `t2s_reader` 在只读事务中执行。完整的表结构说明见 `docs/design.md`，验收与演示说明见 `docs/report.md` 与 `docs/demo-script.md`。
 
+## v2 改进路线（Roadmap）
+
+v1 已定稿并推送。下一阶段的方向与验收标准统一记录在 [`docs/roadmap.md`](docs/roadmap.md)，每项都有编号，可直接对应 Issue 与分工。
+
+**三条硬性原则**：不新增强制外部依赖；每项 AI 能力都有降级路径；动 schema 必须先有迁移机制。
+
+**关于本地模型**：Ollama **不是必选项**，不会要求普通用户部署本地模型。系统按 `mock`（默认，零安装）/ `openai`（用户自带 Key）/ `ollama`（主动开启的隐私模式）三种模式运行；没有向量能力时检索自动退回 `pg_trgm`，没有大模型时 Text2SQL 使用规则 mock，界面顶栏始终显示当前 AI 模式。
+
+| 阶段 | 内容 | 目标 |
+| --- | --- | --- |
+| Phase 1 | 迁移机制、PWA Share Target、粘贴导入、Ingest Token、收件箱、移动端适配 | 手机可安装、可分享导入、有收件箱 |
+| Phase 2 | 浏览器扩展、平台导出适配器、离线阅读与复习 | 采集更省事，断网可复习 |
+| Phase 3 | pgvector 混合检索、AST 校验、EXPLAIN 预检、Text2SQL 评测集 | 检索更强，Text2SQL 更可证明 |
+| Phase 4 | RLS 对比实验、审计历史、SQL 观测页、只读 MCP Server | 数据库深度与对外接口 |
+| Phase 5 | Dockerfile、CI、Ruff/pyright、E2E，PG18/PG19 实验分支 | 可部署、可回归、有前沿实验 |
+
+**明确不做**：浏览器内 WASM 数据库、CRDT 多端同步、边缘部署、Redis/Celery/微服务、Electron、messages 分区表、语义缓存。
+
+**分工约定**：一项任务一个分支（如 `feat/C1-share-target`）；动 schema 必须附带可重复执行的迁移；新增 AI 能力必须同时提交无模型降级路径与测试；每个阶段结束都要求 `pytest` 全绿、`verify.py` 全 PASS。
+
 ## 已知限制
 
 - 单机课程项目，未做分布式部署与高并发压测；并发导入依靠唯一键与 `pg_advisory_xact_lock` 保证正确性。

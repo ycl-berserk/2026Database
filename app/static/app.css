@@ -966,6 +966,17 @@ input[type="file"] { padding: 7px 9px; background: var(--paper); }
   line-height: 1;
 }
 .error-message { font-size: 15px; color: var(--ink-2); margin-bottom: 18px; }
+.error-hint {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border-left: 3px solid var(--seal);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--paper-2);
+}
+.error-hint strong { font-size: 12.5px; letter-spacing: .04em; color: var(--ink-2); }
+.error-hint p { margin: 4px 0 0; font-size: 13.5px; color: var(--ink-2); }
+.error-path { margin: 18px 0 0; font-size: 12px; color: var(--ink-3); overflow-wrap: anywhere; }
+.error-path code { font-family: var(--mono); }
 
 /* ---------- misc ---------- */
 mark { background: #f7e3a8; color: inherit; padding: 0 1px; border-radius: 2px; }

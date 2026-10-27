@@ -2,15 +2,36 @@
 
 {% block title %}{{ error_title }}{% endblock %}
 {% block page_title %}{{ error_title }}{% endblock %}
-{% block page_subtitle %}操作未能完成{% endblock %}
+{% block page_subtitle %}操作未能完成，但数据没有被部分写入{% endblock %}
 
 {% block content %}
-<section class="panel panel-narrow">
+<section class="panel panel-narrow error-panel">
   <p class="error-code">{{ error_status | default(400) }}</p>
   <p class="error-message">{{ error_message }}</p>
+
+  <div class="error-hint">
+    <strong>可能的原因与下一步</strong>
+    <p>{{ error_hint | default('请返回上一页检查操作，或回到概览重新开始。') }}</p>
+  </div>
+
   <div class="form-actions">
-    <a class="btn" href="/dashboard">回到概览</a>
+    {% if error_status == 403 %}
+      <a class="btn" href="/courses">看看我参与的课程</a>
+    {% elif error_status == 404 %}
+      <a class="btn" href="/conversations">浏览我的会话</a>
+    {% elif error_status in (400, 409, 422) %}
+      <a class="btn" href="{{ error_path or '/dashboard' }}">重新加载本页</a>
+    {% else %}
+      <a class="btn" href="/dashboard">回到概览</a>
+    {% endif %}
+    {% if error_status != 500 %}
+      <a class="btn btn-ghost" href="/dashboard">回到概览</a>
+    {% endif %}
     <button class="btn btn-ghost" type="button" onclick="history.back()">返回上一页</button>
   </div>
+
+  {% if error_path %}
+    <p class="error-path">请求路径：<code>{{ error_path }}</code></p>
+  {% endif %}
 </section>
 {% endblock %}

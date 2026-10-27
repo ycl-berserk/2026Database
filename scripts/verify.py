@@ -496,6 +496,10 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             "SELECT * FROM pg_catalog.pg_tables",
             "SELECT current_user",
             "SELECT * FROM v_my_courses -- comment",
+            "WITH x AS (DELETE FROM app.users RETURNING id) SELECT * FROM x",
+            "SELECT pg_read_file('/etc/passwd')",
+            "SELECT * FROM v_my_courses FOR UPDATE",
+            "SELECT * FROM generate_series(1, 5)",
         ]
         blocked = 0
         for sql in cases:
@@ -504,7 +508,9 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             except text2sql_service.GuardError:
                 blocked += 1
         _ok(blocked == len(cases), f"SQL 守卫漏放 {len(cases) - blocked} 条危险语句")
-        return f"{len(cases)} 条危险 SQL 全部被拒绝"
+        safe = "SELECT title FROM v_my_conversations WHERE title ILIKE '%delete%'"
+        _ok(text2sql_service.check_sql(safe) == safe, "AST 守卫误伤字符串字面量")
+        return f"{len(cases)} 条危险 SQL 全部被拒绝，正常字面量未被误伤"
     report.run("t2s.guard", "Text2SQL：单语句 / 只读 / 白名单守卫", t2s_guard)
 
     def t2s_rejected_log():

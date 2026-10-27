@@ -78,7 +78,7 @@ py -3.13 -m venv .venv
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（101 单元 + 83 集成，共 184 项）；集成测试需先初始化测试库
+# 全量测试（117 单元 + 83 集成，共 200 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest -q
 
 # 端到端验收：33 项 PASS/FAIL，写入 data/verification/report.json
@@ -150,7 +150,7 @@ learning-space/
 - `TEXT2SQL_MODE=mock`：强制离线规则模式，便于无网络演示。
 - `TEXT2SQL_MODE=llm`：强制真实模型；失败时返回错误并写审计日志。
 
-SQL 经过单语句、首关键字、关键字黑名单、对象白名单、注释禁用、200 行包装等检查，最终由 `t2s_reader` 在只读事务中执行。完整的表结构说明见 `docs/design.md`，验收与演示说明见 `docs/report.md` 与 `docs/demo-script.md`。
+SQL 先经 `sqlglot` PostgreSQL 方言 AST 校验（单条 SELECT/WITH、拒绝嵌套 DML/表函数/锁/危险函数、视图与 CTE 白名单），再经关键字黑名单、注释禁用与 200 行包装，最终由 `t2s_reader` 在只读事务中执行。完整的表结构说明见 `docs/design.md`，验收与演示说明见 `docs/report.md` 与 `docs/demo-script.md`。
 
 ## v2 改进路线（Roadmap）
 

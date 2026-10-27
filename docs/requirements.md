@@ -102,7 +102,7 @@
 | ID | 功能 | 输入 | 输出 / 行为 | 异常与边界 | 实现位置 | 验收 |
 | --- | --- | --- | --- | --- | --- | --- |
 | R07-F01 | 自然语言生成 SQL | 问题（≤ 300 字） | `{sql, explanation}`；mock 规则或 LLM | 模型超时、返回非 JSON、空问题 | `text2sql_service.generate`、`_mock_sql`、`_llm_sql` | `tests/unit/test_text2sql_guard.py` |
-| R07-F02 | SQL 守卫 | 生成的 SQL | 单条 SELECT/WITH；无注释；对象白名单 | 多语句、DDL/DML、系统表、`app.`、危险函数全部拒绝 | `check_sql` | `test_text2sql_guard.py`、`verify.t2sql.guard` |
+| R07-F02 | SQL 守卫 | 生成的 SQL | AST 校验单条 SELECT/WITH/UNION；无注释；视图与 CTE 白名单；正则黑名单作第二层 | 多语句、DDL/DML、嵌套 DML、`SELECT INTO`、`FOR UPDATE`、表函数、系统表、`app.`、危险函数全部拒绝；字符串字面量不误伤 | `check_sql`、`_validate_ast` | `test_text2sql_guard.py`、`verify.t2sql.guard` |
 | R07-F03 | 只读执行 | 合法 SQL、当前用户 ID | 最多 200 行；3 秒超时；`t2s_reader` 执行 | 超时、权限错误、执行错误写日志 | `execute_query`、`db.t2s_pool` | `test_text2sql.py`、`verify.t2sql.role` |
 | R07-F04 | 审计历史 | 每次查询 | 问题、SQL、状态、耗时、行数、错误 | 成功/拒绝/异常都记录 | `record_log`、`history` | `verify.t2sql.audit` |
 | R07-F05 | 模式切换 | `TEXT2SQL_MODE` / `LLM_API_KEY` | auto / mock / llm | 无 Key 时明确标注“本地规则模式” | `provider_mode`、页面 badge | `test_text2sql_guard.py` |
@@ -152,7 +152,7 @@
 | 性能 | 列表分页、关键查询有索引、统计实时但规模可控 | 索引设计、`LIMIT/OFFSET`、部分索引、trgm |
 | 可维护性 | 关键 SQL 可定位、无 ORM 黑盒 | `sql/` + `services/` + 本文件映射 |
 | 可演示性 | 离线可演示、模拟数据可复现 | mock Text2SQL、`make_samples.py`、`seed_demo.py` |
-| 可验收 | 自动化测试与端到端报告 | 184 个 pytest 用例 + 33 项 `verify.py` 检查 |
+| 可验收 | 自动化测试与端到端报告 | 200 个 pytest 用例 + 33 项 `verify.py` 检查 |
 
 ## 需求到验收命令的映射
 

@@ -128,6 +128,7 @@ def render(
     context.setdefault("flashes", pop_flashes(request))
     context.setdefault("active_path", request.url.path)
     context.setdefault("today", date.today())
+    context.setdefault("demo_mode", settings.is_dev)
     return templates.TemplateResponse(
         request, template, context, status_code=status_code
     )

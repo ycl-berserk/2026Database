@@ -3,17 +3,39 @@
 
   const csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || "";
 
-  function toast(message) {
+  function toast(message, options) {
+    options = options || {};
     let el = document.querySelector(".toast");
     if (!el) {
       el = document.createElement("div");
       el.className = "toast";
+      el.setAttribute("role", "status");
+      el.setAttribute("aria-live", "polite");
       document.body.appendChild(el);
     }
-    el.textContent = message;
-    requestAnimationFrame(() => el.classList.add("show"));
+    el.textContent = "";
+    const label = document.createElement("span");
+    label.textContent = message;
+    el.appendChild(label);
+    if (options.actionLabel && typeof options.onAction === "function") {
+      const action = document.createElement("button");
+      action.type = "button";
+      action.className = "toast-action";
+      action.textContent = options.actionLabel;
+      action.addEventListener("click", function () {
+        hide();
+        options.onAction();
+      });
+      el.appendChild(action);
+    }
+    function hide() {
+      el.classList.remove("show");
+      clearTimeout(el._timer);
+      el._timer = setTimeout(function () { el.textContent = ""; }, 220);
+    }
+    requestAnimationFrame(function () { el.classList.add("show"); });
     clearTimeout(el._timer);
-    el._timer = setTimeout(() => el.classList.remove("show"), 2600);
+    el._timer = setTimeout(hide, options.duration || 2600);
   }
 
   async function api(url, options) {
@@ -62,12 +84,85 @@
     }
   });
 
+  function dismissFlash(el) {
+    if (!el || !el.isConnected) return;
+    el.style.transition = "opacity .25s";
+    el.style.opacity = "0";
+    setTimeout(function () { el.remove(); }, 260);
+  }
+
   document.querySelectorAll(".flash").forEach(function (el) {
-    setTimeout(function () {
-      el.style.transition = "opacity .4s";
-      el.style.opacity = "0";
-      setTimeout(function () { el.remove(); }, 420);
-    }, 5200);
+    const close = el.querySelector(".flash-close");
+    if (close) close.addEventListener("click", function () { dismissFlash(el); });
+    if (el.getAttribute("data-flash-category") !== "error") {
+      setTimeout(function () { dismissFlash(el); }, 5200);
+    }
+  });
+
+  document.querySelectorAll("[data-demo-login]").forEach(function (el) {
+    el.addEventListener("click", function () {
+      const form = document.getElementById("login-form");
+      const username = document.getElementById("login-username");
+      const password = document.getElementById("login-password");
+      if (!form || !username || !password) return;
+      username.value = el.getAttribute("data-username") || "";
+      password.value = el.getAttribute("data-password") || "";
+      if (form.requestSubmit) form.requestSubmit();
+      else form.submit();
+    });
+  });
+
+  document.addEventListener("submit", function (event) {
+    const form = event.target.closest("form[data-undo-submit]");
+    if (!form || form.dataset.undoPending === "1") return;
+    event.preventDefault();
+    if (form.checkValidity && !form.checkValidity()) {
+      form.reportValidity();
+      return;
+    }
+    form.dataset.undoPending = "1";
+    const item = form.closest("[data-undo-item]");
+    if (item) {
+      item.classList.add("is-removing");
+      item.setAttribute("aria-hidden", "true");
+    }
+    const message = form.getAttribute("data-undo-submit") || "已删除";
+    let settled = false;
+    const restore = function () {
+      form.dataset.undoPending = "";
+      if (item) {
+        item.classList.remove("is-removing");
+        item.removeAttribute("aria-hidden");
+      }
+    };
+    const timer = setTimeout(function () {
+      settled = true;
+      form.submit();
+    }, 5000);
+    toast(message, {
+      duration: 5000,
+      actionLabel: "撤销",
+      onAction: function () {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        restore();
+        toast("已撤销");
+      }
+    });
+    window.addEventListener("pagehide", function () {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      // 离开页面时立即提交，避免“看起来删了其实没删”；撤销按钮只在页面停留期间可用。
+      if (navigator.sendBeacon) {
+        try {
+          navigator.sendBeacon(form.action, new FormData(form));
+          return;
+        } catch (_) { /* 回退为普通提交 */ }
+      }
+      form.submit();
+    }, { once: true });
   });
 
   function copyText(event) {

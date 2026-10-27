@@ -45,7 +45,7 @@
         </thead>
         <tbody>
           {% for tag in tags %}
-            <tr>
+            <tr data-undo-item>
               <td data-label="标签">
                 <span class="tag-pill">
                   <span class="tag-dot" style="background: {{ tag.color or '#2f5d4e' }}"></span>
@@ -71,7 +71,7 @@
                   </form>
                 </details>
                 <form method="post" action="/tags/{{ tag.id }}/delete" class="inline-form"
-                      data-confirm="删除标签「{{ tag.name }}」？相关会话的该标签会被移除。">
+                      data-undo-submit="标签「{{ tag.name }}」已删除">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                   <button class="btn btn-danger btn-sm" type="submit">删除</button>
                 </form>

@@ -37,7 +37,7 @@
 {% if rows %}
   <div class="review-list">
     {% for row in rows %}
-      <article class="card review-card {% if row.is_due and row.status != 'mastered' %}review-due{% endif %}">
+      <article class="card review-card {% if row.is_due and row.status != 'mastered' %}review-due{% endif %}" data-undo-item>
         <header class="review-head">
           <span class="chip chip-seal">{{ kind_label(row.kind) }}</span>
           <span class="badge {% if row.status == 'mastered' %}badge-ok{% endif %}">{{ status_label(row.status) }}</span>
@@ -86,7 +86,7 @@
             </form>
           {% endif %}
           <form method="post" action="/reviews/{{ row.id }}/delete" class="inline-form"
-                data-confirm="把这个复习项移出队列？原批注会保留。">
+                data-undo-submit="已移出复习队列">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" name="scope" value="{{ scope }}">
             <button class="btn btn-danger btn-sm" type="submit">移出</button>

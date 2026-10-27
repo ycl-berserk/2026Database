@@ -92,9 +92,12 @@
     </header>
 
     {% if flashes %}
-      <div class="flashes">
+      <div class="flashes" aria-live="polite">
         {% for flash in flashes %}
-          <div class="flash flash-{{ flash.category }}">{{ flash.message }}</div>
+          <div class="flash flash-{{ flash.category }}" role="{{ 'alert' if flash.category == 'error' else 'status' }}" data-flash-category="{{ flash.category }}">
+            <span>{{ flash.message }}</span>
+            <button class="flash-close" type="button" aria-label="关闭提示">×</button>
+          </div>
         {% endfor %}
       </div>
     {% endif %}

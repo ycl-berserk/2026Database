@@ -5,7 +5,8 @@
   "description": "Playwright scripts for screenshots and demo recording of the 学习空间 demo.",
   "scripts": {
     "screenshots": "node scripts/screenshots.mjs",
-    "record": "node scripts/screenshots.mjs --record"
+    "record": "node scripts/screenshots.mjs --record",
+    "extension": "node scripts/extension_smoke.mjs"
   },
   "devDependencies": {
     "playwright": "^1.49.0"

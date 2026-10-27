@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "学习空间 · 会话采集",
+  "version": "1.0.0",
+  "description": "把当前 ChatGPT / DeepSeek / Qoder 会话发送到你的个人学习空间。",
+  "permissions": ["activeTab", "storage"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "action": {
+    "default_title": "发送到学习空间",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://chat.deepseek.com/*",
+        "https://qoder.com/*",
+        "https://*.qoder.com/*",
+        "https://qoder.cn/*",
+        "https://*.qoder.cn/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>发送到学习空间</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="head">
+    <div>
+      <strong>发送到学习空间</strong>
+      <small>当前会话只在你点击后上传</small>
+    </div>
+    <span class="chip" id="platform-badge">读取中</span>
+  </header>
+
+  <section class="status" id="status" data-kind="info" role="status" aria-live="polite">
+    正在读取当前会话…
+  </section>
+
+  <section class="preview" id="preview" hidden>
+    <h1 id="conversation-title"></h1>
+    <p class="meta" id="conversation-meta"></p>
+    <p class="snippet" id="conversation-snippet"></p>
+  </section>
+
+  <div class="grid">
+    <label class="field">
+      <span>课程编号（可选）</span>
+      <input id="course-code" maxlength="20" placeholder="如 DB，留空进收件箱">
+    </label>
+    <label class="field">
+      <span>标签（可选）</span>
+      <input id="tags" maxlength="200" placeholder="逗号分隔，如 事务, 索引">
+    </label>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" id="send" type="button" disabled>发送到学习空间</button>
+    <button class="btn" id="refresh" type="button">重新读取</button>
+  </div>
+
+  <details class="settings" id="settings">
+    <summary>连接设置</summary>
+    <label class="field">
+      <span>学习空间地址</span>
+      <input id="base-url" type="url" placeholder="http://127.0.0.1:8000">
+    </label>
+    <label class="field">
+      <span>采集令牌</span>
+      <input id="token" type="password" autocomplete="off" placeholder="在 学习空间 → 采集令牌 创建">
+    </label>
+    <label class="field">
+      <span>来源账号（可选）</span>
+      <input id="account-label" maxlength="100" placeholder="如 alice@chatgpt">
+    </label>
+    <button class="btn btn-sm" id="save-settings" type="button">保存设置</button>
+    <p class="hint">
+      令牌只保存在本机浏览器，不会写入网页。建议创建专用令牌，并随时在
+      <code>/tokens</code> 撤销。
+    </p>
+  </details>
+
+  <footer class="foot">
+    若扩展无法识别页面结构，请使用平台的「导出对话」文件，在导入页选择对应格式。
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>

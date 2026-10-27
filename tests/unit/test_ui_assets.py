@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from fastapi.testclient import TestClient
+
 ROOT = Path(__file__).resolve().parents[2]
 TEMPLATES = ROOT / "app" / "templates"
 STATIC = ROOT / "app" / "static"
@@ -51,3 +53,43 @@ def test_destructive_actions_support_five_second_undo():
     css = _read(STATIC / "app.css")
     assert ".is-removing" in css
     assert ".toast-action" in css
+
+
+def test_unknown_page_explains_reason_and_recovery():
+    from app.main import app
+
+    client = TestClient(app)
+    try:
+        response = client.get("/missing-page")
+    finally:
+        client.close()
+    assert response.status_code == 404
+    assert "页面不存在" in response.text
+    assert "可能的原因与下一步" in response.text
+    assert "/missing-page" in response.text
+    assert "浏览我的会话" in response.text
+
+
+def test_api_and_static_errors_stay_machine_readable():
+    from app.main import app
+
+    client = TestClient(app)
+    try:
+        api = client.get("/api/missing")
+        static = client.get("/static/missing.css")
+    finally:
+        client.close()
+    assert api.status_code == 404
+    assert api.headers["content-type"].startswith("application/json")
+    assert static.status_code == 404
+    assert static.headers["content-type"].startswith("text/plain")
+
+
+def test_server_error_page_has_generic_recovery_copy():
+    from app.main import ERROR_HINTS
+
+    assert 500 in ERROR_HINTS
+    error = _read(TEMPLATES / "error.html")
+    assert "返回上一页" in error
+    assert "error_hint" in error
+    assert "error_path" in error

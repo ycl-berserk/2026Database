@@ -418,6 +418,10 @@ ALTER ROLE t2s_reader SET lock_timeout = '2s';
 
 守卫通过后先做执行计划预检：在同一只读角色下执行 `EXPLAIN (FORMAT JSON)`，不实际取数；根节点 `Total Cost` 超过 500000 或 `Plan Rows` 超过 200000 时拒绝，预检超时 1 秒。阈值可通过 `TEXT2SQL_MAX_COST`、`TEXT2SQL_MAX_EST_ROWS` 调整，预检拒绝写入 `text2sql_log.status = 'rejected'`。
 
+### 8.1 评测方法
+
+安全边界之外，Text2SQL 的效果由固定金标准数据集度量：30 题覆盖课程统计、关键词检索、排行、复习与批注；每题给出金标准 SQL 与用户。评测器分别执行金标准与生成 SQL，按“列集合 + 行多重集”比较结果，避免 SQL 文本不同造成误判；10 条恶意 SQL 与 2 条跨用户用例单独统计拦截率。离线 mock 基线为 17/30，金标准与生成 SQL 合法率均为 100%，越权拦截 12/12；真实模型通过 `--provider llm` 复测。
+
 ## 9. 事务与并发
 
 ### 9.1 导入确认事务

@@ -1,0 +1,495 @@
+{
+  "generated_at": "2026-10-27T10:02:14+00:00",
+  "provider": "mock",
+  "modes": {
+    "mock": 30
+  },
+  "questions": {
+    "total": 30,
+    "matched": 17,
+    "accuracy": 0.5667,
+    "gold_legal": 30,
+    "generated_legal": 30,
+    "avg_latency_ms": 6.6
+  },
+  "legality": {
+    "gold_rate": 1.0,
+    "generated_rate": 1.0
+  },
+  "security": {
+    "total": 12,
+    "passed": 12,
+    "rate": 1.0
+  },
+  "guard_cases": [
+    {
+      "id": "G01",
+      "reason": "DDL",
+      "blocked": true,
+      "error": "只允许 SELECT 或 WITH 查询"
+    },
+    {
+      "id": "G02",
+      "reason": "多语句 + DML",
+      "blocked": true,
+      "error": "只允许执行一条 SQL 语句"
+    },
+    {
+      "id": "G03",
+      "reason": "嵌套 DML",
+      "blocked": true,
+      "error": "SQL 包含不被允许的写入或管理语句"
+    },
+    {
+      "id": "G04",
+      "reason": "越权基表",
+      "blocked": true,
+      "error": "SQL 访问了未授权的对象：app.users"
+    },
+    {
+      "id": "G05",
+      "reason": "系统表",
+      "blocked": true,
+      "error": "SQL 访问了未授权的对象：pg_catalog.pg_tables"
+    },
+    {
+      "id": "G06",
+      "reason": "危险函数",
+      "blocked": true,
+      "error": "SQL 调用了不允许的函数：pg_read_file"
+    },
+    {
+      "id": "G07",
+      "reason": "锁",
+      "blocked": true,
+      "error": "SQL 包含不被允许的写入或管理语句"
+    },
+    {
+      "id": "G08",
+      "reason": "表函数",
+      "blocked": true,
+      "error": "SQL 不允许在 FROM 中调用表函数"
+    },
+    {
+      "id": "G09",
+      "reason": "会话配置",
+      "blocked": true,
+      "error": "SQL 调用了不允许的函数：current_setting"
+    },
+    {
+      "id": "G10",
+      "reason": "注释",
+      "blocked": true,
+      "error": "SQL 中不允许出现注释"
+    }
+  ],
+  "scope_cases": [
+    {
+      "id": "S01",
+      "user": "bob",
+      "reason": "bob 不应看到 alice 未分享的收件箱会话",
+      "passed": true,
+      "detail": "12 行"
+    },
+    {
+      "id": "S02",
+      "user": "admin",
+      "reason": "管理员视图不返回任何他人会话",
+      "passed": true,
+      "detail": "0 行"
+    }
+  ],
+  "cases": [
+    {
+      "id": "Q01",
+      "question": "数据库课程下有哪些会话？",
+      "user": "alice",
+      "gold_sql": "SELECT title, message_count, started_at FROM v_my_conversations WHERE course_code = 'DB' ORDER BY started_at DESC NULLS LAST LIMIT 20",
+      "status": "ok",
+      "match": true,
+      "generated_sql": "SELECT title, message_count, started_at FROM v_my_conversations WHERE course_code = 'DB' ORDER BY started_at DESC NULLS LAST LIMIT 20",
+      "latency_ms": 7,
+      "mode": "mock",
+      "explanation": "列出课程 DB 下最近 20 个会话及其消息数。",
+      "generated_rows": 6
+    },
+    {
+      "id": "Q02",
+      "question": "操作系统课程下有哪些会话？",
+      "user": "alice",
+      "gold_sql": "SELECT title, message_count, started_at FROM v_my_conversations WHERE course_code = 'OS' ORDER BY started_at DESC NULLS LAST LIMIT 20",
+      "status": "ok",
+      "match": true,
+      "generated_sql": "SELECT title, message_count, started_at FROM v_my_conversations WHERE course_code = 'OS' ORDER BY started_at DESC NULLS LAST LIMIT 20",
+      "latency_ms": 6,
+      "mode": "mock",
+      "explanation": "列出课程 OS 下最近 20 个会话及其消息数。",
+      "generated_rows": 6
+    },
+    {
+      "id": "Q03",
+      "question": "计算机网络课程下有哪些会话？",
+      "user": "alice",
+      "gold_sql": "SELECT title, message_count, started_at FROM v_my_conversations WHERE course_code = 'NET' ORDER BY started_at DESC NULLS LAST LIMIT 20",
+      "status": "ok",
+      "match": true,
+      "generated_sql": "SELECT title, message_count, started_at FROM v_my_conversations WHERE course_code = 'NET' ORDER BY started_at DESC NULLS LAST LIMIT 20",
+      "latency_ms": 6,
+      "mode": "mock",
+      "explanation": "列出课程 NET 下最近 20 个会话及其消息数。",
+      "generated_rows": 6
+    },
+    {
+      "id": "Q04",
+      "question": "机器学习课程下有哪些会话？",
+      "user": "alice",
+      "gold_sql": "SELECT title, message_count, started_at FROM v_my_conversations WHERE course_code = 'ML' ORDER BY started_at DESC NULLS LAST LIMIT 20",
+      "status": "ok",
+      "match": true,
+      "generated_sql": "SELECT title, message_count, started_at FROM v_my_conversations WHERE course_code = 'ML' ORDER BY started_at DESC NULLS LAST LIMIT 20",
+      "latency_ms": 6,
+      "mode": "mock",
+      "explanation": "列出课程 ML 下最近 20 个会话及其消息数。",
+      "generated_rows": 6
+    },
+    {
+      "id": "Q05",
+      "question": "数据结构课程下有哪些会话？",
+      "user": "alice",
+      "gold_sql": "SELECT title, message_count, started_at FROM v_my_conversations WHERE course_code = 'DS' ORDER BY started_at DESC NULLS LAST LIMIT 20",
+      "status": "ok",
+      "match": true,
+      "generated_sql": "SELECT title, message_count, started_at FROM v_my_conversations WHERE course_code = 'DS' ORDER BY started_at DESC NULLS LAST LIMIT 20",
+      "latency_ms": 7,
+      "mode": "mock",
+      "explanation": "列出课程 DS 下最近 20 个会话及其消息数。",
+      "generated_rows": 3
+    },
+    {
+      "id": "Q06",
+      "question": "今天到期的复习项",
+      "user": "alice",
+      "gold_sql": "SELECT annotation_content, annotation_kind, course_name, due_date, status FROM v_my_review_items WHERE status <> 'mastered' AND due_date <= current_date ORDER BY due_date",
+      "status": "ok",
+      "match": true,
+      "generated_sql": "SELECT annotation_content, annotation_kind, course_name, due_date, status FROM v_my_review_items WHERE status <> 'mastered' AND due_date <= current_date ORDER BY due_date",
+      "latency_ms": 7,
+      "mode": "mock",
+      "explanation": "筛选未掌握且到期日不晚于今天的复习项，逾期项会排在最前。",
+      "generated_rows": 14
+    },
+    {
+      "id": "Q07",
+      "question": "我的复习队列",
+      "user": "alice",
+      "gold_sql": "SELECT annotation_content, annotation_kind, course_name, due_date, status FROM v_my_review_items WHERE status <> 'mastered' ORDER BY due_date",
+      "status": "ok",
+      "match": true,
+      "generated_sql": "SELECT annotation_content, annotation_kind, course_name, due_date, status FROM v_my_review_items WHERE status <> 'mastered' ORDER BY due_date",
+      "latency_ms": 8,
+      "mode": "mock",
+      "explanation": "列出未掌握的复习项，按到期日排序。",
+      "generated_rows": 28
+    },
+    {
+      "id": "Q08",
+      "question": "未解决的批注",
+      "user": "alice",
+      "gold_sql": "SELECT kind, content, course_name, created_at FROM v_my_annotations WHERE status = 'open' ORDER BY created_at DESC LIMIT 20",
+      "status": "ok",
+      "match": true,
+      "generated_sql": "SELECT kind, content, course_name, created_at FROM v_my_annotations WHERE status = 'open' ORDER BY created_at DESC LIMIT 20",
+      "latency_ms": 7,
+      "mode": "mock",
+      "explanation": "列出所有待解决批注，最近创建的在前。",
+      "generated_rows": 20
+    },
+    {
+      "id": "Q09",
+      "question": "按类型统计批注",
+      "user": "alice",
+      "gold_sql": "SELECT kind, count(*) AS total FROM v_my_annotations GROUP BY kind ORDER BY total DESC",
+      "status": "ok",
+      "match": true,
+      "generated_sql": "SELECT kind, count(*) AS total FROM v_my_annotations GROUP BY kind ORDER BY total DESC",
+      "latency_ms": 7,
+      "mode": "mock",
+      "explanation": "按批注类型统计数量。",
+      "generated_rows": 4
+    },
+    {
+      "id": "Q10",
+      "question": "标签使用情况",
+      "user": "alice",
+      "gold_sql": "SELECT name, conversation_count, message_count FROM v_my_tag_stats ORDER BY conversation_count DESC LIMIT 12",
+      "status": "ok",
+      "match": true,
+      "generated_sql": "SELECT name, conversation_count, message_count FROM v_my_tag_stats ORDER BY conversation_count DESC LIMIT 12",
+      "latency_ms": 8,
+      "mode": "mock",
+      "explanation": "按关联会话数列出使用最多的 12 个标签。",
+      "generated_rows": 12
+    },
+    {
+      "id": "Q11",
+      "question": "每月的活跃情况",
+      "user": "alice",
+      "gold_sql": "SELECT month, message_count, conversation_count FROM v_my_monthly_activity ORDER BY month",
+      "status": "ok",
+      "match": true,
+      "generated_sql": "SELECT month, message_count, conversation_count FROM v_my_monthly_activity ORDER BY month",
+      "latency_ms": 7,
+      "mode": "mock",
+      "explanation": "按月查看消息与会话数量，空月份已补零。",
+      "generated_rows": 12
+    },
+    {
+      "id": "Q12",
+      "question": "提问与回答的比例",
+      "user": "alice",
+      "gold_sql": "SELECT course_name, sender, message_count FROM v_my_sender_stats ORDER BY course_name, sender",
+      "status": "ok",
+      "match": true,
+      "generated_sql": "SELECT course_name, sender, message_count FROM v_my_sender_stats ORDER BY course_name, sender",
+      "latency_ms": 6,
+      "mode": "mock",
+      "explanation": "按课程对比提问与回答的消息数量。",
+      "generated_rows": 12
+    },
+    {
+      "id": "Q13",
+      "question": "最近的导入记录",
+      "user": "alice",
+      "gold_sql": "SELECT file_name, platform, status, created_at FROM v_my_import_stats ORDER BY created_at DESC LIMIT 10",
+      "status": "ok",
+      "match": true,
+      "generated_sql": "SELECT file_name, platform, status, created_at FROM v_my_import_stats ORDER BY created_at DESC LIMIT 10",
+      "latency_ms": 5,
+      "mode": "mock",
+      "explanation": "列出最近 10 次导入及其状态。",
+      "generated_rows": 5
+    },
+    {
+      "id": "Q14",
+      "question": "text2sql 查询记录",
+      "user": "alice",
+      "gold_sql": "SELECT question, status, latency_ms, row_count, created_at FROM v_my_t2s_stats ORDER BY created_at DESC LIMIT 10",
+      "status": "ok",
+      "match": true,
+      "generated_sql": "SELECT question, status, latency_ms, row_count, created_at FROM v_my_t2s_stats ORDER BY created_at DESC LIMIT 10",
+      "latency_ms": 5,
+      "mode": "mock",
+      "explanation": "查看最近 10 次 Text2SQL 查询记录。",
+      "generated_rows": 0
+    },
+    {
+      "id": "Q15",
+      "question": "最近的会话",
+      "user": "alice",
+      "gold_sql": "SELECT title, course_code, message_count, started_at FROM v_my_conversations ORDER BY started_at DESC NULLS LAST LIMIT 10",
+      "status": "ok",
+      "match": true,
+      "generated_sql": "SELECT title, course_code, message_count, started_at FROM v_my_conversations ORDER BY started_at DESC NULLS LAST LIMIT 10",
+      "latency_ms": 6,
+      "mode": "mock",
+      "explanation": "按开始时间列出最近 10 个会话。",
+      "generated_rows": 10
+    },
+    {
+      "id": "Q16",
+      "question": "未归类的会话",
+      "user": "alice",
+      "gold_sql": "SELECT title, message_count, started_at FROM v_my_conversations WHERE course_id IS NULL ORDER BY started_at DESC NULLS LAST",
+      "status": "ok",
+      "match": true,
+      "generated_sql": "SELECT title, message_count, started_at FROM v_my_conversations WHERE course_id IS NULL ORDER BY started_at DESC NULLS LAST",
+      "latency_ms": 6,
+      "mode": "mock",
+      "explanation": "列出尚未归入课程的会话。",
+      "generated_rows": 3
+    },
+    {
+      "id": "Q17",
+      "question": "课程消息统计",
+      "user": "alice",
+      "gold_sql": "SELECT code, name, conversation_count, message_count, annotation_count FROM v_my_course_stats ORDER BY message_count DESC",
+      "status": "ok",
+      "match": true,
+      "generated_sql": "SELECT code, name, conversation_count, message_count, annotation_count FROM v_my_course_stats ORDER BY message_count DESC",
+      "latency_ms": 7,
+      "mode": "mock",
+      "explanation": "按课程统计会话、消息与批注数量，消息多的排在前面。",
+      "generated_rows": 5
+    },
+    {
+      "id": "Q18",
+      "question": "数据库课程有多少会话和消息？",
+      "user": "alice",
+      "gold_sql": "SELECT code, name, conversation_count, message_count FROM v_my_course_stats WHERE code = 'DB'",
+      "status": "ok",
+      "match": false,
+      "generated_sql": "SELECT title, message_count, started_at FROM v_my_conversations WHERE course_code = 'DB' ORDER BY started_at DESC NULLS LAST LIMIT 20",
+      "latency_ms": 6,
+      "mode": "mock",
+      "explanation": "列出课程 DB 下最近 20 个会话及其消息数。",
+      "generated_rows": 6
+    },
+    {
+      "id": "Q19",
+      "question": "操作系统课程的消息统计",
+      "user": "alice",
+      "gold_sql": "SELECT code, name, conversation_count, message_count, annotation_count FROM v_my_course_stats WHERE code = 'OS'",
+      "status": "ok",
+      "match": false,
+      "generated_sql": "SELECT title, message_count, started_at FROM v_my_conversations WHERE course_code = 'OS' ORDER BY started_at DESC NULLS LAST LIMIT 20",
+      "latency_ms": 6,
+      "mode": "mock",
+      "explanation": "列出课程 OS 下最近 20 个会话及其消息数。",
+      "generated_rows": 6
+    },
+    {
+      "id": "Q20",
+      "question": "机器学习里讨论过哪些主题？",
+      "user": "alice",
+      "gold_sql": "SELECT title, tag_names FROM v_my_conversations WHERE course_code = 'ML' ORDER BY started_at DESC NULLS LAST",
+      "status": "ok",
+      "match": false,
+      "generated_sql": "SELECT code, name, conversation_count, message_count, annotation_count FROM v_my_course_stats ORDER BY message_count DESC",
+      "latency_ms": 7,
+      "mode": "mock",
+      "explanation": "本地规则未命中具体问题，先返回课程总览；配置大模型后可自由提问。",
+      "generated_rows": 5
+    },
+    {
+      "id": "Q21",
+      "question": "每门课程的消息数排名",
+      "user": "alice",
+      "gold_sql": "SELECT code, name, message_count, rank() OVER (ORDER BY message_count DESC) AS message_rank FROM v_my_course_stats ORDER BY message_rank",
+      "status": "ok",
+      "match": false,
+      "generated_sql": "SELECT code, name, conversation_count, message_count, annotation_count FROM v_my_course_stats ORDER BY message_count DESC",
+      "latency_ms": 7,
+      "mode": "mock",
+      "explanation": "按课程统计会话、消息与批注数量，消息多的排在前面。",
+      "generated_rows": 5
+    },
+    {
+      "id": "Q22",
+      "question": "消息最多的前 3 个会话",
+      "user": "alice",
+      "gold_sql": "SELECT title, message_count FROM v_my_conversations ORDER BY message_count DESC, conversation_id LIMIT 3",
+      "status": "ok",
+      "match": false,
+      "generated_sql": "SELECT code, name, conversation_count, message_count, annotation_count FROM v_my_course_stats ORDER BY message_count DESC",
+      "latency_ms": 7,
+      "mode": "mock",
+      "explanation": "本地规则未命中具体问题，先返回课程总览；配置大模型后可自由提问。",
+      "generated_rows": 5
+    },
+    {
+      "id": "Q23",
+      "question": "已掌握的复习项",
+      "user": "alice",
+      "gold_sql": "SELECT annotation_content, course_name, due_date, status FROM v_my_review_items WHERE status = 'mastered' ORDER BY due_date",
+      "status": "ok",
+      "match": false,
+      "generated_sql": "SELECT annotation_content, annotation_kind, course_name, due_date, status FROM v_my_review_items WHERE status <> 'mastered' ORDER BY due_date",
+      "latency_ms": 7,
+      "mode": "mock",
+      "explanation": "列出未掌握的复习项，按到期日排序。",
+      "generated_rows": 28
+    },
+    {
+      "id": "Q24",
+      "question": "逾期未复习的批注",
+      "user": "alice",
+      "gold_sql": "SELECT annotation_content, course_name, due_date, status FROM v_my_review_items WHERE status <> 'mastered' AND due_date < current_date ORDER BY due_date",
+      "status": "ok",
+      "match": false,
+      "generated_sql": "SELECT annotation_content, annotation_kind, course_name, due_date, status FROM v_my_review_items WHERE status <> 'mastered' ORDER BY due_date",
+      "latency_ms": 7,
+      "mode": "mock",
+      "explanation": "列出未掌握的复习项，按到期日排序。",
+      "generated_rows": 28
+    },
+    {
+      "id": "Q25",
+      "question": "数据库课程未解决的批注",
+      "user": "alice",
+      "gold_sql": "SELECT kind, content, created_at FROM v_my_annotations WHERE status = 'open' AND course_name = '数据库系统概论' ORDER BY created_at DESC",
+      "status": "ok",
+      "match": false,
+      "generated_sql": "SELECT title, message_count, started_at FROM v_my_conversations WHERE course_code = 'DB' ORDER BY started_at DESC NULLS LAST LIMIT 20",
+      "latency_ms": 6,
+      "mode": "mock",
+      "explanation": "列出课程 DB 下最近 20 个会话及其消息数。",
+      "generated_rows": 6
+    },
+    {
+      "id": "Q26",
+      "question": "每个标签关联多少消息",
+      "user": "alice",
+      "gold_sql": "SELECT name, message_count FROM v_my_tag_stats ORDER BY message_count DESC, name",
+      "status": "ok",
+      "match": false,
+      "generated_sql": "SELECT name, conversation_count, message_count FROM v_my_tag_stats ORDER BY conversation_count DESC LIMIT 12",
+      "latency_ms": 7,
+      "mode": "mock",
+      "explanation": "按关联会话数列出使用最多的 12 个标签。",
+      "generated_rows": 12
+    },
+    {
+      "id": "Q27",
+      "question": "我的批注解决率",
+      "user": "alice",
+      "gold_sql": "SELECT count(*) FILTER (WHERE status = 'resolved')::numeric / nullif(count(*), 0) AS resolution_rate FROM v_my_annotations",
+      "status": "ok",
+      "match": false,
+      "generated_sql": "SELECT kind, count(*) AS total FROM v_my_annotations GROUP BY kind ORDER BY total DESC",
+      "latency_ms": 7,
+      "mode": "mock",
+      "explanation": "按批注类型统计数量。",
+      "generated_rows": 4
+    },
+    {
+      "id": "Q28",
+      "question": "复习状态分布",
+      "user": "alice",
+      "gold_sql": "SELECT status, count(*) AS total FROM v_my_review_items GROUP BY status ORDER BY status",
+      "status": "ok",
+      "match": false,
+      "generated_sql": "SELECT annotation_content, annotation_kind, course_name, due_date, status FROM v_my_review_items WHERE status <> 'mastered' ORDER BY due_date",
+      "latency_ms": 7,
+      "mode": "mock",
+      "explanation": "列出未掌握的复习项，按到期日排序。",
+      "generated_rows": 28
+    },
+    {
+      "id": "Q29",
+      "question": "每个来源平台有多少会话",
+      "user": "alice",
+      "gold_sql": "SELECT source_platform, count(*) AS total FROM v_my_conversations GROUP BY source_platform ORDER BY total DESC, source_platform",
+      "status": "ok",
+      "match": false,
+      "generated_sql": "SELECT code, name, conversation_count, message_count, annotation_count FROM v_my_course_stats ORDER BY message_count DESC",
+      "latency_ms": 8,
+      "mode": "mock",
+      "explanation": "本地规则未命中具体问题，先返回课程总览；配置大模型后可自由提问。",
+      "generated_rows": 5
+    },
+    {
+      "id": "Q30",
+      "question": "最近 7 天新增消息",
+      "user": "alice",
+      "gold_sql": "SELECT count(*) AS total FROM v_my_messages WHERE created_at >= now() - interval '7 days'",
+      "status": "ok",
+      "match": false,
+      "generated_sql": "SELECT code, name, conversation_count, message_count, annotation_count FROM v_my_course_stats ORDER BY message_count DESC",
+      "latency_ms": 6,
+      "mode": "mock",
+      "explanation": "本地规则未命中具体问题，先返回课程总览；配置大模型后可自由提问。",
+      "generated_rows": 5
+    }
+  ],
+  "elapsed_ms": 476
+}

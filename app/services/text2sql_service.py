@@ -63,7 +63,7 @@ FEW_SHOT = """
 问：哪些复习项今天到期？
 答：{"sql": "SELECT annotation_content, course_name, due_date, status FROM v_my_review_items WHERE status <> 'mastered' AND due_date <= current_date ORDER BY due_date", "explanation": "筛选未掌握且到期日不晚于今天的复习项。"}
 问：按类型统计我的批注数量。
-答：{"sql": "SELECT annotation_kind, count(*) AS total FROM v_my_annotations GROUP BY annotation_kind ORDER BY total DESC", "explanation": "按批注类型分组计数。"}
+答：{"sql": "SELECT kind, count(*) AS total FROM v_my_annotations GROUP BY kind ORDER BY total DESC", "explanation": "按批注类型分组计数。"}
 """
 
 DENY_KEYWORDS = re.compile(
@@ -375,15 +375,15 @@ def _mock_sql(question: str) -> tuple[str, str]:
 
     if "未解决" in q and "批注" in q:
         return (
-            "SELECT annotation_kind, content, course_name, created_at "
+            "SELECT kind, content, course_name, created_at "
             "FROM v_my_annotations WHERE status = 'open' "
             "ORDER BY created_at DESC LIMIT 20",
             "列出所有待解决批注，最近创建的在前。",
         )
     if "批注" in q:
         return (
-            "SELECT annotation_kind, count(*) AS total FROM v_my_annotations "
-            "GROUP BY annotation_kind ORDER BY total DESC",
+            "SELECT kind, count(*) AS total FROM v_my_annotations "
+            "GROUP BY kind ORDER BY total DESC",
             "按批注类型统计数量。",
         )
 

@@ -8,7 +8,10 @@ from decimal import Decimal
 from typing import Any
 
 import httpx
+import sqlglot
 import sqlparse
+from sqlglot import exp
+from sqlglot.errors import ParseError
 
 from ..config import settings
 from ..errors import ValidationError
@@ -74,10 +77,45 @@ FORBIDDEN_TARGETS = re.compile(
     r"current_setting|current_user|session_user)\b",
     re.IGNORECASE,
 )
-TABLE_REF = re.compile(
-    r"\b(?:from|join)\s+([a-zA-Z_][\w]*(?:\.[a-zA-Z_][\w]*)?)", re.IGNORECASE
+STRING_LITERAL = re.compile(r"'(?:''|[^'])*'")
+QUOTED_IDENTIFIER = re.compile(r'"(?:""|[^"])*"')
+ALLOWED_ROOTS = (exp.Select, exp.Union, exp.Intersect, exp.Except)
+FORBIDDEN_NODES = (
+    exp.Insert,
+    exp.Update,
+    exp.Delete,
+    exp.Create,
+    exp.Drop,
+    exp.Alter,
+    exp.TruncateTable,
+    exp.Grant,
+    exp.Copy,
+    exp.Command,
+    exp.Transaction,
+    exp.Commit,
+    exp.Rollback,
+    exp.Set,
+    exp.Use,
+    exp.Merge,
+    exp.Into,
+    exp.Lock,
 )
-CTE_NAME = re.compile(r"\b(?:with|,)\s*([a-zA-Z_]\w*)\s+as\s*\(", re.IGNORECASE)
+FORBIDDEN_FUNCTION_PREFIXES = ("pg_", "lo_", "dblink")
+FORBIDDEN_FUNCTIONS = {
+    "current_setting",
+    "set_config",
+    "current_user",
+    "session_user",
+    "current_role",
+    "current_database",
+    "query_to_xml",
+    "query_to_xmlschema",
+    "query_to_xml_and_xmlschema",
+    "txid_current",
+    "version",
+    "inet_server_addr",
+    "inet_server_port",
+}
 
 
 class GuardError(ValidationError):
@@ -92,6 +130,57 @@ def _clean_sql_text(raw: str) -> str:
     return text.strip()
 
 
+def _parse_single(text: str):
+    try:
+        parsed = sqlglot.parse(text, read="postgres")
+    except ParseError as exc:
+        raise GuardError(f"SQL 无法解析：{exc}") from exc
+    parsed = [statement for statement in parsed if statement is not None]
+    if len(parsed) != 1:
+        raise GuardError("只允许执行一条 SQL 语句")
+    return parsed[0]
+
+
+def _mask_literals(text: str) -> str:
+    return QUOTED_IDENTIFIER.sub('""', STRING_LITERAL.sub("''", text))
+
+
+def _validate_ast(ast) -> None:
+    if not isinstance(ast, ALLOWED_ROOTS):
+        raise GuardError("只允许 SELECT 或 WITH 查询")
+    for node in ast.walk():
+        if isinstance(node, FORBIDDEN_NODES):
+            raise GuardError("SQL 包含不被允许的写入或管理语句")
+
+    cte_names = {
+        cte.alias_or_name.lower()
+        for cte in ast.find_all(exp.CTE)
+        if cte.alias_or_name
+    }
+    view_names = {name.lower() for name in VIEWS}
+    for table in ast.find_all(exp.Table):
+        name = (table.name or "").lower()
+        db = (table.db or "").lower()
+        catalog = (table.catalog or "").lower()
+        if not name:
+            raise GuardError("SQL 不允许在 FROM 中调用表函数")
+        if catalog:
+            raise GuardError(f"SQL 访问了未授权的对象：{catalog}.{db}.{name}")
+        if db in ("", "t2s") and name in view_names:
+            continue
+        if not db and name in cte_names:
+            continue
+        qualified = f"{db}.{name}" if db else name
+        raise GuardError(f"SQL 访问了未授权的对象：{qualified}")
+
+    for func in ast.find_all(exp.Func):
+        name = (func.name or "").lower()
+        if not name:
+            continue
+        if name.startswith(FORBIDDEN_FUNCTION_PREFIXES) or name in FORBIDDEN_FUNCTIONS:
+            raise GuardError(f"SQL 调用了不允许的函数：{name}")
+
+
 def check_sql(sql: str) -> str:
     text = _clean_sql_text(sql)
     if not text:
@@ -104,19 +193,15 @@ def check_sql(sql: str) -> str:
     text = statements[0].strip()
     if text.endswith(";"):
         text = text[:-1].rstrip()
-    if not re.match(r"^(select|with)\b", text, re.IGNORECASE):
-        raise GuardError("只允许 SELECT 或 WITH 查询")
-    if DENY_KEYWORDS.search(text):
-        raise GuardError("SQL 包含不被允许的关键字")
-    if FORBIDDEN_TARGETS.search(text):
-        raise GuardError("SQL 访问了不允许的 schema 或系统对象")
 
-    cte_names = {name.lower() for name in CTE_NAME.findall(text)}
-    allowed = set(VIEWS) | {f"t2s.{name}" for name in VIEWS} | cte_names
-    for ref in TABLE_REF.finditer(text):
-        name = ref.group(1).lower()
-        if name not in allowed:
-            raise GuardError(f"SQL 访问了未授权的对象：{name}")
+    ast = _parse_single(text)
+    _validate_ast(ast)
+
+    masked = _mask_literals(text)
+    if DENY_KEYWORDS.search(masked):
+        raise GuardError("SQL 包含不被允许的关键字")
+    if FORBIDDEN_TARGETS.search(masked):
+        raise GuardError("SQL 访问了不允许的 schema 或系统对象")
     return text
 
 

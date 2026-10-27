@@ -414,6 +414,8 @@ ALTER ROLE t2s_reader SET lock_timeout = '2s';
 
 `t2s_reader` 对 `app` schema 没有任何基线权限，因此即使 SQL 守卫被绕过，也无法读取基表或执行写操作。
 
+应用层的 SQL 守卫以 `sqlglot` 的 PostgreSQL AST 为主：只接受单条 SELECT/WITH/UNION，遍历语法树拒绝嵌套 DML、`SELECT INTO`、`FOR UPDATE`、表函数和 `pg_*` / `lo_*` / `dblink` 等函数；所有 `FROM` / `JOIN` 对象必须属于 13 个 `t2s` 视图或当前语句定义的 CTE。正则黑名单保留为第二层，匹配前先屏蔽字符串字面量与引用标识符，避免正文关键词误伤。
+
 ## 9. 事务与并发
 
 ### 9.1 导入确认事务

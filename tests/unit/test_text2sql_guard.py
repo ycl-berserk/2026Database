@@ -52,6 +52,48 @@ def test_rejects_unknown_cte_reference():
         svc.check_sql(sql)
 
 
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "WITH x AS (DELETE FROM app.users RETURNING id) SELECT * FROM x",
+        "WITH x AS (UPDATE app.users SET display_name = 'x' RETURNING id) SELECT * FROM x",
+        "SELECT 1 INTO newtable",
+        "SELECT * FROM v_my_courses FOR UPDATE",
+        "SELECT * FROM generate_series(1, 10)",
+        "SELECT pg_read_file('/etc/passwd')",
+        "SELECT pg_sleep(5)",
+        "SELECT lo_import('/etc/passwd')",
+        "SELECT dblink('host=evil', 'SELECT 1')",
+        "SELECT query_to_xml('SELECT * FROM app.users', true, true, '')",
+        "SELECT * FROM v_my_courses, app.users",
+        "SELECT * FROM v_my_courses; DROP TABLE app.users",
+        "SELEC code FROM v_my_courses",
+        "SELECT (SELECT display_name FROM app.users LIMIT 1)",
+    ],
+)
+def test_ast_guard_rejects_nested_and_function_escapes(sql):
+    with pytest.raises(svc.GuardError):
+        svc.check_sql(sql)
+
+
+def test_ast_guard_allows_union_and_cte_join():
+    assert svc.check_sql(
+        "SELECT code FROM v_my_courses UNION SELECT code FROM v_my_course_stats"
+    )
+    assert svc.check_sql(
+        "WITH x AS (SELECT conversation_id FROM v_my_conversations) "
+        "SELECT c.title FROM x JOIN v_my_conversations c USING (conversation_id)"
+    )
+
+
+def test_ast_guard_ignores_keywords_inside_literals_and_identifiers():
+    assert svc.check_sql(
+        "SELECT title FROM v_my_conversations WHERE title ILIKE '%delete%'"
+    )
+    assert svc.check_sql('SELECT "delete" AS "drop" FROM v_my_courses')
+    assert svc.check_sql("SELECT 'pg_read_file' AS note")
+
+
 def test_wrap_sql_enforces_row_cap():
     wrapped = svc.wrap_sql("SELECT code FROM v_my_courses")
     assert wrapped.startswith("SELECT * FROM (")

@@ -12,7 +12,7 @@
 
 本项目实现了一个以“聊天记录”为核心的关系数据库应用系统。系统把 Qoder、ChatGPT、DeepSeek 等平台的问答导出文件解析为统一格式，按课程、来源、标签组织；支持中文检索、会话上下文、批注、间隔复习、统计导出，并额外实现了受数据库只读权限视图保护的 Text2SQL 页面。
 
-数据库包含 14 张业务表、13 个权限视图、4 个触发器、多组唯一/检查/外键约束；应用层使用参数化 SQL 与显式事务，不依赖 ORM。导入流水线采用“解析 → 校验 → 持久化预览 → 单事务确认 → 查重”的结构，并在文件导入之外提供平台原生导出适配、采集令牌 + Bearer 接口与 MV3 浏览器扩展。系统通过 184 个自动化测试与 33 项端到端验收检查，覆盖 schema、权限、导入幂等、中文检索、全局搜索、统计、批注复习、离线同步、导出、Text2SQL 安全与事务回滚。
+数据库包含 14 张业务表、13 个权限视图、4 个触发器、多组唯一/检查/外键约束；应用层使用参数化 SQL 与显式事务，不依赖 ORM。导入流水线采用“解析 → 校验 → 持久化预览 → 单事务确认 → 查重”的结构，并在文件导入之外提供平台原生导出适配、采集令牌 + Bearer 接口与 MV3 浏览器扩展。系统通过 200 个自动化测试与 33 项端到端验收检查，覆盖 schema、权限、导入幂等、中文检索、全局搜索、统计、批注复习、离线同步、导出、Text2SQL 安全与事务回滚。
 
 ---
 
@@ -339,7 +339,7 @@ SELECT c.code, c.name,
 Text2SQL 的风险不在“生成得对不对”，而在“生成了危险语句怎么办”。本项目采用多层防护：
 
 1. **Prompt 约束**：只提供 `t2s` 视图与列、关系说明、少样本；要求输出 JSON，只生成单条 SELECT/WITH。
-2. **SQL 守卫**：`sqlparse` 拆分必须恰好一条；首关键字必须是 SELECT/WITH；拒绝 DDL/DML/危险关键字/注释；拒绝 `pg_catalog`、`information_schema`、`app.`、`dblink`、`pg_read_file` 等；表名必须在 13 个视图或 CTE 白名单中。
+2. **SQL 守卫（AST 优先）**：`sqlglot` 以 PostgreSQL 方言解析，要求恰好一条 SELECT/WITH/UNION；遍历语法树拒绝 DDL/DML、`SELECT INTO`、`FOR UPDATE` 锁、表函数与 `pg_*`/`lo_*`/`dblink` 等危险函数，表名必须在 13 个视图或 CTE 白名单中。随后保留 `sqlparse` 单语句拆分、注释禁用和关键字黑名单作为第二层，并在检查前屏蔽字符串字面量与引用标识符，避免把正文里的 `delete` 误判为语句。
 3. **行数包装**：`SELECT * FROM (<sql>) q LIMIT 201`，只返回前 200 行并标记截断。
 4. **只读角色**：`t2s_reader` 只能 SELECT `t2s` 视图；对 `app` schema 无任何权限；默认只读事务、3 秒语句超时、5 秒空闲事务超时、2 秒锁超时。
 5. **行级权限视图**：13 个 `security_barrier` 视图按事务内 `app.user_id` 过滤；未设置时返回 0 行。
@@ -369,12 +369,12 @@ Text2SQL 的风险不在“生成得对不对”，而在“生成了危险语�
 ### 10.1 自动化测试
 
 ```text
-101 unit tests
+117 unit tests
 83 integration tests
-184 total, all passed
+200 total, all passed
 ```
 
-- 单元：密码哈希/校验、CSRF、JSON/Markdown/裸文本与三种平台原生导出解析、字段校验、去重分类、Text2SQL 守卫、mock 规则、PWA 资产、MV3 扩展契约、引导/撤销/错误页/静态缓存与性能预算。
+- 单元：密码哈希/校验、CSRF、JSON/Markdown/裸文本与三种平台原生导出解析、字段校验、去重分类、Text2SQL AST 守卫（嵌套 DML、表函数、锁、字面量误伤）、mock 规则、PWA 资产、MV3 扩展契约、引导/撤销/错误页/静态缓存与性能预算。
 - 集成：schema 约束与删除行为、权限边界、导入预览/确认/幂等/损坏文件、收件箱批量归类、检索与全局搜索、批注复习间隔与事件流水、统计、管理员、采集令牌与 Bearer 入库、Text2SQL 只读/越权/审计。
 
 集成测试只连接以 `_test` 结尾的数据库，每个用例前 `TRUNCATE app.users RESTART IDENTITY CASCADE`。测试脚手架使用管理员连接执行 TRUNCATE，因为应用角色 `ls_app` 被刻意设计为没有 TRUNCATE 权限。
@@ -384,7 +384,7 @@ Text2SQL 的风险不在“生成得对不对”，而在“生成了危险语�
 `scripts/verify.py` 在演示库上执行 33 项检查，所有写操作放在外层事务中，最后主动回滚：
 
 ```text
-结果：33/33 PASS，0 FAIL，耗时 583 ms
+结果：33/33 PASS，0 FAIL，耗时 936 ms
 报告：data/verification/report.json
 ```
 

@@ -78,8 +78,13 @@ async def review_mastered(
     _require_student(user)
     form = await request.form()
     verify_csrf(request, form.get("csrf_token"))
-    review_service.mark_mastered(conn, review_id, user["id"])
-    add_flash(request, "已标记为掌握，转入「已掌握」列表", "success")
+    row = review_service.mark_mastered(
+        conn, review_id, user["id"], event_id=form.get("event_id")
+    )
+    if row["duplicate"]:
+        add_flash(request, "这次操作已经记录过，没有重复提交", "info")
+    else:
+        add_flash(request, "已标记为掌握，转入「已掌握」列表", "success")
     return RedirectResponse(_back(form.get("scope") or ""), status_code=303)
 
 
@@ -93,8 +98,13 @@ async def review_reset(
     _require_student(user)
     form = await request.form()
     verify_csrf(request, form.get("csrf_token"))
-    review_service.reset_review(conn, review_id, user["id"])
-    add_flash(request, "复习进度已重置，今天重新开始", "success")
+    row = review_service.reset_review(
+        conn, review_id, user["id"], event_id=form.get("event_id")
+    )
+    if row["duplicate"]:
+        add_flash(request, "这次操作已经记录过，没有重复提交", "info")
+    else:
+        add_flash(request, "复习进度已重置，今天重新开始", "success")
     return RedirectResponse(_back(form.get("scope") or ""), status_code=303)
 
 

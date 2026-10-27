@@ -126,7 +126,7 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
         _ok(tables == 13, f"app 表数量应为 13，实际 {tables}")
         _ok(views == 13, f"t2s 视图数量应为 13，实际 {views}")
         return f"13 张表、13 个权限视图"
-    report.run("schema.tables", "Schema：12 张业务表与 13 个 t2s 视图", schema_tables)
+    report.run("schema.tables", "Schema：13 张业务表与 13 个 t2s 视图", schema_tables)
 
     def schema_constraints():
         constraints = {
@@ -144,6 +144,7 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             "import_batches_preview_token_key",
             "review_items_status_check",
             "review_logs_event_unique",
+            "annotations_client_event_unique",
             "messages_sender_check",
         }
         missing = required - constraints

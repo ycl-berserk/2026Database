@@ -143,6 +143,78 @@ def test_review_schedule_doubles_and_resets(conn, base):
     assert review_service.summary(conn, alice_id)["total"] == 0
 
 
+def test_annotation_event_id_is_idempotent(conn, base):
+    alice = _student(base["users"]["alice"])
+    event_id = str(uuid4())
+
+    first = annotation_service.create_annotation(
+        conn,
+        base["messages"]["db-1"],
+        alice,
+        "note",
+        "离线草稿第一次提交",
+        event_id=event_id,
+    )
+    assert first["duplicate"] is False
+
+    replay = annotation_service.create_annotation(
+        conn,
+        base["messages"]["db-1"],
+        alice,
+        "note",
+        "重放时不应再插入",
+        event_id=event_id,
+    )
+    assert replay["duplicate"] is True
+    assert replay["id"] == first["id"]
+    assert replay["content"] == first["content"]
+    assert conn.execute(
+        "SELECT count(*) AS n FROM app.annotations "
+        "WHERE user_id = %s AND client_event_id = %s",
+        (alice["id"], event_id),
+    ).fetchone()["n"] == 1
+
+    with pytest.raises(ValidationError):
+        annotation_service.create_annotation(
+            conn,
+            base["messages"]["db-1"],
+            alice,
+            "note",
+            "坏事件标识",
+            event_id="not-a-uuid",
+        )
+
+
+def test_mastered_and_reset_events_are_idempotent(conn, base):
+    alice_id = base["users"]["alice"]
+    review_id = conn.execute(
+        "SELECT id FROM app.review_items WHERE user_id = %s", (alice_id,)
+    ).fetchone()["id"]
+
+    mastered_event = str(uuid4())
+    first = review_service.mark_mastered(
+        conn, review_id, alice_id, event_id=mastered_event
+    )
+    assert first["duplicate"] is False
+    assert first["status"] == "mastered"
+    replay = review_service.mark_mastered(
+        conn, review_id, alice_id, event_id=mastered_event
+    )
+    assert replay["duplicate"] is True
+
+    reset_event = str(uuid4())
+    reset = review_service.reset_review(conn, review_id, alice_id, event_id=reset_event)
+    assert reset["duplicate"] is False
+    replay = review_service.reset_review(conn, review_id, alice_id, event_id=reset_event)
+    assert replay["duplicate"] is True
+
+    logs = conn.execute(
+        "SELECT action FROM app.review_logs WHERE user_id = %s ORDER BY id",
+        (alice_id,),
+    ).fetchall()
+    assert [row["action"] for row in logs] == ["mastered", "reset"]
+
+
 def test_review_event_is_idempotent_and_logged(conn, base):
     alice_id = base["users"]["alice"]
     review_id = conn.execute(

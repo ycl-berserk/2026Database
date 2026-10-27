@@ -32,8 +32,12 @@ def test_offline_reader_is_self_contained_and_manages_storage():
     body = _read(STATIC / "offline.html")
     assert "indexedDB.open" in body
     assert '"conversations"' in body
+    assert '"drafts"' in body
+    assert '"outbox"' in body
+    assert '"queue"' in body
     assert "清除本机离线数据" in body
     assert "已保存的会话" in body
+    assert "离线复习" in body
     assert "renderReader" in body
     assert 'src="http' not in body
     assert 'href="http' not in body
@@ -48,9 +52,20 @@ def test_app_script_has_offline_store_and_connection_banner():
     assert "updateOfflineCount" in script
 
 
+def test_app_script_queues_drafts_and_review_outbox():
+    script = _read(STATIC / "app.js")
+    assert "OFFLINE_DB_VERSION = 2" in script
+    assert "queueDraft" in script
+    assert "queueReview" in script
+    assert "flushOfflineWork" in script
+    assert "/api/reviews/offline" in script
+    assert "/api/annotations" in script
+    assert 'data-review-action' in script
+
+
 def test_service_worker_cache_version_bumped():
     body = _read(STATIC / "sw.js")
-    assert 'CACHE_NAME = "ls-shell-v4"' in body
+    assert 'CACHE_NAME = "ls-shell-v5"' in body
 
 
 def test_offline_reader_denies_admin_message_bodies():

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import uuid
+
 from ..errors import NotFoundError, PermissionDenied, ValidationError
 from .conversation_service import make_snippet
 
@@ -70,19 +72,48 @@ def _validate(kind: str, content: str) -> tuple[str, str]:
     return kind, content
 
 
-def create_annotation(conn, message_id: int, user: dict, kind: str, content: str) -> dict:
+def _parse_event_id(value: str | None) -> str | None:
+    if not value:
+        return None
+    try:
+        return str(uuid.UUID(str(value)))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise ValidationError("批注事件标识无效") from exc
+
+
+def create_annotation(
+    conn,
+    message_id: int,
+    user: dict,
+    kind: str,
+    content: str,
+    event_id: str | None = None,
+) -> dict:
     _message_access(conn, message_id, user["id"])
     kind, content = _validate(kind, content)
+    event = _parse_event_id(event_id)
     with conn.transaction():
         row = conn.execute(
             """
-            INSERT INTO app.annotations (message_id, user_id, kind, content)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO app.annotations
+                (message_id, user_id, kind, content, client_event_id)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (user_id, client_event_id) DO NOTHING
             RETURNING id, message_id, kind, content, status, created_at
             """,
-            (message_id, user["id"], kind, content),
+            (message_id, user["id"], kind, content, event),
         ).fetchone()
-    return row
+        duplicate = row is None
+        if duplicate:
+            row = conn.execute(
+                """
+                SELECT id, message_id, kind, content, status, created_at
+                  FROM app.annotations
+                 WHERE user_id = %s AND client_event_id = %s
+                """,
+                (user["id"], event),
+            ).fetchone()
+    return {**row, "duplicate": duplicate}
 
 
 def update_annotation(

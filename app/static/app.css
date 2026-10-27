@@ -1098,6 +1098,8 @@ mark { background: #f7e3a8; color: inherit; padding: 0 1px; border-radius: 2px; 
 }
 .annotation-card-foot .btn, .review-foot .btn { font-size: 12.5px; }
 .review-card.review-due { border-left: 3px solid var(--amber); }
+.review-card.review-pending { border-left: 3px solid var(--seal); }
+.review-card.review-pending .review-body { opacity: .72; }
 .review-heatmap { margin-bottom: 14px; }
 .heatmap {
   display: grid;

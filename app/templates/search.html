@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}搜索{% endblock %}
+{% block page_title %}全局搜索{% endblock %}
+{% block page_subtitle %}一次查找会话、消息摘录、批注、课程与标签{% endblock %}
+
+{% block topbar_actions %}
+  <a class="btn btn-ghost" href="/conversations">浏览全部会话</a>
+{% endblock %}
+
+{% block content %}
+<section class="panel search-panel">
+  <form method="get" action="/search" class="search-page-form" role="search">
+    <input type="search" name="q" value="{{ q }}" maxlength="100"
+           placeholder="输入关键词，例如：隔离级别、死锁、进程调度"
+           aria-label="搜索关键词" autofocus>
+    <button class="btn btn-primary" type="submit">搜索</button>
+  </form>
+  {% if q %}
+    <p class="muted search-summary">
+      关键词「{{ q }}」共找到
+      <b>{{ data.conversations.total }}</b> 个会话、
+      <b>{{ data.annotations | length }}</b> 条批注、
+      <b>{{ data.courses | length }}</b> 门课程、
+      <b>{{ data.tags | length }}</b> 个标签。
+    </p>
+  {% else %}
+    <p class="muted search-summary">输入关键词开始搜索。会话会匹配标题与全部消息内容；批注只搜索你自己的记录。</p>
+  {% endif %}
+</section>
+
+{% if q %}
+  {% if total == 0 %}
+    <section class="panel">
+      <div class="empty-block">
+        <p>没有找到与「{{ q }}」相关的内容</p>
+        <p class="muted">试试更短的关键词，或先检查课程与标签整理。也可以到 <a class="link" href="/conversations">会话列表</a> 按课程筛选。</p>
+      </div>
+    </section>
+  {% endif %}
+
+  {% if data.conversations.rows %}
+    <section class="panel">
+      <div class="panel-head">
+        <h2>会话与消息</h2>
+        <a class="link" href="/conversations?q={{ q | urlencode }}">在会话列表继续筛选 →</a>
+      </div>
+      <ul class="record-list search-results">
+        {% for row in data.conversations.rows %}
+          <li>
+            <a class="record-title" href="/conversations/{{ row.id }}{% if row.hit_seq %}#m{{ row.hit_seq }}{% endif %}">
+              {{ row.title | highlight(q) }}
+            </a>
+            <div class="record-meta">
+              <span class="chip">{{ platform_label(row.platform) }}</span>
+              {% if row.course_name %}<span class="chip chip-soft">{{ row.course_name }}</span>{% endif %}
+              <span>{{ row.message_count }} 条消息</span>
+              <span class="muted">{{ row.last_message_at | dt }}</span>
+            </div>
+            {% if row.snippet %}
+              <p class="search-snippet">{{ row.snippet | highlight(q) }}</p>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  {% if data.annotations %}
+    <section class="panel">
+      <div class="panel-head">
+        <h2>我的批注</h2>
+        <a class="link" href="/annotations">全部批注 →</a>
+      </div>
+      <ul class="record-list search-results">
+        {% for row in data.annotations %}
+          <li>
+            <div class="record-meta">
+              <span class="chip chip-seal">{{ kind_label(row.kind) }}</span>
+              <span class="muted">{{ row.conversation_title }}</span>
+            </div>
+            <a class="search-snippet search-link" href="/conversations/{{ row.conversation_id }}#m{{ row.seq_no }}">
+              {{ row.snippet | highlight(q) }}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  <div class="two-col">
+    {% if data.courses %}
+      <section class="panel">
+        <div class="panel-head"><h2>课程</h2><a class="link" href="/courses">全部课程 →</a></div>
+        <ul class="record-list">
+          {% for row in data.courses %}
+            <li>
+              <a class="record-title" href="/courses/{{ row.id }}">{{ row.code }} · {{ row.name }}</a>
+              <div class="record-meta">
+                <span>{{ row.semester }}</span>
+                {% if row.instructor %}<span class="muted">{{ row.instructor }}</span>{% endif %}
+                <span>{{ row.conversation_count }} 个会话</span>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endif %}
+
+    {% if data.tags %}
+      <section class="panel">
+        <div class="panel-head"><h2>标签</h2><a class="link" href="/tags">全部标签 →</a></div>
+        <div class="tag-cloud">
+          {% for tag in data.tags %}
+            <a class="tag-pill" href="/conversations?tag_id={{ tag.id }}">
+              <span class="tag-dot" style="background: {{ tag.color or '#2f5d4e' }}"></span>{{ tag.name }}
+              <span class="muted">· {{ tag.usage_count }}</span>
+            </a>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}

@@ -67,7 +67,7 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 | C2 | 剪贴板粘贴导入：自动识别角色与时间分隔 | 用户 | S | 完成 | `importers/plain_text_importer.py` 识别中英文角色前缀、`said/说`、括号时间、标题与课程/标签元信息；输出与 JSON 导入相同的 DTO |
 | C3 | 每用户 Ingest Token：哈希存储、可撤销、限流 | 用户 + 答辩 | S/M | 完成 | 新增 `api_tokens` 表（第 14 张）；`/tokens` 管理页明文只显示一次，服务端仅存 SHA-256；`POST /api/ingest` 用 Bearer 令牌写入统一 JSON，按 `course_code` 自动归课，复用预览/确认/查重事务；每令牌每分钟 60 次固定窗口限流 |
 | C4 | 浏览器扩展 MV3：一键抓取当前 ChatGPT / Qoder / DeepSeek 会话 | 用户 | M | 待办 | DOM 易变，平台导出文件优先，扩展作为补充 |
-| C5 | 平台导出适配器：ChatGPT `conversations.json`、Qoder、DeepSeek Markdown | 用户 | M | 待办 | 在现有 JSON 解析器上加字段映射层，不新写一套入库逻辑 |
+| C5 | 平台导出适配器：ChatGPT `conversations.json`、Qoder、DeepSeek Markdown | 用户 | M | 完成 | 新增 `importers/adapters.py` 字段映射层：ChatGPT `mapping` 沿 `current_node` 取主线并转换 UTC 时间；Qoder `sessions` / 别名字段归一；DeepSeek `### User/Assistant` 与英文元信息归一；统一复用现有 JSON / Markdown 解析与入库逻辑，三份样例随 `make_samples.py` 生成 |
 | C6 | Bookmarklet 零安装抓取 | 用户 | S | 待办 | 受 CSP 限制，作为低配方案 |
 | C7 | 收件箱 / 待整理区：未归类会话批量打标签、归课程 | 用户 | S/M | 完成 | `/inbox` 列出未归类会话，支持批量归入可编辑课程；仅允许移动本人、当前未归类的会话，避免误动共享课程数据 |
 
@@ -186,7 +186,7 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 
 **Phase 1 进度**：已完成全部项（M1、O1、O5、U1、U2、U3、U5、U6、U7、C1、C2、C7、E8）。UX-1 至 UX-9 已逐项走查；UX-10 已由 U8 的离线状态横幅与缓存管理覆盖。
 
-**Phase 2 进度**：K1 复习事件流水、O2 离线阅读、O3 离线批注草稿、O4 复习 outbox、U4 全局搜索、U8 离线状态提示与 C3 采集令牌 / Bearer 导入接口已完成；下一步 C5（平台导出适配器），随后 C4（MV3 扩展）。
+**Phase 2 进度**：K1 复习事件流水、O2 离线阅读、O3 离线批注草稿、O4 复习 outbox、U4 全局搜索、U8 离线状态提示、C3 采集令牌 / Bearer 导入接口与 C5 平台导出适配器已完成；下一步 C4（MV3 扩展）。
 
 每个阶段的统一验收：
 

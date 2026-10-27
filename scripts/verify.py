@@ -322,6 +322,29 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
         return f"解析被拒绝，共 {len(result.errors)} 条错误"
     report.run("import.broken", "导入：损坏文件校验拦截", broken_file)
 
+    def platform_adapters():
+        samples = ROOT / "data" / "samples"
+        expected = {
+            "chatgpt_export_conversations.json": ("chatgpt", 2, 28),
+            "qoder_sessions_export.json": ("qoder", 2, 28),
+            "deepseek_export.md": ("deepseek", 2, 28),
+        }
+        for name, (platform, conversations, messages) in expected.items():
+            result = import_service.parse_upload(
+                name, (samples / name).read_bytes(),
+                platform=None, account_label=None,
+            )
+            _ok(result.ok, f"{name} 解析失败：{result.errors[:2]}")
+            _ok(result.platform == platform, f"{name} 平台应为 {platform}，实际 {result.platform}")
+            _ok(
+                len(result.conversations) == conversations
+                and result.message_count == messages,
+                f"{name} 应解析 {conversations} 会话 / {messages} 消息，"
+                f"实际 {len(result.conversations)} / {result.message_count}",
+            )
+        return "ChatGPT mapping、Qoder sessions、DeepSeek Markdown 均映射为统一格式"
+    report.run("import.adapters", "导入：平台导出适配器（ChatGPT / Qoder / DeepSeek）", platform_adapters)
+
     def keyword_search():
         result = conversation_service.list_conversations(conn, alice["id"], q="事务")
         _ok(result["total"] >= 4, f"关键词“事务”命中过少：{result['total']}")

@@ -1,0 +1,660 @@
+[
+  {
+    "id": "db-01-01",
+    "title": "SQL 执行顺序与 JOIN",
+    "create_time": 1770202800.0,
+    "update_time": 1770204360.0,
+    "mapping": {
+      "root": {
+        "id": "root",
+        "parent": null,
+        "children": [
+          "db-01-01-node-1"
+        ],
+        "message": null
+      },
+      "db-01-01-node-1": {
+        "id": "db-01-01-node-1",
+        "parent": "root",
+        "children": [
+          "db-01-01-node-2",
+          "db-01-01-node-15-alt"
+        ],
+        "message": {
+          "id": "db-01-01-node-1",
+          "author": {
+            "role": "user"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "SELECT 语句里 WHERE、GROUP BY、HAVING 到底谁先执行？"
+            ]
+          },
+          "create_time": 1770202800.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-01-node-2": {
+        "id": "db-01-01-node-2",
+        "parent": "db-01-01-node-1",
+        "children": [
+          "db-01-01-node-3"
+        ],
+        "message": {
+          "id": "db-01-01-node-2",
+          "author": {
+            "role": "assistant"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "逻辑执行顺序是 FROM → WHERE → GROUP BY → HAVING → SELECT → ORDER BY → LIMIT。JOIN 属于 FROM 阶段，先形成中间结果，再由 WHERE 过滤行、GROUP BY 聚合、HAVING 过滤组。"
+            ]
+          },
+          "create_time": 1770202920.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-01-node-3": {
+        "id": "db-01-01-node-3",
+        "parent": "db-01-01-node-2",
+        "children": [
+          "db-01-01-node-4"
+        ],
+        "message": {
+          "id": "db-01-01-node-3",
+          "author": {
+            "role": "user"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "能结合一个具体场景解释吗？"
+            ]
+          },
+          "create_time": 1770202980.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-01-node-4": {
+        "id": "db-01-01-node-4",
+        "parent": "db-01-01-node-3",
+        "children": [
+          "db-01-01-node-5"
+        ],
+        "message": {
+          "id": "db-01-01-node-4",
+          "author": {
+            "role": "assistant"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "可以。围绕「SQL 执行顺序与 JOIN」，一个直观的场景是：统计每门课的消息数并筛出大于 50 的组：先连接会话与消息，再按课程分组聚合，最后用 HAVING 过滤。"
+            ]
+          },
+          "create_time": 1770203160.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-01-node-5": {
+        "id": "db-01-01-node-5",
+        "parent": "db-01-01-node-4",
+        "children": [
+          "db-01-01-node-6"
+        ],
+        "message": {
+          "id": "db-01-01-node-5",
+          "author": {
+            "role": "user"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "这里最容易出错的地方是什么？"
+            ]
+          },
+          "create_time": 1770203220.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-01-node-6": {
+        "id": "db-01-01-node-6",
+        "parent": "db-01-01-node-5",
+        "children": [
+          "db-01-01-node-7"
+        ],
+        "message": {
+          "id": "db-01-01-node-6",
+          "author": {
+            "role": "assistant"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "最常见的坑是：把聚合条件写进 WHERE。聚合函数只能出现在 HAVING 或 SELECT 中，WHERE 阶段还没有分组。"
+            ]
+          },
+          "create_time": 1770203460.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-01-node-7": {
+        "id": "db-01-01-node-7",
+        "parent": "db-01-01-node-6",
+        "children": [
+          "db-01-01-node-8"
+        ],
+        "message": {
+          "id": "db-01-01-node-7",
+          "author": {
+            "role": "user"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "考试里如果换一种问法，我该怎么判断？"
+            ]
+          },
+          "create_time": 1770203520.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-01-node-8": {
+        "id": "db-01-01-node-8",
+        "parent": "db-01-01-node-7",
+        "children": [
+          "db-01-01-node-9"
+        ],
+        "message": {
+          "id": "db-01-01-node-8",
+          "author": {
+            "role": "assistant"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "先判断题目属于查询、并发还是设计：查询题先画执行顺序并检查索引；并发题写隔离级别与可能异常；设计题先列函数依赖再分解。 当题干关键词落在「SQL 执行顺序与 JOIN」上时，先写出对象、约束和目标，再套方法。"
+            ]
+          },
+          "create_time": 1770203640.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-01-node-9": {
+        "id": "db-01-01-node-9",
+        "parent": "db-01-01-node-8",
+        "children": [
+          "db-01-01-node-10"
+        ],
+        "message": {
+          "id": "db-01-01-node-9",
+          "author": {
+            "role": "user"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "用一句话帮我记住它。"
+            ]
+          },
+          "create_time": 1770203700.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-01-node-10": {
+        "id": "db-01-01-node-10",
+        "parent": "db-01-01-node-9",
+        "children": [
+          "db-01-01-node-11"
+        ],
+        "message": {
+          "id": "db-01-01-node-10",
+          "author": {
+            "role": "assistant"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "一句话：先 FROM 后 WHERE，先 GROUP 再 HAVING，SELECT 只是投影。"
+            ]
+          },
+          "create_time": 1770203880.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-01-node-11": {
+        "id": "db-01-01-node-11",
+        "parent": "db-01-01-node-10",
+        "children": [
+          "db-01-01-node-12"
+        ],
+        "message": {
+          "id": "db-01-01-node-11",
+          "author": {
+            "role": "user"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "它和哪个知识点最容易混淆？"
+            ]
+          },
+          "create_time": 1770203940.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-01-node-12": {
+        "id": "db-01-01-node-12",
+        "parent": "db-01-01-node-11",
+        "children": [
+          "db-01-01-node-13"
+        ],
+        "message": {
+          "id": "db-01-01-node-12",
+          "author": {
+            "role": "assistant"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "最容易混淆的是「窗口函数与 GROUP BY 的区别」。区分时先问：讨论的是存储结构、执行过程还是评价指标？"
+            ]
+          },
+          "create_time": 1770204180.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-01-node-13": {
+        "id": "db-01-01-node-13",
+        "parent": "db-01-01-node-12",
+        "children": [
+          "db-01-01-node-14"
+        ],
+        "message": {
+          "id": "db-01-01-node-13",
+          "author": {
+            "role": "user"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "如果放到真实项目里，这个知识点的价值在哪？"
+            ]
+          },
+          "create_time": 1770204240.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-01-node-14": {
+        "id": "db-01-01-node-14",
+        "parent": "db-01-01-node-13",
+        "children": [],
+        "message": {
+          "id": "db-01-01-node-14",
+          "author": {
+            "role": "assistant"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "报表页的“课程消息量 TopN”就是这一执行顺序的典型应用。"
+            ]
+          },
+          "create_time": 1770204360.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-01-node-15-alt": {
+        "id": "db-01-01-node-15-alt",
+        "parent": "db-01-01-node-1",
+        "children": [],
+        "message": {
+          "id": "db-01-01-node-15-alt",
+          "author": {
+            "role": "assistant"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "这是一条没有被采用的重新生成回答。"
+            ]
+          },
+          "create_time": 1770202860.0,
+          "status": "finished_successfully"
+        }
+      }
+    },
+    "current_node": "db-01-01-node-14"
+  },
+  {
+    "id": "db-01-02",
+    "title": "索引与 B+ 树",
+    "create_time": 1772971620.0,
+    "update_time": 1772973180.0,
+    "mapping": {
+      "root": {
+        "id": "root",
+        "parent": null,
+        "children": [
+          "db-01-02-node-1"
+        ],
+        "message": null
+      },
+      "db-01-02-node-1": {
+        "id": "db-01-02-node-1",
+        "parent": "root",
+        "children": [
+          "db-01-02-node-2",
+          "db-01-02-node-15-alt"
+        ],
+        "message": {
+          "id": "db-01-02-node-1",
+          "author": {
+            "role": "user"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "为什么给消息内容建索引后，LIKE 查询还是可能很慢？"
+            ]
+          },
+          "create_time": 1772971620.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-02-node-2": {
+        "id": "db-01-02-node-2",
+        "parent": "db-01-02-node-1",
+        "children": [
+          "db-01-02-node-3"
+        ],
+        "message": {
+          "id": "db-01-02-node-2",
+          "author": {
+            "role": "assistant"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "普通 B+ 树适合等值匹配和前缀匹配，`%关键词%` 这种两侧通配无法利用前缀定位。中文子串检索可以改用 pg_trgm 的 GIN 索引，或先用课程、日期等条件缩小范围。"
+            ]
+          },
+          "create_time": 1772971740.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-02-node-3": {
+        "id": "db-01-02-node-3",
+        "parent": "db-01-02-node-2",
+        "children": [
+          "db-01-02-node-4"
+        ],
+        "message": {
+          "id": "db-01-02-node-3",
+          "author": {
+            "role": "user"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "能结合一个具体场景解释吗？"
+            ]
+          },
+          "create_time": 1772971800.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-02-node-4": {
+        "id": "db-01-02-node-4",
+        "parent": "db-01-02-node-3",
+        "children": [
+          "db-01-02-node-5"
+        ],
+        "message": {
+          "id": "db-01-02-node-4",
+          "author": {
+            "role": "assistant"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "可以。围绕「索引与 B+ 树」，一个直观的场景是：在 messages(content) 上建立 gin_trgm_ops 索引后，ILIKE '%事务%' 可以走索引扫描。"
+            ]
+          },
+          "create_time": 1772971980.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-02-node-5": {
+        "id": "db-01-02-node-5",
+        "parent": "db-01-02-node-4",
+        "children": [
+          "db-01-02-node-6"
+        ],
+        "message": {
+          "id": "db-01-02-node-5",
+          "author": {
+            "role": "user"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "这里最容易出错的地方是什么？"
+            ]
+          },
+          "create_time": 1772972040.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-02-node-6": {
+        "id": "db-01-02-node-6",
+        "parent": "db-01-02-node-5",
+        "children": [
+          "db-01-02-node-7"
+        ],
+        "message": {
+          "id": "db-01-02-node-6",
+          "author": {
+            "role": "assistant"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "最常见的坑是：以为索引越多越好。写操作多的表上堆叠索引会拖慢插入，并占用大量磁盘。"
+            ]
+          },
+          "create_time": 1772972280.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-02-node-7": {
+        "id": "db-01-02-node-7",
+        "parent": "db-01-02-node-6",
+        "children": [
+          "db-01-02-node-8"
+        ],
+        "message": {
+          "id": "db-01-02-node-7",
+          "author": {
+            "role": "user"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "考试里如果换一种问法，我该怎么判断？"
+            ]
+          },
+          "create_time": 1772972340.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-02-node-8": {
+        "id": "db-01-02-node-8",
+        "parent": "db-01-02-node-7",
+        "children": [
+          "db-01-02-node-9"
+        ],
+        "message": {
+          "id": "db-01-02-node-8",
+          "author": {
+            "role": "assistant"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "先判断题目属于查询、并发还是设计：查询题先画执行顺序并检查索引；并发题写隔离级别与可能异常；设计题先列函数依赖再分解。 当题干关键词落在「索引与 B+ 树」上时，先写出对象、约束和目标，再套方法。"
+            ]
+          },
+          "create_time": 1772972460.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-02-node-9": {
+        "id": "db-01-02-node-9",
+        "parent": "db-01-02-node-8",
+        "children": [
+          "db-01-02-node-10"
+        ],
+        "message": {
+          "id": "db-01-02-node-9",
+          "author": {
+            "role": "user"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "用一句话帮我记住它。"
+            ]
+          },
+          "create_time": 1772972520.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-02-node-10": {
+        "id": "db-01-02-node-10",
+        "parent": "db-01-02-node-9",
+        "children": [
+          "db-01-02-node-11"
+        ],
+        "message": {
+          "id": "db-01-02-node-10",
+          "author": {
+            "role": "assistant"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "一句话：索引匹配的是访问模式，而不是某一列本身。"
+            ]
+          },
+          "create_time": 1772972700.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-02-node-11": {
+        "id": "db-01-02-node-11",
+        "parent": "db-01-02-node-10",
+        "children": [
+          "db-01-02-node-12"
+        ],
+        "message": {
+          "id": "db-01-02-node-11",
+          "author": {
+            "role": "user"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "它和哪个知识点最容易混淆？"
+            ]
+          },
+          "create_time": 1772972760.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-02-node-12": {
+        "id": "db-01-02-node-12",
+        "parent": "db-01-02-node-11",
+        "children": [
+          "db-01-02-node-13"
+        ],
+        "message": {
+          "id": "db-01-02-node-12",
+          "author": {
+            "role": "assistant"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "最容易混淆的是「复合索引的最左前缀原则」。区分时先问：讨论的是存储结构、执行过程还是评价指标？"
+            ]
+          },
+          "create_time": 1772973000.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-02-node-13": {
+        "id": "db-01-02-node-13",
+        "parent": "db-01-02-node-12",
+        "children": [
+          "db-01-02-node-14"
+        ],
+        "message": {
+          "id": "db-01-02-node-13",
+          "author": {
+            "role": "user"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "如果放到真实项目里，这个知识点的价值在哪？"
+            ]
+          },
+          "create_time": 1772973060.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-02-node-14": {
+        "id": "db-01-02-node-14",
+        "parent": "db-01-02-node-13",
+        "children": [],
+        "message": {
+          "id": "db-01-02-node-14",
+          "author": {
+            "role": "assistant"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "学习空间的消息检索就使用 trigram 索引支持中文子串查询。"
+            ]
+          },
+          "create_time": 1772973180.0,
+          "status": "finished_successfully"
+        }
+      },
+      "db-01-02-node-15-alt": {
+        "id": "db-01-02-node-15-alt",
+        "parent": "db-01-02-node-1",
+        "children": [],
+        "message": {
+          "id": "db-01-02-node-15-alt",
+          "author": {
+            "role": "assistant"
+          },
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "这是一条没有被采用的重新生成回答。"
+            ]
+          },
+          "create_time": 1772971680.0,
+          "status": "finished_successfully"
+        }
+      }
+    },
+    "current_node": "db-01-02-node-14"
+  }
+]

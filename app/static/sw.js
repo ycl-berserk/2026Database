@@ -1,4 +1,4 @@
-const CACHE_NAME = "ls-shell-v3";
+const CACHE_NAME = "ls-shell-v4";
 const SHELL = [
   "/static/app.css",
   "/static/app.js",

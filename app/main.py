@@ -179,6 +179,7 @@ def offline_page():
 from .routers import (  # noqa: E402
     admin,
     annotations,
+    api,
     auth,
     capture,
     conversations,
@@ -192,6 +193,7 @@ from .routers import (  # noqa: E402
 )
 
 app.include_router(auth.router)
+app.include_router(api.router)
 app.include_router(dashboard.router)
 app.include_router(capture.router)
 app.include_router(courses.router)

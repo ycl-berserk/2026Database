@@ -227,11 +227,167 @@
     });
   }
 
+  const OFFLINE_DB = "ls-offline";
+  const OFFLINE_DB_VERSION = 1;
+  let offlineDbPromise = null;
+
+  function openOfflineDb() {
+    if (!("indexedDB" in window)) {
+      return Promise.reject(new Error("当前浏览器不支持离线缓存"));
+    }
+    if (!offlineDbPromise) {
+      offlineDbPromise = new Promise(function (resolve, reject) {
+        const req = indexedDB.open(OFFLINE_DB, OFFLINE_DB_VERSION);
+        req.onupgradeneeded = function () {
+          const db = req.result;
+          if (!db.objectStoreNames.contains("conversations")) {
+            db.createObjectStore("conversations", { keyPath: "id" });
+          }
+        };
+        req.onsuccess = function () { resolve(req.result); };
+        req.onerror = function () { reject(req.error); };
+      });
+    }
+    return offlineDbPromise;
+  }
+
+  function requestResult(req) {
+    return new Promise(function (resolve, reject) {
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+
+  async function idbGetAll(store) {
+    const db = await openOfflineDb();
+    return requestResult(db.transaction(store, "readonly").objectStore(store).getAll());
+  }
+
+  async function idbGet(store, key) {
+    const db = await openOfflineDb();
+    return requestResult(db.transaction(store, "readonly").objectStore(store).get(key));
+  }
+
+  async function idbPut(store, value) {
+    const db = await openOfflineDb();
+    return new Promise(function (resolve, reject) {
+      const tx = db.transaction(store, "readwrite");
+      tx.objectStore(store).put(value);
+      tx.oncomplete = function () { resolve(value); };
+      tx.onerror = function () { reject(tx.error); };
+    });
+  }
+
+  async function idbDelete(store, key) {
+    const db = await openOfflineDb();
+    return new Promise(function (resolve, reject) {
+      const tx = db.transaction(store, "readwrite");
+      tx.objectStore(store).delete(key);
+      tx.oncomplete = resolve;
+      tx.onerror = function () { reject(tx.error); };
+    });
+  }
+
+  async function idbClear(store) {
+    const db = await openOfflineDb();
+    return new Promise(function (resolve, reject) {
+      const tx = db.transaction(store, "readwrite");
+      tx.objectStore(store).clear();
+      tx.oncomplete = resolve;
+      tx.onerror = function () { reject(tx.error); };
+    });
+  }
+
+  async function idbCount(store) {
+    const db = await openOfflineDb();
+    return requestResult(db.transaction(store, "readonly").objectStore(store).count());
+  }
+
+  const offline = {
+    supported: "indexedDB" in window,
+    saveConversation: async function (id) {
+      const data = await api("/api/conversations/" + id + "/offline");
+      await idbPut("conversations", {
+        id: Number(id),
+        saved_at: data.saved_at,
+        data: data
+      });
+      updateOfflineCount();
+      return data;
+    },
+    isSaved: async function (id) {
+      return Boolean(await idbGet("conversations", Number(id)));
+    },
+    listConversations: function () { return idbGetAll("conversations"); },
+    removeConversation: function (id) { return idbDelete("conversations", Number(id)); },
+    clear: async function () {
+      await idbClear("conversations");
+      updateOfflineCount();
+    }
+  };
+
+  async function updateOfflineCount() {
+    const links = document.querySelectorAll("[data-offline-count-link]");
+    if (!links.length || !offline.supported) return;
+    try {
+      const count = await idbCount("conversations");
+      links.forEach(function (el) {
+        el.textContent = count ? "离线资料 " + count : "离线资料";
+      });
+    } catch (_) { /* 隐私模式下 IndexedDB 不可用，不影响页面 */ }
+  }
+
+  document.addEventListener("click", async function (event) {
+    const btn = event.target.closest("[data-offline-save]");
+    if (!btn) return;
+    if (!navigator.onLine) {
+      toast("当前离线，联网后再保存");
+      return;
+    }
+    const id = btn.getAttribute("data-offline-save");
+    btn.disabled = true;
+    try {
+      const data = await offline.saveConversation(id);
+      btn.textContent = "已保存到离线";
+      toast("已保存「" + data.conversation.title + "」到离线");
+    } catch (err) {
+      toast((err && err.message) || "保存失败，请稍后重试");
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.querySelectorAll("[data-offline-save]").forEach(function (btn) {
+    if (!offline.supported) return;
+    offline.isSaved(btn.getAttribute("data-offline-save")).then(function (saved) {
+      if (saved) btn.textContent = "已保存到离线";
+    }).catch(function () {});
+  });
+  updateOfflineCount();
+
+  function updateConnectionBanner() {
+    const banner = document.querySelector("[data-offline-banner]");
+    const online = navigator.onLine;
+    document.body.classList.toggle("is-offline", !online);
+    if (banner) banner.hidden = online;
+  }
+  window.addEventListener("online", function () {
+    updateConnectionBanner();
+    toast("网络已恢复");
+  });
+  window.addEventListener("offline", function () {
+    updateConnectionBanner();
+    toast("已离线，已保存的会话仍可阅读");
+  });
+  updateConnectionBanner();
+
   window.LS = {
     api: api,
     toast: toast,
     csrf: csrf,
     confirmSubmit: confirmSubmit,
-    setNavOpen: setNavOpen
+    setNavOpen: setNavOpen,
+    offline: offline,
+    updateOfflineCount: updateOfflineCount
   };
 })();

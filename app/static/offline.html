@@ -4,65 +4,390 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#232b25">
-  <title>离线 · 学习空间</title>
+  <title>离线学习 · 学习空间</title>
   <style>
-    :root { color-scheme: light; }
+    :root {
+      color-scheme: light;
+      --paper: #f6f2e9;
+      --white: #fffdf7;
+      --ink: #232823;
+      --ink-2: #4a5149;
+      --ink-3: #7a8076;
+      --line: #e2dac8;
+      --jade: #2f5d4e;
+      --seal: #a8432c;
+      --amber: #a6771f;
+    }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       min-height: 100vh;
-      display: grid;
-      place-items: center;
-      padding: 24px;
-      background: #f6f2e9;
-      color: #232823;
-      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
       line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
     }
-    .card {
-      width: min(420px, 100%);
-      padding: 28px 24px;
-      border: 1px solid #d9d1be;
-      border-radius: 12px;
-      background: #fffdf7;
-      box-shadow: 0 8px 24px rgba(35, 40, 35, .08);
-      text-align: center;
+    a { color: var(--jade); }
+    .top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 253, 247, .94);
+      position: sticky;
+      top: 0;
+      backdrop-filter: blur(8px);
+      z-index: 5;
     }
+    .brand { display: flex; align-items: center; gap: 12px; }
     .mark {
       display: grid;
       place-items: center;
-      width: 48px;
-      height: 48px;
-      margin: 0 auto 16px;
-      border-radius: 12px;
-      background: #a8432c;
+      width: 42px;
+      height: 42px;
+      border-radius: 11px;
+      background: var(--seal);
       color: #fff5ec;
-      font-size: 23px;
+      font-size: 21px;
       font-weight: 700;
     }
-    h1 { margin: 0 0 6px; font-size: 20px; }
-    p { margin: 0 0 18px; color: #4a5149; font-size: 14px; }
-    button {
-      width: 100%;
-      min-height: 44px;
-      border: 1px solid #2f5d4e;
+    h1 { margin: 0; font-size: 19px; }
+    .status { margin: 1px 0 0; color: var(--ink-3); font-size: 12.5px; }
+    .status.offline { color: var(--amber); }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 40px;
+      padding: 8px 14px;
+      border: 1px solid var(--line);
       border-radius: 8px;
-      background: #2f5d4e;
-      color: #f6f2e9;
+      background: var(--white);
+      color: var(--ink);
       font: inherit;
-      font-size: 14px;
+      font-size: 13.5px;
       cursor: pointer;
+      text-decoration: none;
     }
-    small { display: block; margin-top: 14px; color: #7a8076; font-size: 12px; }
+    .btn:hover { border-color: var(--jade); text-decoration: none; }
+    .btn-danger { color: var(--seal); border-color: #d9b3a6; background: transparent; }
+    main { width: min(860px, 100%); margin: 0 auto; padding: 22px 18px 60px; }
+    h2 { margin: 0; font-size: 17px; }
+    .toolbar {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .muted { color: var(--ink-3); font-size: 13px; }
+    .list { display: flex; flex-direction: column; gap: 10px; }
+    .item {
+      width: 100%;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--white);
+      color: inherit;
+      text-align: left;
+      font: inherit;
+      cursor: pointer;
+      box-shadow: 0 1px 2px rgba(35, 40, 35, .04);
+    }
+    .item:hover { border-color: var(--jade); }
+    .item strong { display: block; font-size: 15px; margin-bottom: 3px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; color: var(--ink-3); font-size: 12.5px; }
+    .chip {
+      display: inline-block;
+      padding: 1px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fbf8f0;
+      color: var(--ink-2);
+      font-size: 12px;
+    }
+    .empty {
+      padding: 38px 18px;
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      background: var(--white);
+      text-align: center;
+      color: var(--ink-2);
+    }
+    .empty p { margin: 0 0 6px; }
+    .actions { display: flex; justify-content: flex-end; margin-top: 18px; }
+    .reader-back { margin-bottom: 12px; }
+    .reader-head { margin-bottom: 14px; }
+    .reader-head h2 { margin-bottom: 4px; }
+    .msg {
+      margin-bottom: 12px;
+      padding: 13px 15px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--white);
+    }
+    .msg.user { border-left: 3px solid var(--jade); }
+    .msg.assistant { border-left: 3px solid var(--amber); }
+    .msg-head { display: flex; flex-wrap: wrap; gap: 8px; color: var(--ink-3); font-size: 12px; margin-bottom: 5px; }
+    .msg-role { color: var(--ink-2); font-weight: 600; }
+    .msg-body { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
+    .note {
+      margin-top: 9px;
+      padding: 8px 10px;
+      border-left: 2px solid var(--seal);
+      background: #fbf4ee;
+      font-size: 12.5px;
+      color: var(--ink-2);
+      white-space: pre-wrap;
+    }
+    .note b { color: var(--seal); margin-right: 6px; }
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      transform: translate(-50%, 16px);
+      max-width: calc(100% - 32px);
+      padding: 9px 16px;
+      border-radius: 999px;
+      background: #232b25;
+      color: #f8f4e8;
+      font-size: 13px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .2s, transform .2s;
+      z-index: 20;
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    @media (max-width: 520px) {
+      .top { padding: 14px 16px; }
+      main { padding: 18px 14px 48px; }
+      .brand .mark { width: 38px; height: 38px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; }
+    }
   </style>
 </head>
 <body>
-  <main class="card">
-    <div class="mark">学</div>
-    <h1>当前处于离线状态</h1>
-    <p>网络恢复后刷新即可继续。已打开的页面如果未缓存，将无法离线访问。</p>
-    <button type="button" onclick="location.reload()">重新加载</button>
-    <small>学习空间 · 演示数据不含真实个人信息</small>
+  <header class="top">
+    <div class="brand">
+      <span class="mark">学</span>
+      <div>
+        <h1>离线学习</h1>
+        <p class="status" id="status">正在检查网络状态…</p>
+      </div>
+    </div>
+    <a class="btn" href="/dashboard">返回学习空间</a>
+  </header>
+
+  <main id="content">
+    <section id="list-view">
+      <div class="toolbar">
+        <h2>已保存的会话</h2>
+        <span class="muted" id="count">读取中…</span>
+      </div>
+      <div class="list" id="list"></div>
+      <div class="empty" id="empty" hidden>
+        <p>还没有保存离线内容。</p>
+        <p class="muted">联网时打开一个会话，点「保存到离线」即可在这里阅读。</p>
+      </div>
+      <div class="actions">
+        <button class="btn btn-danger" id="clear" type="button" hidden>清除本机离线数据</button>
+      </div>
+    </section>
+
+    <section id="reader" hidden>
+      <div class="reader-back">
+        <button class="btn" id="back" type="button">← 返回列表</button>
+      </div>
+      <header class="reader-head">
+        <h2 id="reader-title"></h2>
+        <p class="muted" id="reader-meta"></p>
+      </header>
+      <div id="messages"></div>
+    </section>
   </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    (function () {
+      "use strict";
+      var DB_NAME = "ls-offline";
+      var DB_VERSION = 1;
+      var dbPromise = null;
+      var records = [];
+      var roleLabels = { user: "我", assistant: "助手", system: "系统" };
+      var kindLabels = { note: "笔记", question: "疑问", correction: "纠错", summary: "总结" };
+
+      function openDb() {
+        if (!dbPromise) {
+          dbPromise = new Promise(function (resolve, reject) {
+            var req = indexedDB.open(DB_NAME, DB_VERSION);
+            req.onupgradeneeded = function () {
+              var db = req.result;
+              if (!db.objectStoreNames.contains("conversations")) {
+                db.createObjectStore("conversations", { keyPath: "id" });
+              }
+            };
+            req.onsuccess = function () { resolve(req.result); };
+            req.onerror = function () { reject(req.error); };
+          });
+        }
+        return dbPromise;
+      }
+
+      function allConversations() {
+        return openDb().then(function (db) {
+          return new Promise(function (resolve, reject) {
+            var req = db.transaction("conversations", "readonly")
+              .objectStore("conversations").getAll();
+            req.onsuccess = function () { resolve(req.result || []); };
+            req.onerror = function () { reject(req.error); };
+          });
+        });
+      }
+
+      function clearConversations() {
+        return openDb().then(function (db) {
+          return new Promise(function (resolve, reject) {
+            var tx = db.transaction("conversations", "readwrite");
+            tx.objectStore("conversations").clear();
+            tx.oncomplete = resolve;
+            tx.onerror = function () { reject(tx.error); };
+          });
+        });
+      }
+
+      function formatDate(value) {
+        if (!value) return "—";
+        var date = new Date(value);
+        if (isNaN(date.getTime())) return String(value);
+        return date.toLocaleString("zh-CN", {
+          month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit"
+        });
+      }
+
+      function el(tag, className, text) {
+        var node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text != null) node.textContent = text;
+        return node;
+      }
+
+      function toast(message) {
+        var node = document.getElementById("toast");
+        node.textContent = message;
+        node.classList.add("show");
+        clearTimeout(node._timer);
+        node._timer = setTimeout(function () { node.classList.remove("show"); }, 2600);
+      }
+
+      function updateStatus() {
+        var status = document.getElementById("status");
+        var online = navigator.onLine;
+        status.textContent = online
+          ? "网络已连接 · 离线资料只保存在本设备"
+          : "当前离线 · 只显示已保存内容";
+        status.classList.toggle("offline", !online);
+      }
+
+      function renderList() {
+        var list = document.getElementById("list");
+        var empty = document.getElementById("empty");
+        var clear = document.getElementById("clear");
+        var count = document.getElementById("count");
+        list.textContent = "";
+        records.sort(function (a, b) {
+          return String(b.saved_at || "").localeCompare(String(a.saved_at || ""));
+        });
+        records.forEach(function (record) {
+          var data = record.data || {};
+          var conv = data.conversation || {};
+          var item = el("button", "item");
+          item.type = "button";
+          item.appendChild(el("strong", null, conv.title || "未命名会话"));
+          var meta = el("div", "meta");
+          if (conv.course_code) meta.appendChild(el("span", "chip", conv.course_code));
+          var counts = data.counts || {};
+          meta.appendChild(el("span", null, (counts.total || 0) + " 条消息"));
+          meta.appendChild(el("span", null, "保存于 " + formatDate(record.saved_at)));
+          item.appendChild(meta);
+          item.addEventListener("click", function () { renderReader(record); });
+          list.appendChild(item);
+        });
+        empty.hidden = records.length > 0;
+        clear.hidden = records.length === 0;
+        count.textContent = records.length ? "共 " + records.length + " 个会话" : "暂无内容";
+      }
+
+      function renderReader(record) {
+        var data = record.data || {};
+        var conv = data.conversation || {};
+        document.getElementById("list-view").hidden = true;
+        document.getElementById("reader").hidden = false;
+        document.getElementById("reader-title").textContent = conv.title || "未命名会话";
+        var meta = [];
+        if (conv.course_code) meta.push(conv.course_code + " · " + (conv.course_name || ""));
+        if (conv.platform) meta.push(conv.platform);
+        meta.push(((data.counts || {}).total || 0) + " 条消息");
+        document.getElementById("reader-meta").textContent = meta.join(" · ");
+
+        var box = document.getElementById("messages");
+        box.textContent = "";
+        (data.messages || []).forEach(function (message) {
+          var article = el("article", "msg " + (message.sender || "system"));
+          var head = el("header", "msg-head");
+          head.appendChild(el("span", "msg-role", roleLabels[message.sender] || message.sender || "消息"));
+          head.appendChild(el("span", null, "#" + message.seq_no));
+          if (message.created_at) head.appendChild(el("span", null, formatDate(message.created_at)));
+          article.appendChild(head);
+          article.appendChild(el("div", "msg-body", message.content || ""));
+          (message.annotations || []).forEach(function (note) {
+            var noteNode = el("div", "note");
+            noteNode.appendChild(el("b", null, kindLabels[note.kind] || note.kind || "批注"));
+            noteNode.appendChild(document.createTextNode(note.content || ""));
+            article.appendChild(noteNode);
+          });
+          box.appendChild(article);
+        });
+        window.scrollTo(0, 0);
+      }
+
+      function showList() {
+        document.getElementById("reader").hidden = true;
+        document.getElementById("list-view").hidden = false;
+        window.scrollTo(0, 0);
+      }
+
+      document.getElementById("back").addEventListener("click", showList);
+      document.getElementById("clear").addEventListener("click", function () {
+        if (!window.confirm("清除后本机将不再保留任何离线会话，确定继续？")) return;
+        clearConversations().then(function () {
+          records = [];
+          renderList();
+          toast("已清除本机离线数据");
+        }).catch(function () {
+          toast("清除失败，请稍后重试");
+        });
+      });
+
+      window.addEventListener("online", updateStatus);
+      window.addEventListener("offline", updateStatus);
+      updateStatus();
+
+      allConversations().then(function (rows) {
+        records = rows || [];
+        renderList();
+      }).catch(function () {
+        document.getElementById("count").textContent = "离线存储不可用";
+        document.getElementById("empty").hidden = false;
+      });
+    })();
+  </script>
 </body>
 </html>

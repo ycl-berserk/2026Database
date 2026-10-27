@@ -57,6 +57,24 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 }
 .empty { color: var(--ink-3); padding: 18px 0; text-align: center; }
 
+/* ---------- offline ---------- */
+.offline-banner {
+  position: sticky;
+  top: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 16px;
+  background: #4a3b22;
+  color: #fff8e8;
+  font-size: 13px;
+}
+.offline-banner[hidden] { display: none; }
+.offline-banner a { color: #ffe2a8; text-decoration: underline; }
+
 /* ---------- shell ---------- */
 .app-shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh; }
 

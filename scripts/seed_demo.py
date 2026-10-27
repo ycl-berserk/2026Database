@@ -201,7 +201,7 @@ def seed_annotations(conn, user_ids: dict[str, int]) -> tuple[int, int]:
             (user_id, review_item_id, action, interval_days, due_date,
              review_count, created_at)
         SELECT ri.user_id, ri.id, 'review', 1, ri.due_date, gs,
-               now() - make_interval(days => (ri.review_count - gs) * 3 + (ri.id % 4))
+               now() - make_interval(days => ((ri.review_count - gs) * 3 + (ri.id % 4))::int)
           FROM app.review_items ri
           CROSS JOIN LATERAL generate_series(1, ri.review_count) AS gs
          WHERE ri.review_count > 0

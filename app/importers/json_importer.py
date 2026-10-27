@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from . import adapters
 from .base import (
     COURSE_CODE_RE,
     PLATFORMS,
@@ -36,6 +37,9 @@ def parse(
             "", "", None,
             errors=[f"JSON 解析失败：第 {exc.lineno} 行第 {exc.colno} 列，{exc.msg}"],
         )
+
+    doc, adapter_warnings = adapters.normalize_json(doc)
+    warnings.extend(adapter_warnings)
 
     if isinstance(doc, list):
         conversations_raw = doc

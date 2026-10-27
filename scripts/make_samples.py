@@ -438,6 +438,122 @@ def write_markdown(path: Path, platform: str, account: str, conversations: list[
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def write_chatgpt_export(path: Path) -> int:
+    conversations = build_file("DB", "chatgpt", "alice@chatgpt")[:2]
+    exported = []
+    for conv in conversations:
+        mapping: dict[str, dict] = {
+            "root": {"id": "root", "parent": None, "children": [], "message": None}
+        }
+        parent = "root"
+        node_ids = []
+        for index, msg in enumerate(conv["messages"], start=1):
+            node_id = f"{conv['external_id']}-node-{index}"
+            stamp = datetime.fromisoformat(msg["created_at"]).timestamp()
+            mapping[node_id] = {
+                "id": node_id,
+                "parent": parent,
+                "children": [],
+                "message": {
+                    "id": node_id,
+                    "author": {"role": msg["role"]},
+                    "content": {"content_type": "text", "parts": [msg["content"]]},
+                    "create_time": stamp,
+                    "status": "finished_successfully",
+                },
+            }
+            mapping[parent]["children"].append(node_id)
+            parent = node_id
+            node_ids.append(node_id)
+        # 一条未进入当前路径的“重新生成”分支，用来验证适配器沿 current_node 回溯。
+        alt_id = f"{conv['external_id']}-node-{len(conv['messages']) + 1}-alt"
+        mapping[alt_id] = {
+            "id": alt_id,
+            "parent": node_ids[0],
+            "children": [],
+            "message": {
+                "id": alt_id,
+                "author": {"role": "assistant"},
+                "content": {
+                    "content_type": "text",
+                    "parts": ["这是一条没有被采用的重新生成回答。"],
+                },
+                "create_time": datetime.fromisoformat(conv["started_at"]).timestamp() + 60,
+                "status": "finished_successfully",
+            },
+        }
+        mapping[node_ids[0]]["children"].append(alt_id)
+        exported.append(
+            {
+                "id": conv["external_id"],
+                "title": conv["title"],
+                "create_time": datetime.fromisoformat(conv["started_at"]).timestamp(),
+                "update_time": datetime.fromisoformat(conv["ended_at"]).timestamp(),
+                "mapping": mapping,
+                "current_node": parent,
+            }
+        )
+    path.write_text(
+        json.dumps(exported, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return len(exported)
+
+
+def write_qoder_export(path: Path) -> int:
+    conversations = build_file("OS", "qoder", "alice@qoder")[:2]
+    sessions = []
+    for conv in conversations:
+        sessions.append(
+            {
+                "session_id": conv["external_id"],
+                "name": conv["title"],
+                "created_at": conv["started_at"],
+                "updated_at": conv["ended_at"],
+                "course": conv["course_code"],
+                "tags": conv["tags"],
+                "messages": [
+                    {
+                        "role": msg["role"],
+                        "text": msg["content"],
+                        "timestamp": msg["created_at"],
+                    }
+                    for msg in conv["messages"]
+                ],
+            }
+        )
+    payload = {
+        "exported_at": "2026-10-21T09:30:00+08:00",
+        "account": "alice@qoder",
+        "sessions": sessions,
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return len(sessions)
+
+
+def write_deepseek_markdown(path: Path) -> int:
+    conversations = build_file("NET", "deepseek", "alice@deepseek")[:2]
+    lines = ["- **Platform:** DeepSeek", "- **Account:** alice@deepseek", ""]
+    for conv in conversations:
+        lines.extend(
+            [
+                f"# {conv['title']}",
+                f"- **Session ID:** {conv['external_id']}",
+                f"- **Course:** {conv['course_code']}",
+                f"- **Tags:** {', '.join(conv['tags'])}",
+                f"- **Started:** {conv['started_at'].replace('T', ' ')[:16]}",
+                f"- **Ended:** {conv['ended_at'].replace('T', ' ')[:16]}",
+                "",
+            ]
+        )
+        for msg in conv["messages"]:
+            label = "User" if msg["role"] == "user" else "Assistant"
+            lines.append(f"### {label}")
+            lines.append(msg["content"])
+            lines.append("")
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return len(conversations)
+
+
 def write_broken(path: Path) -> None:
     payload = {
         "platform": "unknown-platform",
@@ -477,6 +593,15 @@ def main() -> int:
 
     shutil.copyfile(SAMPLES / "qoder_db.json", SAMPLES / "duplicate_db.json")
     write_broken(SAMPLES / "broken.json")
+
+    adapter_files = [
+        ("chatgpt_export_conversations.json", write_chatgpt_export),
+        ("qoder_sessions_export.json", write_qoder_export),
+        ("deepseek_export.md", write_deepseek_markdown),
+    ]
+    for file_name, writer in adapter_files:
+        count = writer(SAMPLES / file_name)
+        print(f"wrote {file_name}: {count} conversations")
 
     print(f"total: {total_conversations} conversations, {total_messages} messages")
     print("samples:", ", ".join(sorted(p.name for p in SAMPLES.glob("*"))))

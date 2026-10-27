@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from . import adapters
 from .base import (
     COURSE_CODE_RE,
     PLATFORMS,
@@ -46,6 +47,8 @@ def parse(
     except UnicodeDecodeError:
         return ImportResult("", "", None, errors=["文件不是有效的 UTF-8 文本"])
 
+    text, adapter_warnings = adapters.normalize_markdown(text)
+    warnings.extend(adapter_warnings)
     lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     file_meta: dict[str, str] = {}
     blocks: list[tuple[str, list[str]]] = []

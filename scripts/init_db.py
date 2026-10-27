@@ -12,6 +12,7 @@ import psycopg
 from psycopg import sql
 
 from app.config import settings
+from app.migrations import apply_pending
 
 SQL_DIR = settings.base_dir / "sql"
 DEMO_DB = "learning_space"
@@ -66,6 +67,7 @@ def initialize_database(name: str, reset: bool) -> dict[str, object]:
     with psycopg.connect(conninfo, autocommit=True) as conn:
         if reset or not schema_exists(conn):
             apply_file(conn, SQL_DIR / "schema.sql")
+        applied = apply_pending(conn)
         apply_file(conn, SQL_DIR / "views.sql")
         apply_file(conn, SQL_DIR / "roles.sql")
 
@@ -83,7 +85,7 @@ def initialize_database(name: str, reset: bool) -> dict[str, object]:
                 "WHERE table_schema = 't2s' ORDER BY table_name"
             ).fetchall()
         ]
-    return {"database": name, "tables": tables, "views": views}
+    return {"database": name, "tables": tables, "views": views, "migrations": applied}
 
 
 def verify_roles(db_name: str) -> dict[str, object]:
@@ -139,6 +141,10 @@ def main() -> int:
     for result in results:
         print(f"[OK] {result['database']}: {len(result['tables'])} tables, {len(result['views'])} views")
         print("     tables:", ", ".join(result["tables"]))
+        if result["migrations"]:
+            print("     migrations:", ", ".join(result["migrations"]))
+        else:
+            print("     migrations: up to date")
 
     checks = verify_roles(TEST_DB if not args.skip_test else DEMO_DB)
     for key, value in checks.items():

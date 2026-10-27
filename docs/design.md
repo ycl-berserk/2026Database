@@ -425,3 +425,12 @@ PostgreSQL 的 `UPDATE` 右侧使用旧值，因此间隔按 1 → 2 → 4 → 8
 | 删除用户 | `is_active=false` | 保留批注、复习与审计历史 |
 
 更完整的方案分歧与人工决策见 [ai-collaboration.md](ai-collaboration.md)。
+
+## 11. Schema 演进与迁移
+
+v1 的基线结构保存在 `sql/schema.sql`。v2 起所有结构变更以编号 SQL 存入 `sql/migrations/`，由 `scripts/migrate.py` 按文件名顺序执行，并在 `meta.schema_migrations` 记录版本。
+
+- `000_baseline` 表示 `schema.sql` 已应用，它不对应迁移文件；旧库首次执行迁移时自动补记。
+- 每个迁移在单独事务中执行，失败整体回滚且不写版本记录。
+- 初始化顺序为 `schema.sql → migrations → views.sql → roles.sql`，保证 `t2s` 视图始终基于最新结构创建。
+- 业务表仍集中在 `app` schema（12 张），迁移登记表放在独立的 `meta` schema，不参与业务计数与权限视图。

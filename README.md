@@ -64,7 +64,11 @@ py -3.13 -m venv .venv
 ## 常用命令
 
 ```bash
-# 全量测试（56 单元 + 60 集成）；集成测试需先初始化测试库
+# 应用未执行的数据库迁移（演示库 + 测试库），或只检查
+.venv/Scripts/python.exe scripts/migrate.py
+.venv/Scripts/python.exe scripts/migrate.py --check
+
+# 全量测试（60 单元 + 63 集成）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest -q
 
 # 端到端验收：26 项 PASS/FAIL，写入 data/verification/report.json
@@ -91,6 +95,7 @@ learning-space/
 │   ├── config.py            # 环境变量与上限配置
 │   ├── db.py                # 连接池、事务、行工厂
 │   ├── auth.py              # PBKDF2、Session、CSRF
+│   ├── migrations.py        # 迁移发现、应用与版本记录
 │   ├── permissions.py       # 课程角色 / 会话可见性判定
 │   ├── routers/             # 页面与 JSON API
 │   ├── services/            # 业务 SQL、事务与导出
@@ -101,8 +106,9 @@ learning-space/
 │   ├── schema.sql           # 12 张表、约束、索引、触发器
 │   ├── views.sql            # 13 个 t2s 只读权限视图
 │   ├── roles.sql            # ls_app / t2s_reader 最小权限
+│   ├── migrations/          # v2 增量迁移（编号 SQL，记录到 meta.schema_migrations）
 │   └── showcase.sql         # 报告用关键 SQL（带注释）
-├── scripts/                 # 初始化、种子、样例、验收、E-R、截图
+├── scripts/                 # 初始化、迁移、种子、样例、验收、E-R、截图
 ├── data/samples/            # 模拟导入样例
 ├── tests/unit|integration/  # 单元与集成测试
 └── docs/                    # 报告、设计、需求、SQL 展示、截图

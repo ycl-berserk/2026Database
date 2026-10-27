@@ -57,7 +57,7 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 
 | # | 事项 | 价值 | 量 | 状态 | 说明 |
 | --- | --- | --- | --- | --- | --- |
-| M1 | 编号 SQL 迁移 + `schema_migrations` 表（或 Alembic） | 答辩 | S | 待办 | 当前只有 `init_db.py --reset`，v2 加表必须先有可重复执行的迁移 |
+| M1 | 编号 SQL 迁移 + `schema_migrations` 表（或 Alembic） | 答辩 | S | 完成 | 已实现 `meta.schema_migrations`、`scripts/migrate.py` 与 `sql/migrations/`；旧库升级与全新初始化两条路径均已验证 |
 
 ### 1. 采集端
 

@@ -187,6 +187,7 @@ from .routers import (  # noqa: E402
     dashboard,
     imports,
     reviews,
+    search,
     stats,
     tags,
     text2sql,
@@ -195,6 +196,7 @@ from .routers import (  # noqa: E402
 app.include_router(auth.router)
 app.include_router(api.router)
 app.include_router(dashboard.router)
+app.include_router(search.router)
 app.include_router(capture.router)
 app.include_router(courses.router)
 app.include_router(conversations.router)

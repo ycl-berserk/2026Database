@@ -92,6 +92,16 @@
         <h1>{% block page_title %}概览{% endblock %}</h1>
         <p class="muted">{% block page_subtitle %}{% endblock %}</p>
       </div>
+      {% if current_user and current_user.system_role != 'admin' %}
+        <button class="search-trigger" type="button" data-search-open
+                aria-haspopup="dialog" aria-controls="global-search">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <circle cx="11" cy="11" r="6"/><path d="m15.5 15.5 4 4"/>
+          </svg>
+          <span>搜索</span>
+          <kbd>/</kbd>
+        </button>
+      {% endif %}
       <div class="topbar-actions">{% block topbar_actions %}{% endblock %}</div>
     </header>
 
@@ -164,6 +174,28 @@
     </nav>
   {% endif %}
 </div>
+{% if current_user and current_user.system_role != 'admin' %}
+  <dialog class="search-dialog" id="global-search" data-search-dialog aria-labelledby="global-search-title">
+    <form method="get" action="/search" class="search-dialog-form" role="search">
+      <label class="sr-only" id="global-search-title" for="global-search-input">全局搜索</label>
+      <input id="global-search-input" name="q" type="search" maxlength="100" autocomplete="off"
+             placeholder="搜索会话、批注、课程或标签…" data-search-input>
+      <button class="btn btn-primary" type="submit">搜索</button>
+      <button class="btn btn-ghost" type="button" data-search-close>关闭</button>
+    </form>
+    <div class="search-hints">
+      <div>
+        <h3>最近搜索</h3>
+        <ul class="search-recent" data-recent-searches></ul>
+      </div>
+      <div>
+        <h3>最近访问</h3>
+        <ul class="search-recent" data-recent-visits></ul>
+      </div>
+    </div>
+    <p class="search-tip muted">按 <kbd>/</kbd> 或 <kbd>Ctrl</kbd> + <kbd>K</kbd> 打开，<kbd>Esc</kbd> 关闭</p>
+  </dialog>
+{% endif %}
 <script src="/static/app.js?v={{ asset_version }}"></script>
 {% block scripts %}{% endblock %}
 </body>

@@ -55,6 +55,24 @@ def test_destructive_actions_support_five_second_undo():
     assert ".toast-action" in css
 
 
+def test_global_search_dialog_has_shortcuts_and_memory():
+    base = _read(TEMPLATES / "base.html")
+    assert "data-search-dialog" in base
+    assert "data-search-open" in base
+    assert 'action="/search"' in base
+
+    script = _read(STATIC / "app.js")
+    assert "ls-recent-searches" in script
+    assert "ls-recent-visits" in script
+    assert 'event.key === "/"' in script
+    assert 'toLowerCase() === "k"' in script
+
+    page = _read(TEMPLATES / "search.html")
+    assert "全局搜索" in page
+    assert "data.annotations" in page
+    assert "highlight(q)" in page
+
+
 def test_unknown_page_explains_reason_and_recovery():
     from app.main import app
 

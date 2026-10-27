@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app.errors import NotFoundError
-from app.services import conversation_service
+from app.services import conversation_service, search_service
 
 
 def test_list_scope_follows_membership(conn, base):
@@ -132,3 +132,51 @@ def test_make_snippet_windows_around_keyword():
     assert len(snippet) <= 70
     assert conversation_service.make_snippet(None, "x") == ""
     assert conversation_service.make_snippet("abc", None, 2) == "ab…"
+
+
+def _student(user_id: int) -> dict:
+    return {"id": user_id, "system_role": "student"}
+
+
+def test_global_search_matches_titles_messages_annotations_and_tags(conn, base):
+    alice = _student(base["users"]["alice"])
+
+    data = search_service.global_search(conn, alice, "隔离")
+    assert [row["id"] for row in data["conversations"]["rows"]] == [
+        base["conversations"]["db-1"]
+    ]
+    assert data["conversations"]["rows"][0]["hit_seq"] == 1
+    assert len(data["annotations"]) == 1
+    assert data["annotations"][0]["conversation_id"] == base["conversations"]["db-1"]
+
+    tags = search_service.global_search(conn, alice, "事务")["tags"]
+    assert [row["id"] for row in tags] == [base["tag"]]
+    assert tags[0]["usage_count"] == 1
+
+    courses = search_service.global_search(conn, alice, "数据库")["courses"]
+    assert [row["id"] for row in courses] == [base["courses"]["DB"]]
+
+
+def test_global_search_respects_course_scope(conn, base):
+    bob = _student(base["users"]["bob"])
+
+    accessible = search_service.global_search(conn, bob, "进程")
+    assert accessible["conversations"]["total"] == 1
+    assert accessible["conversations"]["rows"][0]["id"] == base["conversations"]["os-1"]
+
+    hidden = search_service.global_search(conn, bob, "索引")
+    assert hidden["conversations"]["total"] == 0
+    assert hidden["annotations"] == []
+
+    own_only = search_service.global_search(conn, bob, "隔离")
+    assert own_only["conversations"]["total"] == 1
+    assert own_only["annotations"] == []
+
+
+def test_global_search_empty_query_returns_empty_groups(conn, base):
+    data = search_service.global_search(conn, _student(base["users"]["alice"]), "   ")
+    assert data["q"] == ""
+    assert data["conversations"]["total"] == 0
+    assert data["annotations"] == []
+    assert data["courses"] == []
+    assert data["tags"] == []

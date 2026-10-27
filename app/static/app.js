@@ -546,6 +546,104 @@
   });
   updateConnectionBanner();
 
+  const SEARCH_KEY = "ls-recent-searches";
+  const VISIT_KEY = "ls-recent-visits";
+
+  function readList(key) {
+    try {
+      const value = JSON.parse(localStorage.getItem(key) || "[]");
+      return Array.isArray(value) ? value : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function writeList(key, rows) {
+    try {
+      localStorage.setItem(key, JSON.stringify(rows.slice(0, 8)));
+    } catch (_) { /* 隐私模式下不记录历史 */ }
+  }
+
+  function rememberSearch() {
+    if (location.pathname !== "/search") return;
+    const q = (new URLSearchParams(location.search).get("q") || "").trim();
+    if (!q) return;
+    const rows = readList(SEARCH_KEY).filter(function (item) { return item !== q; });
+    rows.unshift(q);
+    writeList(SEARCH_KEY, rows);
+  }
+
+  function rememberVisit() {
+    const match = location.pathname.match(/^\/conversations\/(\d+)$/);
+    if (!match) return;
+    const titleNode = document.querySelector(".topbar h1");
+    const title = (titleNode ? titleNode.textContent : "会话").trim();
+    const rows = readList(VISIT_KEY).filter(function (item) { return item.url !== location.pathname; });
+    rows.unshift({ url: location.pathname, title: title, at: new Date().toISOString() });
+    writeList(VISIT_KEY, rows);
+  }
+
+  function fillRecent(list, rows, emptyText) {
+    list.textContent = "";
+    if (!rows.length) {
+      const item = document.createElement("li");
+      item.className = "search-recent-empty";
+      item.textContent = emptyText;
+      list.appendChild(item);
+      return;
+    }
+    rows.forEach(function (row) {
+      const item = document.createElement("li");
+      const link = document.createElement("a");
+      link.href = typeof row === "string" ? "/search?q=" + encodeURIComponent(row) : row.url;
+      link.textContent = typeof row === "string" ? row : row.title;
+      item.appendChild(link);
+      if (typeof row !== "string" && row.at) {
+        const time = document.createElement("small");
+        time.className = "muted";
+        time.textContent = new Date(row.at).toLocaleDateString("zh-CN");
+        item.appendChild(time);
+      }
+      list.appendChild(item);
+    });
+  }
+
+  function setupSearch() {
+    const dialog = document.querySelector("[data-search-dialog]");
+    if (!dialog) return;
+    const input = dialog.querySelector("[data-search-input]");
+    function openSearch() {
+      fillRecent(dialog.querySelector("[data-recent-searches]"), readList(SEARCH_KEY), "还没有搜索记录");
+      fillRecent(dialog.querySelector("[data-recent-visits]"), readList(VISIT_KEY), "打开一个会话后会出现在这里");
+      if (!dialog.open) dialog.showModal();
+      input.focus();
+      input.select();
+    }
+    document.querySelectorAll("[data-search-open]").forEach(function (btn) {
+      btn.addEventListener("click", openSearch);
+    });
+    dialog.querySelectorAll("[data-search-close]").forEach(function (btn) {
+      btn.addEventListener("click", function () { dialog.close(); });
+    });
+    dialog.addEventListener("click", function (event) {
+      if (event.target === dialog) dialog.close();
+    });
+    document.addEventListener("keydown", function (event) {
+      const target = event.target;
+      const typing = target instanceof Element &&
+        (target.matches("input, textarea, select") || target.isContentEditable);
+      const shortcut = (event.key === "/" && !typing) ||
+        ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k");
+      if (!shortcut) return;
+      event.preventDefault();
+      openSearch();
+    });
+  }
+
+  rememberSearch();
+  rememberVisit();
+  setupSearch();
+
   window.LS = {
     api: api,
     toast: toast,

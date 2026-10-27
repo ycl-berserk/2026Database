@@ -32,6 +32,7 @@ from app.services import (
     export_service,
     import_service,
     review_service,
+    search_service,
     stats_service,
     text2sql_service,
 )
@@ -550,6 +551,18 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             "重复收录应跳过 2 条相同消息")
         return "粘贴识别 2 条角色消息，重复收录幂等"
     report.run("capture.paste", "采集：粘贴解析、收录与幂等", capture_paste)
+
+    def search_global():
+        alice_hits = search_service.global_search(conn, alice_ctx, "验收速记")
+        _ok(alice_hits["conversations"]["total"] == 1, "本人应能搜到刚收录的会话")
+        bob_hits = search_service.global_search(conn, bob_ctx, "验收速记")
+        _ok(bob_hits["conversations"]["total"] == 0, "未共享会话不应出现在他人搜索中")
+        courses = search_service.global_search(conn, alice_ctx, "数据库")["courses"]
+        _ok(any(row["code"] == "DB" for row in courses), "课程名搜索未命中 DB 课程")
+        empty = search_service.global_search(conn, alice_ctx, "  ")
+        _ok(empty["conversations"]["total"] == 0, "空关键词不应返回结果")
+        return "全局搜索命中本人会话，未泄露他人数据"
+    report.run("search.global", "搜索：全局检索与课程范围隔离", search_global)
 
     def inbox_bulk():
         conversation_id = state.get("captured_id")

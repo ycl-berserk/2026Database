@@ -80,6 +80,14 @@
       });
       meta.textContent =
         "模式 " + data.mode + " · " + data.row_count + " 行 · " + data.latency_ms + " ms";
+      if (data.plan) {
+        meta.textContent +=
+          " · 预检代价 " +
+          data.plan.total_cost +
+          " / 估算 " +
+          data.plan.plan_rows +
+          " 行";
+      }
       explanation.textContent = data.explanation || "";
       sqlBlock.textContent = data.sql || "";
       copyBtn.setAttribute("data-copy", data.sql || "");

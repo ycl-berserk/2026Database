@@ -18,7 +18,7 @@
 | 批注与复习 | 笔记 / 疑问 / 纠错 / 总结四类批注、解决状态、加入复习队列、间隔 1→2→4→8… 天、逾期提示、掌握/重置、近 5 周复习热力图 |
 | 统计与导出 | 概览、课程排名、月度活跃补零、标签 TopN、批注解决率、复习状态、重复内容检测；统计 CSV、单会话 Markdown |
 | 用户与权限 | Session 登录、PBKDF2 密码哈希、CSRF、系统角色 + 课程角色、应用层与数据库层双重防护 |
-| Text2SQL | 自然语言→SQL→校验→只读执行→表格展示、解释、审计历史；无 API Key 时使用本地规则 mock |
+| Text2SQL | 自然语言→SQL→AST 守卫→EXPLAIN 预检→只读执行→表格展示、解释、审计历史；无 API Key 时使用本地规则 mock |
 | 管理 | 用户启停、系统聚合统计（不读正文） |
 | 移动端与安装 | 390px 优先的底部标签栏 / 抽屉导航、列表卡片化、专注阅读模式；PWA manifest + Service Worker 应用壳缓存、离线页、桌面安装、分享快捷方式 |
 | 离线学习 | 会话快照、离线阅读与搜索、离线批注草稿、复习打卡 outbox，恢复联网后按事件 ID 幂等同步 |
@@ -78,10 +78,10 @@ py -3.13 -m venv .venv
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（117 单元 + 83 集成，共 200 项）；集成测试需先初始化测试库
+# 全量测试（117 单元 + 86 集成，共 203 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest -q
 
-# 端到端验收：33 项 PASS/FAIL，写入 data/verification/report.json
+# 端到端验收：34 项 PASS/FAIL，写入 data/verification/report.json
 .venv/Scripts/python.exe scripts/verify.py --json data/verification/report.json
 
 # 重新生成导入样例（正常 / 重复 / 损坏）

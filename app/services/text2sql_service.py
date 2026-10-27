@@ -122,6 +122,10 @@ class GuardError(ValidationError):
     pass
 
 
+class PreflightError(ValidationError):
+    pass
+
+
 def _clean_sql_text(raw: str) -> str:
     text = (raw or "").strip()
     if text.startswith("```"):
@@ -208,6 +212,37 @@ def check_sql(sql: str) -> str:
 def wrap_sql(sql: str) -> str:
     limit = settings.text2sql_row_limit + 1
     return f"SELECT * FROM (\n{sql}\n) AS q LIMIT {limit}"
+
+
+def preflight_query(t2s_conn, sql: str, user_id: int) -> dict | None:
+    if not settings.text2sql_preflight_enabled:
+        return None
+    with t2s_conn.transaction():
+        t2s_conn.execute(
+            "SELECT set_config('statement_timeout', %s, true)",
+            (f"{settings.text2sql_preflight_timeout_ms}ms",),
+        )
+        t2s_conn.execute(
+            "SELECT set_config('app.user_id', %s, true)", (str(user_id),)
+        )
+        row = t2s_conn.execute(f"EXPLAIN (FORMAT JSON) {sql}").fetchone()
+    payload = next(iter(row.values())) if row else None
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    if not payload:
+        raise PreflightError("查询预检没有返回执行计划")
+    root = payload[0].get("Plan") or {}
+    total_cost = float(root.get("Total Cost") or 0)
+    plan_rows = int(root.get("Plan Rows") or 0)
+    if total_cost > settings.text2sql_max_cost:
+        raise PreflightError(
+            f"查询预估代价 {total_cost:.0f} 超过上限 {settings.text2sql_max_cost:.0f}，已拒绝执行"
+        )
+    if plan_rows > settings.text2sql_max_est_rows:
+        raise PreflightError(
+            f"查询预估行数 {plan_rows} 超过上限 {settings.text2sql_max_est_rows}，已拒绝执行"
+        )
+    return {"total_cost": round(total_cost, 2), "plan_rows": plan_rows}
 
 
 def _jsonable(value: Any) -> Any:
@@ -487,6 +522,33 @@ async def run(question: str, user_id: int, t2s_conn, main_conn) -> dict:
         raise
 
     try:
+        plan = preflight_query(t2s_conn, safe_sql, user_id)
+    except PreflightError as exc:
+        latency = int((time.perf_counter() - started) * 1000)
+        record_log(
+            main_conn,
+            user_id=user_id,
+            question=question,
+            sql=safe_sql,
+            status="rejected",
+            latency_ms=latency,
+            error_message=exc.message,
+        )
+        raise
+    except Exception as exc:  # noqa: BLE001
+        latency = int((time.perf_counter() - started) * 1000)
+        record_log(
+            main_conn,
+            user_id=user_id,
+            question=question,
+            sql=safe_sql,
+            status="error",
+            latency_ms=latency,
+            error_message=f"预检失败：{exc}",
+        )
+        raise ValidationError(f"查询预检失败：{exc.__class__.__name__}") from exc
+
+    try:
         result = execute_query(t2s_conn, safe_sql, user_id)
     except Exception as exc:  # noqa: BLE001
         latency = int((time.perf_counter() - started) * 1000)
@@ -521,4 +583,5 @@ async def run(question: str, user_id: int, t2s_conn, main_conn) -> dict:
         "columns": result["columns"],
         "rows": result["rows"],
         "row_count": len(result["rows"]),
+        "plan": plan,
     }

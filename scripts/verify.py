@@ -513,6 +513,33 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
         return f"{len(cases)} 条危险 SQL 全部被拒绝，正常字面量未被误伤"
     report.run("t2s.guard", "Text2SQL：单语句 / 只读 / 白名单守卫", t2s_guard)
 
+    def t2s_preflight():
+        plan = text2sql_service.preflight_query(
+            t2s_conn, "SELECT code, name FROM v_my_courses", alice["id"]
+        )
+        _ok(plan is not None, "预检未返回执行计划")
+        _ok(plan["total_cost"] > 0, "预检总代价应大于 0")
+        _ok(plan["plan_rows"] >= 1, "预检估算行数应为正数")
+
+        original = settings.text2sql_max_cost
+        caught = False
+        try:
+            object.__setattr__(settings, "text2sql_max_cost", 0.01)
+            try:
+                text2sql_service.preflight_query(
+                    t2s_conn,
+                    "SELECT a.message_id FROM v_my_messages a "
+                    "CROSS JOIN v_my_messages b",
+                    alice["id"],
+                )
+            except text2sql_service.PreflightError:
+                caught = True
+        finally:
+            object.__setattr__(settings, "text2sql_max_cost", original)
+        _ok(caught, "高成本查询未被预检拦截")
+        return f"正常查询代价 {plan['total_cost']}，高成本笛卡尔积被拒绝"
+    report.run("t2s.preflight", "Text2SQL：EXPLAIN 预检拦截高成本查询", t2s_preflight)
+
     def t2s_rejected_log():
         original = text2sql_service.generate_sql
 

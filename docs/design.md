@@ -416,6 +416,8 @@ ALTER ROLE t2s_reader SET lock_timeout = '2s';
 
 应用层的 SQL 守卫以 `sqlglot` 的 PostgreSQL AST 为主：只接受单条 SELECT/WITH/UNION，遍历语法树拒绝嵌套 DML、`SELECT INTO`、`FOR UPDATE`、表函数和 `pg_*` / `lo_*` / `dblink` 等函数；所有 `FROM` / `JOIN` 对象必须属于 13 个 `t2s` 视图或当前语句定义的 CTE。正则黑名单保留为第二层，匹配前先屏蔽字符串字面量与引用标识符，避免正文关键词误伤。
 
+守卫通过后先做执行计划预检：在同一只读角色下执行 `EXPLAIN (FORMAT JSON)`，不实际取数；根节点 `Total Cost` 超过 500000 或 `Plan Rows` 超过 200000 时拒绝，预检超时 1 秒。阈值可通过 `TEXT2SQL_MAX_COST`、`TEXT2SQL_MAX_EST_ROWS` 调整，预检拒绝写入 `text2sql_log.status = 'rejected'`。
+
 ## 9. 事务与并发
 
 ### 9.1 导入确认事务

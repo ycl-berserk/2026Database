@@ -521,7 +521,7 @@ def slide_t2s(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     header(slide, "11 / Text2SQL", "自然语言查询，但权限在数据库层兜底", 12)
 
-    flow = ["自然语言", "LLM / 本地规则", "SQL 守卫", "只读视图", "结果 + 审计"]
+    flow = ["自然语言", "LLM / 本地规则", "AST 守卫/预检", "只读视图", "结果 + 审计"]
     for index, label in enumerate(flow):
         x = 0.72 + index * 2.42
         rect(slide, x, 1.62, 2.05, 0.64, GREEN if index in (0, 4) else GREEN_DARK,
@@ -532,8 +532,9 @@ def slide_t2s(prs):
             text(slide, x + 2.06, 1.72, 0.3, 0.35, "→", size=13, bold=True, color=RUST)
 
     left = [
-        "只允许多一条 SELECT / WITH，拒绝 DDL、DML、注释",
+        "sqlglot 只允许一条 SELECT/WITH，拒绝嵌套 DML 与表函数",
         "对象白名单：13 个 t2s 视图，禁止 app / pg_catalog",
+        "EXPLAIN 预检代价与估算行数，超限直接拒绝",
         "包裹 200 行上限；t2s_reader 只读事务、3 秒超时",
         "视图 security_barrier，按 app.user_id 过滤",
         "成功、拒绝、异常全部写 text2sql_log",
@@ -575,9 +576,9 @@ def slide_permissions(prs):
 
 def slide_tests(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "13 / 测试与验收", "200 项测试与 33 项端到端验收全部通过", 14)
+    header(slide, "13 / 测试与验收", "203 项测试与 34 项端到端验收全部通过", 14)
 
-    stats = [("200", "自动化测试"), ("33", "端到端检查"), ("0", "失败项")]
+    stats = [("203", "自动化测试"), ("34", "端到端检查"), ("0", "失败项")]
     for index, (value, label) in enumerate(stats):
         x = 0.72 + index * 2.15
         rect(slide, x, 1.62, 1.95, 1.35, WHITE, radius=True, line=LINE, width=0.7)
@@ -586,11 +587,11 @@ def slide_tests(prs):
 
     code_block(slide, 0.72, 3.3, 6.0, 2.4,
                ".venv/Scripts/python.exe -m pytest -q\n"
-               "# 117 unit + 83 integration\n\n"
+               "# 117 unit + 86 integration\n\n"
                ".venv/Scripts/python.exe scripts/verify.py \\\n"
                "  --json data/verification/report.json", size=10.5)
     text(slide, 0.9, 5.78, 5.6, 0.75,
-         "输出：33/33 PASS，0 FAIL，约 0.9 秒\n所有写入检查在结束时整体回滚。", size=11.5, color=GREEN)
+         "输出：34/34 PASS，0 FAIL，约 0.8 秒\n所有写入检查在结束时整体回滚。", size=11.5, color=GREEN)
 
     right = [
         "Schema：表、FK、UNIQUE、CHECK、索引、触发器",
@@ -646,7 +647,7 @@ def slide_end(prs):
         "导入、检索、批注、复习、统计、导出的闭环",
         "令牌 + 扩展 + 平台导出，离线也可读可复习",
         "Text2SQL 由只读视图与角色做最终兜底",
-        "200 项测试 + 33 项验收，全部通过",
+        "203 项测试 + 34 项验收，全部通过",
         "README 五条命令从零复现",
     ]
     bullets(slide, 0.85, 3.15, 6.4, 2.4, left, size=14, color=RGBColor(0xE8, 0xE3, 0xD3), gap=8,

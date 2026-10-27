@@ -12,7 +12,7 @@
 
 本项目实现了一个以“聊天记录”为核心的关系数据库应用系统。系统把 Qoder、ChatGPT、DeepSeek 等平台的问答导出文件解析为统一格式，按课程、来源、标签组织；支持中文检索、会话上下文、批注、间隔复习、统计导出，并额外实现了受数据库只读权限视图保护的 Text2SQL 页面。
 
-数据库包含 12 张业务表、13 个权限视图、5 个触发器、多组唯一/检查/外键约束；应用层使用参数化 SQL 与显式事务，不依赖 ORM。导入流水线采用“解析 → 校验 → 持久化预览 → 单事务确认 → 查重”的结构。系统通过 146 个自动化测试与 29 项端到端验收检查，覆盖 schema、权限、导入幂等、中文检索、统计、批注复习、导出、Text2SQL 安全与事务回滚。
+数据库包含 14 张业务表、13 个权限视图、4 个触发器、多组唯一/检查/外键约束；应用层使用参数化 SQL 与显式事务，不依赖 ORM。导入流水线采用“解析 → 校验 → 持久化预览 → 单事务确认 → 查重”的结构，并在文件导入之外提供平台原生导出适配、采集令牌 + Bearer 接口与 MV3 浏览器扩展。系统通过 184 个自动化测试与 33 项端到端验收检查，覆盖 schema、权限、导入幂等、中文检索、全局搜索、统计、批注复习、离线同步、导出、Text2SQL 安全与事务回滚。
 
 ---
 
@@ -50,6 +50,7 @@
 | R06 | 用户与权限 | 登录/登出、PBKDF2、CSRF、系统角色 + 课程角色 |
 | R07 | Text2SQL | 自然语言→SQL、守卫、只读执行、审计历史、mock/LLM |
 | R08 | 管理 | 用户启停、系统聚合统计、管理边界 |
+| R09 | 快速采集与离线 | PWA 分享、裸文本、平台原生导出适配、采集令牌 + Bearer API、MV3 扩展、离线阅读/批注/复习 |
 
 更细的输入/输出/异常/代码位置/验收映射见 [requirements.md](requirements.md)。
 
@@ -73,14 +74,16 @@
 | 会话标签 | 60 |
 | 批注 | 66 |
 | 复习项 | 39（alice 35，bob 4） |
+| 复习事件 | 76（热力图与离线 outbox 幂等使用） |
 | 导入批次 | 5（全部 imported） |
+| 采集令牌 | 种子数据 0；演示时可在 `/tokens` 创建 |
 | Text2SQL 日志 | 种子数据 0；运行时追加 |
 
 > 复习项按 `alice` 统计为 35 条（pending 19 + reviewing 9 + mastered 7）；全库 39 条另含 bob 的 4 条共享课程复习项。统计页面按当前用户过滤，因此 alice 看到 35 条。
 
 ### 3.3 导入样例
 
-`data/samples/` 下有 7 个文件：
+`data/samples/` 下有 10 个文件：
 
 | 文件 | 用途 |
 | --- | --- |
@@ -89,6 +92,9 @@
 | `deepseek_net.md` | 计算机网络课程，DeepSeek Markdown |
 | `qoder_ml.json` | 机器学习课程，Qoder JSON |
 | `chatgpt_ds.json` | 数据结构课程，ChatGPT JSON |
+| `chatgpt_export_conversations.json` | ChatGPT 原生 `conversations.json`（mapping / current_node） |
+| `qoder_sessions_export.json` | Qoder 原生 `sessions` 导出（字段别名） |
+| `deepseek_export.md` | DeepSeek 原生 Markdown（`### User/Assistant` + 英文元信息） |
 | `duplicate_db.json` | 与 `qoder_db.json` 内容相同，用于查重演示 |
 | `broken.json` | 缺字段/非法角色，用于校验失败演示 |
 
@@ -130,7 +136,7 @@
 
 ### 5.1 关系模式
 
-12 张表位于 `app` schema：
+14 张表位于 `app` schema（12 张基线表 + 2 张迁移新增表）：
 
 1. `users`：账号、PBKDF2 哈希、显示名、系统角色、启停状态。
 2. `courses`：课程编号、名称、学期、教师、创建者。
@@ -144,6 +150,8 @@
 10. `annotations`：消息上的批注，四种类型，open/resolved。
 11. `review_items`：`(user_id, annotation_id)` 唯一，间隔与到期日。
 12. `text2sql_log`：问题、生成 SQL、状态、耗时、行数、错误。
+13. `review_logs`：复习事件流水，`(user_id, event_id)` 唯一用于离线重放幂等；`review_item_id` 删除时 SET NULL。
+14. `api_tokens`：采集令牌，只存 SHA-256 与可读前缀，含固定窗口限流计数、最近使用与撤销时间。
 
 完整列定义、约束与索引见 [design.md](design.md)。
 
@@ -160,8 +168,8 @@
 
 - 主键：所有表均有单列或复合主键。
 - 外键：覆盖来源、课程、会话、消息、批注、复习等所有关系；删除行为按语义选择 CASCADE / SET NULL / RESTRICT。
-- 唯一：用户名、课程 `(created_by, code, semester)`、来源 `(owner_id, platform, label)`、会话 `(source_id, external_id)`、消息 `(conversation_id, seq_no)`、标签 `(owner_id, name)`、复习项 `(user_id, annotation_id)`。
-- CHECK：角色枚举、发送者枚举、批注类型/状态、复习状态、时间顺序、文件大小、SHA-256 格式、颜色格式等。
+- 唯一：用户名、课程 `(created_by, code, semester)`、来源 `(owner_id, platform, label)`、会话 `(source_id, external_id)`、消息 `(conversation_id, seq_no)`、标签 `(owner_id, name)`、复习项 `(user_id, annotation_id)`、令牌哈希、复习事件 `(user_id, event_id)`。
+- CHECK：角色枚举、发送者枚举、批注类型/状态、复习状态、令牌名称长度与非负窗口计数、复习事件动作/间隔、时间顺序、文件大小、SHA-256 格式、颜色格式等。
 - 部分唯一索引：`course_members(course_id) WHERE role='owner'`。
 - 延迟约束触发器：事务结束时每门课恰好一个 owner。
 - 访问触发器：打标签、批注、复习时必须具备会话或课程编辑权限。
@@ -176,6 +184,8 @@
 - `annotations`：`(message_id)`、`(user_id, status)`。
 - `import_batches`：`(user_id, created_at DESC)`、`(source_id, file_sha256)`。
 - `text2sql_log`：`(user_id, created_at DESC)`。
+- `review_logs`：`(user_id, created_at DESC)`、`(review_item_id, created_at DESC)`。
+- `api_tokens`：`(user_id, created_at DESC)`；令牌哈希与 `(user_id, event_id)` 由唯一约束提供索引。
 
 中文检索没有使用 PostgreSQL 原生全文检索，因为其默认分词对中文不友好；改用 `pg_trgm` + `ILIKE`，并对用户输入的 `%`、`_`、`\` 做 `ESCAPE` 处理。
 
@@ -254,13 +264,27 @@ Text2SQL 页面提供示例问题、结果表格、生成的 SQL、解释和最�
 
 ### 6.9 采集闭环与体验
 
-除了文件导入，系统提供三条更低摩擦的采集路径：手机从任意 App 通过 PWA Share Target 分享文本，粘贴一段问答，或直接上传文件。解析结果统一进入 `import_batches` 暂存，再走同一套预览与单事务入库流程；未指定课程的会话进入收件箱，可批量归入课程。
+除了统一 JSON / Markdown 文件导入，系统提供五条更低摩擦的采集路径：
+
+1. **平台原生导出适配**：ChatGPT `conversations.json` 沿 `current_node` 还原主线并转换 UTC 时间；Qoder `sessions` 导出做字段别名映射；DeepSeek Markdown 识别 `### User/Assistant` 与英文元信息。适配层只做归一，之后复用同一套解析、校验与入库逻辑。
+2. **采集令牌 + Bearer API**：`/tokens` 创建的令牌明文只显示一次，服务端仅存 SHA-256；`POST /api/ingest` 按 `course_code` 自动归课，每令牌每分钟 60 次固定窗口限流，可随时撤销。
+3. **MV3 浏览器扩展**：`extension/` 固定权限只有 `activeTab` / `storage`，仅当用户点击「发送到学习空间」时读取当前会话并调用 `/api/ingest`；令牌保存在本机浏览器，不写入网页。
+4. **PWA Share Target**：手机从任意 App 分享文本/链接，解析结果进入 `import_batches` 预览。
+5. **裸文本粘贴**：直接粘贴 `我：… / 助手：…` 对话，自动识别角色、时间与课程/标签。
+
+所有路径最终都走同一套预览与单事务入库流程；未指定课程的会话进入收件箱，可批量归入课程。
 
 - 导入向导固定为“选择 → 预览 → 结果”三步，支持拖放上传与粘贴双入口。
 - 收件箱只允许移动本人且当前未归类的会话，避免编辑者误动共享课程数据。
 - 删除批注、复习项或标签后提供 5 秒撤销；离开页面时兜底提交，避免“看起来删了其实没删”。
 - 登录页演示账号可一键进入；新账号概览给出建课、导入、收件箱三步引导。
 - 静态资源使用 GZip 与版本化长缓存，首屏 JS 约 8KB。
+
+![采集令牌](screenshots/22-tokens.png)
+
+![平台原生导出预览](screenshots/26-platform-import.png)
+
+![浏览器扩展](screenshots/21-extension-popup.png)
 
 ![收件箱](screenshots/17-inbox.png)
 
@@ -269,6 +293,20 @@ Text2SQL 页面提供示例问题、结果表格、生成的 SQL、解释和最�
 ![导入结果](screenshots/19-import-result.png)
 
 ![粘贴导入](screenshots/20-import-paste.png)
+
+### 6.10 全局搜索与离线学习
+
+全局搜索同时检索会话标题、消息正文、本人批注、课程与标签，支持 `/` 与 `Ctrl/Cmd+K` 唤起、最近搜索与最近访问；结果按类型分组并高亮关键词。会话快照可保存到浏览器 IndexedDB，离线页独立于服务端渲染，支持阅读、搜索已保存会话、缓存复习队列、暂存批注草稿与复习打卡；恢复联网后按客户端事件 ID 幂等提交。
+
+![全局搜索](screenshots/23-search.png)
+
+![搜索快捷弹窗](screenshots/23b-search-dialog.png)
+
+![离线已保存会话](screenshots/24-offline-saved.png)
+
+![离线阅读](screenshots/24b-offline-reader.png)
+
+![离线复习](screenshots/25-offline-review.png)
 
 ## 7. 关键 SQL
 
@@ -331,40 +369,41 @@ Text2SQL 的风险不在“生成得对不对”，而在“生成了危险语�
 ### 10.1 自动化测试
 
 ```text
-78 unit tests
-68 integration tests
-146 total, all passed
+101 unit tests
+83 integration tests
+184 total, all passed
 ```
 
-- 单元：密码哈希/校验、CSRF、JSON/Markdown/裸文本解析、字段校验、去重分类、Text2SQL 守卫、mock 规则、PWA 资产、引导/撤销/错误页/静态缓存与性能预算。
-- 集成：schema 约束与删除行为、权限边界、导入预览/确认/幂等/损坏文件、收件箱批量归类、检索筛选与分页、批注复习间隔、统计、管理员、Text2SQL 只读/越权/审计。
+- 单元：密码哈希/校验、CSRF、JSON/Markdown/裸文本与三种平台原生导出解析、字段校验、去重分类、Text2SQL 守卫、mock 规则、PWA 资产、MV3 扩展契约、引导/撤销/错误页/静态缓存与性能预算。
+- 集成：schema 约束与删除行为、权限边界、导入预览/确认/幂等/损坏文件、收件箱批量归类、检索与全局搜索、批注复习间隔与事件流水、统计、管理员、采集令牌与 Bearer 入库、Text2SQL 只读/越权/审计。
 
 集成测试只连接以 `_test` 结尾的数据库，每个用例前 `TRUNCATE app.users RESTART IDENTITY CASCADE`。测试脚手架使用管理员连接执行 TRUNCATE，因为应用角色 `ls_app` 被刻意设计为没有 TRUNCATE 权限。
 
 ### 10.2 端到端验收
 
-`scripts/verify.py` 在演示库上执行 29 项检查，所有写操作放在外层事务中，最后主动回滚：
+`scripts/verify.py` 在演示库上执行 33 项检查，所有写操作放在外层事务中，最后主动回滚：
 
 ```text
-结果：29/29 PASS，0 FAIL，耗时 767 ms
+结果：33/33 PASS，0 FAIL，耗时 583 ms
 报告：data/verification/report.json
 ```
 
 检查项包括：
 
-- 12 张表、13 个视图、主外键/唯一/检查约束、索引与 5 个触发器
+- 14 张表、13 个视图、主外键/唯一/检查约束、索引与 4 个触发器
 - 演示数据规模、密码哈希、角色边界
-- 重复导入 0 新增 / 84 跳过、损坏文件拒绝
-- 关键词检索、课程/标签筛选、上下文与批注内联
+- 重复导入 0 新增 / 84 跳过、损坏文件拒绝、ChatGPT/Qoder/DeepSeek 原生导出适配
+- 关键词检索、课程/标签筛选、上下文与批注内联、全局搜索隔离
 - 统计概览、CSV、Markdown
-- 批注 → 复习项 → 间隔 2/4 天
+- 批注 → 复习项 → 间隔 2/4 天、复习事件流水与 5 周热力图
 - 粘贴收录、重复收录幂等、收件箱批量归类
+- 采集令牌哈希存储、Bearer 认证、限流与幂等入库
 - Text2SQL mock 查询、用户过滤、恶意 SQL 拒绝、审计、只读角色
 - 事务回滚后计数不变、`ls_app` 无 DDL 权限
 
 ### 10.3 UI 验证
 
-Playwright 脚本登录 alice / bob / admin，生成桌面 22 张与移动端 10 张截图，检查控制台错误与 390px 横向溢出；bob 的 403 页面是预期行为，脚本单独放行。另外用 Performance API 验证首屏 JS 8KB、请求数 2、移动端 LCP 268ms，并检查 Service Worker 缓存版本与静态资源版本参数。
+Playwright 脚本登录 alice / bob / admin，生成桌面 31 张（含扩展弹窗）与移动端 10 张截图，检查控制台错误与 390px 横向溢出；bob 的 403 页面是预期行为，脚本单独放行。`scripts/extension_smoke.mjs` 另用真实浏览器验证扩展提取、按钮文字清理、预览、Bearer 鉴权与发送体结构。另外用 Performance API 验证首屏 JS 8KB、请求数 2、移动端 LCP 268ms，并检查 Service Worker 缓存版本与静态资源版本参数。
 
 截图与走查过程中发现并修复了三个问题：
 
@@ -385,6 +424,9 @@ Playwright 脚本登录 alice / bob / admin，生成桌面 22 张与移动端 10
 - 不用生成列存 `content_hash`，改用表达式索引。
 - `review_items` 唯一键设为 `(user_id, annotation_id)`，支持共享课程多人各自复习。
 - Text2SQL 不信任 Prompt，安全边界放在只读角色与权限视图。
+- 采集令牌只存 SHA-256，不做可逆加密；限流计数落在数据库行上，避免多 worker 内存态不一致。
+- 浏览器扩展坚持“点击才读取、点击才上传”，不申请常驻 host 权限，也不做后台轮询；DOM 改版时回退到平台导出文件。
+- 平台导出适配只做字段归一，不复制一套入库逻辑，所有来源继续共享预览、查重与事务确认。
 - 测试库脚手架使用管理员连接，而不是给应用角色开放 TRUNCATE。
 
 ## 12. 运行与演示
@@ -396,6 +438,8 @@ docker compose up -d db
 .venv/Scripts/python.exe -m pytest -q
 .venv/Scripts/python.exe scripts/verify.py --json data/verification/report.json
 .venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+node scripts/extension_smoke.mjs
+node scripts/screenshots.mjs
 ```
 
 演示账号：`alice / Alice123!`、`bob / Bob123!`、`admin / Admin123!`。完整演示脚本见 [demo-script.md](demo-script.md)。
@@ -408,10 +452,12 @@ docker compose up -d db
 4. **Text2SQL**：mock 规则只覆盖常见问题；真实 LLM 的 SQL 质量依赖模型与 Prompt，仍需守卫与人工复核。
 5. **管理员权限**：当前只做用户启停与聚合统计；若扩展审计功能，需要单独设计“可查看元数据但不可查看正文”的视图。
 6. **实时性**：统计全部实时计算，数据量增大后可以增加物化视图，但需要明确刷新策略与冗余一致性。
+7. **扩展 DOM 依赖**：ChatGPT / DeepSeek / Qoder 的页面结构随时可能改版；扩展提供预览与回退提示，但长期仍以平台导出文件和适配器为主。
+8. **令牌与离线边界**：令牌限流是单机固定窗口，多实例部署需要换成共享计数器；离线数据只保存在当前浏览器，换设备需重新保存。
 
 ## 14. 结论
 
-本项目完成了一个从导入、组织、检索、批注、复习到统计导出的完整学习数据闭环，并用 Text2SQL 展示了自然语言查询关系数据的一种可控实现方式。数据库设计覆盖了 E-R 建模、范式分析、完整性约束、索引、触发器、事务与最小权限；应用层保持了 SQL 可见、权限可验证、流程可回滚。自动化测试与端到端验收为演示和答辩提供了可重复的证据。
+本项目完成了一个从导入、组织、检索、批注、复习到统计导出的完整学习数据闭环，并用 Text2SQL 展示了自然语言查询关系数据的一种可控实现方式。数据库设计覆盖了 E-R 建模、范式分析、完整性约束、索引、触发器、事务与最小权限；应用层保持了 SQL 可见、权限可验证、流程可回滚。采集侧的令牌、Bearer 接口、平台适配与 MV3 扩展，以及离线阅读/复习能力，让系统在真实使用中更顺手。自动化测试与端到端验收为演示和答辩提供了可重复的证据。
 
 ---
 
@@ -427,14 +473,19 @@ docker compose up -d db
 
 | 文件 | 说明 |
 | --- | --- |
-| `sql/schema.sql` | 12 张表、约束、索引、触发器 |
+| `sql/schema.sql` | 12 张基线表、约束、索引、触发器 |
+| `sql/migrations/` | 增量迁移：复习事件流水、批注事件 ID、采集令牌 |
 | `sql/views.sql` | 13 个 t2s 权限视图 |
 | `sql/roles.sql` | `ls_app` / `t2s_reader` 最小权限 |
 | `sql/showcase.sql` | 20 条关键 SQL |
-| `app/services/import_service.py` | 导入解析、预览、确认事务 |
+| `app/services/import_service.py` | 导入解析、预览、确认事务、Bearer 入库 |
+| `app/importers/adapters.py` | ChatGPT / Qoder / DeepSeek 原生导出归一 |
+| `app/services/token_service.py` | 采集令牌哈希、限流、认证与撤销 |
 | `app/services/text2sql_service.py` | 生成、守卫、只读执行、审计 |
 | `app/permissions.py` | 课程角色与会话可见性 |
-| `scripts/verify.py` | 29 项端到端验收 |
+| `extension/` | Chrome MV3 扩展、隐私说明与回退指引 |
+| `scripts/verify.py` | 33 项端到端验收 |
+| `scripts/extension_smoke.mjs` | 扩展提取与发送契约冒烟 |
 | `docs/design.md` | 数据库设计详解 |
 | `docs/requirements.md` | R01-F01 需求拆解 |
 | `docs/sql-showcase.md` | 关键 SQL 与结果 |

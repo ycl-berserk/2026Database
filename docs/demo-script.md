@@ -37,12 +37,12 @@ curl -s http://127.0.0.1:8000/healthz
 | 0:35–1:15 | 登录与概览 | `/login` → `/dashboard` | Session、PBKDF2、按用户过滤 |
 | 1:15–2:00 | 课程与共享 | `/courses`、`/courses/1` | 课程成员 M:N、owner/editor/viewer |
 | 2:00–2:50 | 检索与上下文 | `/conversations?q=隔离级别`、会话详情 | trgm + ILIKE、分页、seq_no 上下文 |
-| 2:50–3:50 | 导入与查重 | `/imports`、预览页 | 解析校验、JSONB 预览、唯一键、单事务 |
+| 2:50–3:50 | 导入与查重 | `/imports`、预览页、`/tokens` | 解析校验、JSONB 预览、唯一键、单事务、原生导出适配、Bearer 令牌 |
 | 3:50–4:40 | 批注与复习 | `/annotations`、`/reviews` | 1:N、UNIQUE(user_id, annotation_id)、间隔重复 |
 | 4:40–5:30 | 统计与导出 | `/stats`、CSV / Markdown | JOIN、GROUP BY、FILTER、窗口函数、CTE |
 | 5:30–6:40 | Text2SQL | `/text2sql` | 权限视图、只读角色、SQL 守卫、审计 |
 | 6:40–7:20 | 权限边界 | bob 403、admin | 应用层 + SQL 作用域 + 数据库权限 |
-| 7:20–7:50 | 设计与验收 | E-R 图、`verify.py` | 8 实体、12 联系、29 项验收 |
+| 7:20–7:50 | 设计与验收 | E-R 图、`verify.py` | 8 实体、12 联系、14 张表、33 项验收 |
 | 7:50–8:00 | 收尾 | 报告 / README | 可复现命令与限制 |
 
 如果时间紧，优先保留：**检索 → 导入查重 → 批注复习 → Text2SQL → 权限 403**；统计和 E-R 可各用 20 秒带过。
@@ -144,6 +144,7 @@ curl -s http://127.0.0.1:8000/healthz
 4. **不点击确认**，直接返回导入页。
 5. 选择 `data/samples/broken.json`，点击「上传并解析」，展示「文件未被接受」和字段级错误。
 6. 返回导入页，展示最近 5 条已导入批次。
+7. 可选（各 15 秒）：上传 `deepseek_export.md` 展示原生 Markdown 识别；打开 `/tokens` 说明令牌只显示一次、可撤销；展示扩展弹窗截图，强调“点击才读取、点击才上传”。
 
 **口播**：
 
@@ -154,6 +155,8 @@ curl -s http://127.0.0.1:8000/healthz
 > 损坏文件在解析阶段就被拒绝：平台枚举不合法、缺少 external_id、消息角色未知、内容为空，都会逐条返回，不会进入预览，更不会入库。
 >
 > 真正确认时是一个事务：先锁住来源，再 upsert 来源、会话、消息和标签；任何一步失败整体回滚，并把批次标成 failed。
+>
+> 除了文件上传，系统也能直接识别 ChatGPT、Qoder、DeepSeek 的原生导出格式；扩展和脚本则通过一次性显示的采集令牌调用同一个 Bearer 接口，复用同一套预览、查重与事务，不会出现两套入库逻辑。
 
 **注意**：这一步会产生一个 preview 批次；录像结束后按第 4 节清理。
 
@@ -257,22 +260,22 @@ curl -s http://127.0.0.1:8000/healthz
 **操作**：
 
 1. 打开 `docs/er-chen.svg` 或 `docs/screenshots/16-er-chen.png`，指出 8 个核心实体和 12 组联系。
-2. 打开 `docs/design.md`，快速展示 12 张表、范式分析和删除策略。
+2. 打开 `docs/design.md`，快速展示 14 张表、范式分析和删除策略。
 3. 在终端执行验收脚本：
 
 ```bash
 .venv/Scripts/python.exe scripts/verify.py --json data/verification/report.json
 ```
 
-4. 指出输出 `26/26 PASS` 与报告路径。
+4. 指出输出 `33/33 PASS` 与报告路径。
 
 **口播**：
 
-> 概念设计有 8 个核心实体：用户、课程、来源、会话、消息、标签、批注、复习项；另外还有课程成员、导入批次和 Text2SQL 日志这些操作型实体。批注和复习项按弱实体处理。
+> 概念设计有 8 个核心实体：用户、课程、来源、会话、消息、标签、批注、复习项；另外还有课程成员、导入批次、Text2SQL 日志、复习事件和采集令牌这些操作型实体。批注和复习项按弱实体处理。
 >
 > 逻辑设计上，标签、课程成员、会话标签都拆成关联表，满足 1NF；核心表用单列代理键，关联表的非键属性依赖整个复合键；会话不冗余 owner，消息不冗余课程和来源，避免传递依赖。`import_batches.payload` 是预览期的受控冗余，导入完成后清理。
 >
-> 验收脚本覆盖表与约束、演示数据、登录权限、导入幂等、检索、批注复习、统计、Text2SQL 拒绝与跨用户隔离、导出和事务回滚，共 29 项。
+> 验收脚本覆盖表与约束、演示数据、登录权限、导入幂等、平台适配、检索、批注复习、统计、采集令牌、Text2SQL 拒绝与跨用户隔离、导出和事务回滚，共 33 项。
 
 **备用画面**：`docs/screenshots/16-er-chen.png`、`docs/verification/report.json`（实际路径 `data/verification/report.json`）。
 

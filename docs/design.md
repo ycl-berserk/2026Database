@@ -24,7 +24,7 @@
 
 ![核心 E-R 图](er-chen.svg)
 
-Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查看。操作型实体 `import_batches`、`text2sql_log` 未画入核心图，但存在于关系模式中。
+Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查看。操作型实体 `import_batches`、`text2sql_log`、`review_logs`、`api_tokens` 未画入核心图，但存在于关系模式中；`review_logs` 通过用户/复习项与核心模型相连。
 
 ### 2.1 核心基数
 
@@ -47,7 +47,7 @@ Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查�
 
 ## 3. 关系模式
 
-12 张表全部位于 `app` schema。
+14 张表全部位于 `app` schema（12 张基线表 + 迁移新增的 `review_logs`、`api_tokens`）。
 
 ### 3.1 用户 `users`
 
@@ -215,6 +215,39 @@ Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查�
 
 `row_count`、`latency_ms` 是执行结果快照，属于审计意义上的受控冗余，不参与学习数据的一致性。
 
+### 3.13 复习事件 `review_logs`（迁移 001）
+
+| 列 | 类型 | 约束 |
+| --- | --- | --- |
+| id | bigint identity | PK |
+| user_id | bigint | FK → users(id) ON DELETE CASCADE |
+| review_item_id | bigint | FK → review_items(id) ON DELETE SET NULL |
+| action | varchar(10) | `review` / `mastered` / `reset` |
+| event_id | uuid | 可空；与 user_id 组成唯一键 |
+| interval_days | integer | `> 0` |
+| due_date | date | 非空 |
+| review_count | integer | `>= 0` |
+| created_at | timestamptz | 默认 now() |
+
+`review_items` 只保存最新聚合状态，`review_logs` 记录每一次复习动作，供热力图、留存统计与离线 outbox 幂等重放使用。`UNIQUE (user_id, event_id)` 保证同一客户端事件只落一次；普通页面操作不传 `event_id`，不受影响。
+
+### 3.14 采集令牌 `api_tokens`（迁移 003）
+
+| 列 | 类型 | 约束 |
+| --- | --- | --- |
+| id | bigint identity | PK |
+| user_id | bigint | FK → users(id) ON DELETE CASCADE |
+| name | varchar(60) | 非空、去空格后 1–60 字符 |
+| token_prefix | varchar(12) | 可读前缀，便于识别 |
+| token_hash | bytea | UNIQUE；只存 SHA-256 |
+| window_started_at | timestamptz | 当前固定窗口起点 |
+| window_count | integer | `>= 0`，每分钟最多 60 次 |
+| last_used_at | timestamptz | 可空 |
+| created_at | timestamptz | 默认 now() |
+| revoked_at | timestamptz | 可空；撤销后认证失败 |
+
+令牌明文只在创建响应中返回一次；服务端不保存可逆密文。`(user_id, created_at DESC)` 索引用于令牌管理页。
+
 ## 4. 范式分析
 
 ### 4.1 第一范式（1NF）
@@ -306,6 +339,9 @@ Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查�
 | `review_items_queue_idx` | `(user_id, status, due_date) WHERE status <> 'mastered'` | 复习队列部分索引 |
 | `import_batches_user_idx` | `(user_id, created_at DESC)` | 最近导入批次 |
 | `text2sql_log_user_idx` | `(user_id, created_at DESC)` | 查询历史 |
+| `review_logs_user_time_idx` | `(user_id, created_at DESC)` | 个人复习热力图与留存 |
+| `review_logs_item_time_idx` | `(review_item_id, created_at DESC)` | 单个复习项的事件回放 |
+| `api_tokens_user_idx` | `(user_id, created_at DESC)` | 令牌管理页 |
 
 ### 6.1 中文检索取舍
 
@@ -339,6 +375,13 @@ PostgreSQL 内置的 `to_tsvector` 对中文没有词典分词，直接把整段
 1. **服务层**：`permissions.require_course_role` / `require_conversation_edit` 检查角色。
 2. **SQL 作用域**：列表与会话查询强制带 `s.owner_id = uid OR EXISTS (course_members ...)` 条件。
 3. **数据库层**：触发器阻止越权写；约束阻止非法数据；Text2SQL 使用独立只读角色。
+
+### 7.3 采集令牌与扩展
+
+- 令牌属于单个用户，管理员也无法读取明文或列表；认证时对 `token_hash` 做常量时间比较，并拒绝已撤销令牌与停用账号。
+- 固定窗口计数更新在同一条 `UPDATE ... RETURNING` 中完成，避免并发请求绕过限流；每分钟 60 次。
+- 浏览器扩展只申请 `activeTab` / `storage`，学习空间地址的访问权限在首次发送时按需请求；内容脚本不自行上传、不轮询。
+- Bearer 接口复用导入事务，并按 `course_code` 只映射到当前用户可编辑的课程；管理员被拒绝参与采集。
 
 ## 8. Text2SQL 权限视图
 
@@ -421,6 +464,9 @@ PostgreSQL 的 `UPDATE` 右侧使用旧值，因此间隔按 1 → 2 → 4 → 8
 | 内容指纹 | 表达式索引 `md5(content)` | 避免生成列带来的传递依赖 |
 | 预览状态 | 持久化到 `import_batches` | 多 worker / 重启后仍可继续预览；带 TTL 与所有权校验 |
 | 复习项唯一键 | `(user_id, annotation_id)` | 共享课程中不同用户可各自复习同一批注 |
+| 复习历史 | `review_items` 聚合 + `review_logs` 流水 | 队列读取保持单行状态；热力图与离线重放依赖事件流水 |
+| 采集令牌 | 只存 SHA-256 + 前缀 | 数据库泄露也无法直接还原令牌；明文只展示一次 |
+| 浏览器采集 | MV3 + 点击才读取 | 避免常驻权限与后台抓取；平台改版时回退到导出文件 |
 | Text2SQL 安全 | 视图 + 只读角色 + SQL 守卫 | Prompt 不可信；数据库层兜底才是最终边界 |
 | 删除用户 | `is_active=false` | 保留批注、复习与审计历史 |
 
@@ -433,4 +479,5 @@ v1 的基线结构保存在 `sql/schema.sql`。v2 起所有结构变更以编号
 - `000_baseline` 表示 `schema.sql` 已应用，它不对应迁移文件；旧库首次执行迁移时自动补记。
 - 每个迁移在单独事务中执行，失败整体回滚且不写版本记录。
 - 初始化顺序为 `schema.sql → migrations → views.sql → roles.sql`，保证 `t2s` 视图始终基于最新结构创建。
-- 业务表仍集中在 `app` schema（12 张），迁移登记表放在独立的 `meta` schema，不参与业务计数与权限视图。
+- 业务表仍集中在 `app` schema（14 张），迁移登记表放在独立的 `meta` schema，不参与业务计数与权限视图。
+- 当前迁移：`001_add_review_logs`（复习事件流水）、`002_add_annotation_event_id`（批注客户端事件 ID）、`003_add_api_tokens`（采集令牌）。

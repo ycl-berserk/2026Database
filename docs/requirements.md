@@ -42,6 +42,7 @@
 | R03-F02 | 中文关键词检索 | 1–100 字关键词 | 标题或消息命中；命中消息的 `seq_no` 与片段 | `%`/`_`/`\` 转义；超长截断 | 同上，`ILIKE ... ESCAPE '\'` + `pg_trgm` | `verify.search.keyword`、`test_search.py` |
 | R03-F03 | 会话上下文 | 会话 ID、发送者筛选 | 消息按 `seq_no` 排序；上下文窗口；批注内联；发送者统计 | 无权限 403；会话不存在 404 | `conversation_service.get_conversation`、`routers/conversations.py` | `verify.search.context`、`test_search.py` |
 | R03-F04 | 数据范围过滤 | 当前用户 ID | 只返回本人来源或共享课程下的会话 | 管理员不进入课程页面 | `permissions.can_access_conversation`、SQL 作用域 | `test_permissions.py`、`verify.scope` |
+| R03-F05 | 全局搜索 | 关键词（≤ 100 字） | 会话/消息、本人批注、课程、标签分组结果；`/` 或 `Ctrl/Cmd+K` 唤起 | 空查询给出提示；管理员不得检索他人正文 | `search_service.global_search`、`routers/search.py`、`static/app.js` | `tests/integration/test_search.py`、`verify.search.global` |
 
 **设计要点**
 
@@ -129,6 +130,18 @@
 | R09-F03 | 收件箱批量归类 | 勾选的未归类会话、目标课程 | 仅移动本人且当前未归类的会话 | 非可编辑课程 403；共享课程他人会话不动 | `conversation_service.bulk_organize_inbox`、`routers/capture.py` | `test_capture.py`、`verify.inbox.organize` |
 | R09-F04 | 导入向导与结果页 | 上传/粘贴、勾选、课程映射 | 三步步骤条、逐条错误、新增/跳过/冲突摘要 | 预览 token 过期/越权；失败整体回滚 | `templates/imports/*`、`routers/imports.py` | UI 走查、`test_import.py` |
 | R09-F05 | 反馈与恢复 | 删除、加载失败、越权 | 5 秒撤销、可关闭提示、错误页原因与恢复入口 | 离页兜底提交；错误不自动消失 | `static/app.js`、`templates/error.html`、`main.py` | `tests/unit/test_ui_assets.py`、Playwright 走查 |
+| R09-F06 | 采集令牌与 Bearer 入库 | 用途名称；`Authorization: Bearer`；统一 JSON | 明文只显示一次；按 `course_code` 归课；每分钟 60 次 | 无效/撤销令牌 401；超限 429；管理员拒绝；跨用户课程拒绝 | `token_service.py`、`routers/tokens.py`、`routers/api.py`、`import_service.ingest_json` | `tests/integration/test_tokens.py`、`test_api_tokens.py`、`verify.token.ingest` |
+| R09-F07 | 平台原生导出适配 | ChatGPT `conversations.json`、Qoder `sessions`、DeepSeek Markdown | 归一为统一 DTO；保留警告并复用导入流水线 | 缺平台/缺消息/时间非法仍按原校验拒绝 | `app/importers/adapters.py`、`json_importer.py`、`markdown_importer.py` | `tests/unit/test_platform_adapters.py`、`verify.import.adapters` |
+| R09-F08 | MV3 浏览器扩展 | 当前标签页会话、学习空间地址、令牌、课程/标签 | 预览后点击发送；Bearer 调用 `/api/ingest` | 无令牌禁用发送；401/429 提示；无法提取时回退导出文件 | `extension/` | `tests/unit/test_extension_assets.py`、`scripts/extension_smoke.mjs` |
+
+## R10 离线学习
+
+| ID | 功能 | 输入 | 输出 / 行为 | 异常与边界 | 实现位置 | 验收 |
+| --- | --- | --- | --- | --- | --- | --- |
+| R10-F01 | 会话快照 | 会话 ID | 保存到 IndexedDB；离线页可阅读与会话内搜索 | 隐私模式 IndexedDB 不可用时提示；无权限 403 | `routers/api.py`、`static/app.js`、`static/offline.html` | `tests/unit/test_offline_assets.py`、Playwright 截图 |
+| R10-F02 | 离线批注草稿 | 消息 ID、类型、正文 | 断网时暂存草稿，联网后提交 | 客户端事件 ID 幂等；权限变化时服务端拒绝 | `static/app.js`、`annotation_service.py` | `test_annotations_reviews.py`、离线走查 |
+| R10-F03 | 离线复习与 outbox | 复习项、动作 | 缓存复习队列；断网打卡进入 outbox | 同一事件重复提交只落一次；联网自动 flush | `static/app.js`、`review_service.py`、`review_logs` | `verify.review.activity`、离线走查 |
+| R10-F04 | 同步状态提示 | 在线/离线、待同步数 | 页面横幅、导航计数、离线页待同步提示 | 网络恢复自动提交并刷新 | `static/app.js`、`templates/base.html` | `tests/unit/test_offline_assets.py` |
 
 ## 非功能需求
 
@@ -139,16 +152,16 @@
 | 性能 | 列表分页、关键查询有索引、统计实时但规模可控 | 索引设计、`LIMIT/OFFSET`、部分索引、trgm |
 | 可维护性 | 关键 SQL 可定位、无 ORM 黑盒 | `sql/` + `services/` + 本文件映射 |
 | 可演示性 | 离线可演示、模拟数据可复现 | mock Text2SQL、`make_samples.py`、`seed_demo.py` |
-| 可验收 | 自动化测试与端到端报告 | 146 个 pytest 用例 + 29 项 `verify.py` 检查 |
+| 可验收 | 自动化测试与端到端报告 | 184 个 pytest 用例 + 33 项 `verify.py` 检查 |
 
 ## 需求到验收命令的映射
 
 ```bash
-# R01–R09 的主要回归
+# R01–R10 的主要回归
 .venv/Scripts/python.exe -m pytest -q
 
 # 端到端 PASS/FAIL（含权限、导入、检索、统计、导出、Text2SQL、事务）
 .venv/Scripts/python.exe scripts/verify.py --json data/verification/report.json
 ```
 
-验收输出示例见 `data/verification/report.json`：26/26 PASS，0 FAIL。
+验收输出示例见 `data/verification/report.json`：33/33 PASS，0 FAIL。

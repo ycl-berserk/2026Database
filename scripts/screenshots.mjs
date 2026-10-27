@@ -74,6 +74,9 @@ async function run() {
     await shot(loginPage, "00-login.png");
     await anon.close();
 
+    // 手机端先跑，避免桌面端上传预览批次污染“最近导入”截图。
+    await mobilePass(browser);
+
     // alice：主流程
     const { context: aliceCtx, page: alice } = await login(browser, "alice");
     await shot(alice, "01-dashboard.png");
@@ -96,7 +99,20 @@ async function run() {
     await alice.goto(`${BASE}/imports`, { waitUntil: "networkidle" });
     await shot(alice, "07-imports.png");
 
+    await alice.goto(`${BASE}/imports?mode=paste`, { waitUntil: "networkidle" });
+    await shot(alice, "20-import-paste.png");
+
+    await alice.goto(`${BASE}/inbox`, { waitUntil: "networkidle" });
+    await shot(alice, "17-inbox.png");
+
+    await alice.goto(`${BASE}/share`, { waitUntil: "networkidle" });
+    await shot(alice, "18-share.png");
+
+    await alice.goto(`${BASE}/imports/result/1`, { waitUntil: "networkidle" });
+    await shot(alice, "19-import-result.png");
+
     // 上传样例 → 预览页；确认前不写入会话/消息
+    await alice.goto(`${BASE}/imports`, { waitUntil: "networkidle" });
     await alice.setInputFiles('input[type="file"]', path.resolve("data", "samples", "qoder_ml.json"));
     await Promise.all([
       alice.waitForURL("**/imports/preview/**"),
@@ -161,8 +177,6 @@ async function run() {
     console.log("  ✓ 16-er-chen.png");
     await erContext.close();
 
-    await mobilePass(browser);
-
     if (RECORD) await recordTour(browser);
   } finally {
     await browser.close();
@@ -225,6 +239,12 @@ async function mobilePass(browser) {
   await page.goto(`${BASE}/imports`, { waitUntil: "networkidle" });
   await mobileShot("05-imports.png");
 
+  await page.goto(`${BASE}/inbox`, { waitUntil: "networkidle" });
+  await mobileShot("08-inbox.png");
+
+  await page.goto(`${BASE}/share`, { waitUntil: "networkidle" });
+  await mobileShot("09-share.png");
+
   await page.goto(`${BASE}/reviews`, { waitUntil: "networkidle" });
   await mobileShot("06-reviews.png");
 
@@ -276,6 +296,8 @@ async function recordTour(browser) {
   await page.waitForURL("**/dashboard");
   const stops = [
     "/dashboard",
+    "/inbox",
+    "/share",
     "/courses",
     "/conversations",
     "/conversations/7",

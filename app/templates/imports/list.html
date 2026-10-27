@@ -1,59 +1,117 @@
 {% extends "base.html" %}
 
+{% set active_mode = mode | default('upload') %}
 {% block title %}导入记录{% endblock %}
-{% block page_title %}导入记录{% endblock %}
-{% block page_subtitle %}解析聊天导出文件，预览、查重后事务入库{% endblock %}
+{% block page_title %}导入聊天记录{% endblock %}
+{% block page_subtitle %}从文件或剪贴板收进来，先预览再入库{% endblock %}
+
+{% block topbar_actions %}
+  <a class="btn btn-ghost" href="/share">快速收一段</a>
+{% endblock %}
 
 {% block content %}
-<section class="panel">
-  <div class="panel-head">
-    <h2>导入聊天记录</h2>
-    <span class="muted">支持 JSON / Markdown，单文件 ≤ 5 MB、≤ 2000 条消息</span>
-  </div>
+<section class="panel wizard-panel">
+  <ol class="wizard-steps" aria-label="导入步骤">
+    <li class="active"><span>1</span><div><strong>选择内容</strong><small>上传文件或粘贴文字</small></div></li>
+    <li><span>2</span><div><strong>预览确认</strong><small>勾选会话并归类</small></div></li>
+    <li><span>3</span><div><strong>完成</strong><small>查看导入结果</small></div></li>
+  </ol>
 
   {% if errors %}
     <div class="notice notice-error">
-      <strong>文件未被接受</strong>
+      <strong>内容未被接受</strong>
       <ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
     </div>
   {% endif %}
   {% if warnings %}
     <div class="notice notice-warning">
-      <strong>解析警告</strong>
+      <strong>解析提示</strong>
       <ul>{% for warning in warnings %}<li>{{ warning }}</li>{% endfor %}</ul>
     </div>
   {% endif %}
 
-  <form method="post" action="/imports/preview" enctype="multipart/form-data" class="upload-grid">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label class="field field-file">
-      <span>聊天记录文件 *</span>
-      <input type="file" name="file" accept=".json,.md,.markdown,.txt" required>
-      <small class="muted">{{ form.file_name if form and form.file_name else '选择从 Qoder / ChatGPT / DeepSeek 导出的文件' }}</small>
-    </label>
-    <label class="field">
-      <span>来源平台</span>
-      <select name="platform">
-        <option value="auto" {% if form and form.platform == 'auto' %}selected{% endif %}>跟随文件 / 手动选择</option>
-        {% for platform in platforms %}
-          <option value="{{ platform }}" {% if form and form.platform == platform %}selected{% endif %}>
-            {{ platform_label(platform) }}
-          </option>
-        {% endfor %}
-      </select>
-    </label>
-    <label class="field">
-      <span>账号标识</span>
-      <input name="account_label" maxlength="100" placeholder="如 alice@qoder（可留空）"
-             value="{{ form.account_label if form else '' }}">
-    </label>
-    <div class="form-actions">
-      <button class="btn btn-primary" type="submit">上传并解析</button>
-    </div>
-  </form>
+  <nav class="import-tabs" aria-label="导入方式">
+    <a class="import-tab {% if active_mode != 'paste' %}active{% endif %}" href="/imports?mode=upload"
+       {% if active_mode != 'paste' %}aria-current="page"{% endif %}>上传文件</a>
+    <a class="import-tab {% if active_mode == 'paste' %}active{% endif %}" href="/imports?mode=paste"
+       {% if active_mode == 'paste' %}aria-current="page"{% endif %}>粘贴聊天</a>
+  </nav>
+
+  {% if active_mode == 'paste' %}
+    <form method="post" action="/imports/paste" class="paste-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="field field-full">
+        <span>聊天内容 *</span>
+        <textarea name="text" rows="11" required maxlength="200000"
+                  placeholder="直接粘贴对话即可，例如：&#10;我：MVCC 是什么？&#10;助手：多版本并发控制……">{{ paste_text | default('') }}</textarea>
+        <small class="muted">支持「我 / 用户 / 提问」与「助手 / ChatGPT / Qoder」等角色前缀，以及可选时间。</small>
+      </label>
+      <div class="form-grid">
+        <label class="field">
+          <span>标题</span>
+          <input name="title" maxlength="255" placeholder="留空则自动取第一句话"
+                 value="{{ form.title if form and form.title else '' }}">
+        </label>
+        <label class="field">
+          <span>来源平台</span>
+          <select name="platform">
+            <option value="auto" {% if form and form.platform == 'auto' %}selected{% endif %}>自动识别</option>
+            {% for platform in platforms %}
+              <option value="{{ platform }}" {% if form and form.platform == platform %}selected{% endif %}>
+                {{ platform_label(platform) }}
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="field field-full">
+          <span>账号标识</span>
+          <input name="account_label" maxlength="100" placeholder="如 alice@chatgpt（可留空）"
+                 value="{{ form.account_label if form else '' }}">
+        </label>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">识别并预览</button>
+        <span class="muted">不会直接入库，下一步可以检查会话和归类。</span>
+      </div>
+    </form>
+  {% else %}
+    <form method="post" action="/imports/preview" enctype="multipart/form-data" class="upload-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="dropzone" id="dropzone">
+        <input class="sr-only" type="file" name="file" accept=".json,.md,.markdown,.txt" required>
+        <span class="dropzone-mark" aria-hidden="true">⇧</span>
+        <strong>拖拽文件到这里，或点击选择</strong>
+        <small>JSON / Markdown / TXT · 单文件 ≤ 5 MB · ≤ 2000 条消息</small>
+        <span class="dropzone-file" data-file-label>
+          {{ form.file_name if form and form.file_name else '尚未选择文件' }}
+        </span>
+      </label>
+      <div class="upload-grid">
+        <label class="field">
+          <span>来源平台</span>
+          <select name="platform">
+            <option value="auto" {% if form and form.platform == 'auto' %}selected{% endif %}>跟随文件 / 手动选择</option>
+            {% for platform in platforms %}
+              <option value="{{ platform }}" {% if form and form.platform == platform %}selected{% endif %}>
+                {{ platform_label(platform) }}
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="field">
+          <span>账号标识</span>
+          <input name="account_label" maxlength="100" placeholder="如 alice@qoder（可留空）"
+                 value="{{ form.account_label if form else '' }}">
+        </label>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">上传并预览</button>
+        </div>
+      </div>
+    </form>
+  {% endif %}
 
   <details class="format-help">
-    <summary>导入格式说明</summary>
+    <summary>支持哪些格式？</summary>
     <div class="format-grid">
       <div>
         <h3>JSON</h3>
@@ -74,11 +132,10 @@
 }</pre>
       </div>
       <div>
-        <h3>Markdown</h3>
+        <h3>Markdown / 裸文本</h3>
         <pre class="code-block"># SQL 查询执行顺序
 - 课程: DB
 - 标签: SQL, 查询优化
-- 开始: 2026-09-20 10:00
 
 ## 用户 [2026-09-20 10:00]
 …
@@ -129,9 +186,11 @@
                 </small>
               </td>
               <td data-label="时间" class="muted">{{ batch.created_at | dt }}</td>
-              <td data-label="操作">
+              <td data-label="操作" class="col-actions">
                 {% if batch.status == 'preview' %}
                   <a class="btn btn-sm" href="/imports/preview/{{ batch.preview_token }}">继续预览</a>
+                {% elif batch.status == 'imported' %}
+                  <a class="btn btn-ghost btn-sm" href="/imports/result/{{ batch.id }}">结果</a>
                 {% endif %}
               </td>
             </tr>
@@ -140,7 +199,43 @@
       </table>
     </div>
   {% else %}
-    <p class="empty">还没有导入记录。</p>
+    <div class="empty-block">
+      <p>还没有导入记录</p>
+      <p class="muted">从上面的上传或粘贴开始，第一步不会写入任何聊天数据。</p>
+    </div>
   {% endif %}
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var zone = document.getElementById("dropzone");
+    if (!zone) return;
+    var input = zone.querySelector('input[type="file"]');
+    var label = zone.querySelector("[data-file-label]");
+    function showName() {
+      if (!input.files || !input.files.length) return;
+      label.textContent = input.files[0].name;
+    }
+    input.addEventListener("change", showName);
+    ["dragenter", "dragover"].forEach(function (name) {
+      zone.addEventListener(name, function (event) {
+        event.preventDefault();
+        zone.classList.add("dragging");
+      });
+    });
+    ["dragleave", "drop"].forEach(function (name) {
+      zone.addEventListener(name, function (event) {
+        event.preventDefault();
+        zone.classList.remove("dragging");
+      });
+    });
+    zone.addEventListener("drop", function (event) {
+      if (!event.dataTransfer || !event.dataTransfer.files.length) return;
+      input.files = event.dataTransfer.files;
+      showName();
+    });
+  })();
+</script>
 {% endblock %}

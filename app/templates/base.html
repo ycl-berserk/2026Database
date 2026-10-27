@@ -52,6 +52,8 @@
       {% else %}
         <span class="nav-label">学习</span>
         <a class="nav-link {% if active_path == '/dashboard' %}active{% endif %}" href="/dashboard">概览</a>
+        <a class="nav-link {% if active_path.startswith('/inbox') %}active{% endif %}" href="/inbox">收件箱</a>
+        <a class="nav-link {% if active_path.startswith('/share') %}active{% endif %}" href="/share">快速收录</a>
         <a class="nav-link {% if active_path.startswith('/courses') %}active{% endif %}" href="/courses">课程</a>
         <a class="nav-link {% if active_path.startswith('/conversations') %}active{% endif %}" href="/conversations">会话</a>
         <a class="nav-link {% if active_path.startswith('/tags') %}active{% endif %}" href="/tags">标签</a>
@@ -124,6 +126,13 @@
           <span>用户</span>
         </a>
       {% else %}
+        <a class="tab {% if active_path.startswith('/inbox') %}active{% endif %}" href="/inbox"
+           {% if active_path.startswith('/inbox') %}aria-current="page"{% endif %}>
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 5.5h16v13H4z"/><path d="M4 13h5l1.5 2h3L15 13h5"/>
+          </svg>
+          <span>收件箱</span>
+        </a>
         <a class="tab {% if active_path.startswith('/conversations') %}active{% endif %}" href="/conversations"
            {% if active_path.startswith('/conversations') %}aria-current="page"{% endif %}>
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">

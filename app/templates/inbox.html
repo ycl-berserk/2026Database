@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}收件箱{% endblock %}
+{% block page_title %}收件箱{% endblock %}
+{% block page_subtitle %}新收进来的问答先放这里，再批量归到课程{% endblock %}
+
+{% block topbar_actions %}
+  <a class="btn btn-ghost" href="/imports">上传文件</a>
+  <a class="btn btn-primary" href="/share">收一段问答</a>
+{% endblock %}
+
+{% block content %}
+{% if highlight %}
+  <div class="notice notice-success">
+    已收进收件箱。选一门课归类，或先阅读原文。
+  </div>
+{% endif %}
+
+{% if rows %}
+  <form method="post" action="/inbox/organize" class="panel inbox-panel">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="panel-head">
+      <h2>待整理 <span class="count-pill">{{ total }}</span></h2>
+      <label class="checkline">
+        <input type="checkbox" data-select-all>
+        <span>全选本页</span>
+      </label>
+    </div>
+
+    <div class="inbox-list">
+      {% for row in rows %}
+        <div class="inbox-item {% if highlight == row.id %}conv-highlight{% endif %}" id="conv-{{ row.id }}">
+          <input class="inbox-check" type="checkbox" name="selected" value="{{ row.id }}"
+                 data-select-item aria-label="选择会话「{{ row.title }}」">
+          <article class="conv-card">
+            <div class="conv-card-main">
+              <div class="conv-card-head">
+                <a class="conv-title" href="/conversations/{{ row.id }}">{{ row.title }}</a>
+                <div class="record-meta">
+                  <span class="chip">{{ platform_label(row.platform) }}</span>
+                  {% if row.is_archived %}<span class="badge">已归档</span>{% endif %}
+                </div>
+              </div>
+              {% if row.snippet %}
+                <p class="conv-snippet">{{ row.snippet }}</p>
+              {% else %}
+                <p class="muted">该会话暂无消息。</p>
+              {% endif %}
+              <div class="record-meta">
+                {% for name in row.tag_names %}<span class="chip">{{ name }}</span>{% endfor %}
+                <span>{{ row.message_count }} 条消息</span>
+                <span class="muted">最近 {{ row.last_message_at | dt }}</span>
+              </div>
+            </div>
+            <a class="btn btn-ghost btn-sm" href="/conversations/{{ row.id }}">阅读</a>
+          </article>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="inbox-actions">
+      <label class="field">
+        <span>归入课程</span>
+        <select name="course_id" required>
+          <option value="">选择课程</option>
+          {% for course in courses %}
+            <option value="{{ course.id }}">{{ course.code }} · {{ course.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button class="btn btn-primary" type="submit">归类所选</button>
+      {% if not courses %}
+        <span class="muted">你还不能编辑任何课程，请先到课程页创建或加入课程。</span>
+      {% else %}
+        <span class="muted">只归还未归类的会话，不影响已整理内容。</span>
+      {% endif %}
+    </div>
+  </form>
+
+  {% if total_pages > 1 %}
+    <nav class="pagination">
+      {% if page > 1 %}<a class="page-link" href="/inbox?page={{ page - 1 }}">上一页</a>{% endif %}
+      {% for item in pages %}
+        {% if item.active %}
+          <span class="page-link active">{{ item.n }}</span>
+        {% else %}
+          <a class="page-link" href="/inbox?page={{ item.n }}">{{ item.n }}</a>
+        {% endif %}
+      {% endfor %}
+      {% if page < total_pages %}<a class="page-link" href="/inbox?page={{ page + 1 }}">下一页</a>{% endif %}
+    </nav>
+  {% endif %}
+{% else %}
+  <section class="panel">
+    <div class="empty-block inbox-empty">
+      <div class="empty-mark" aria-hidden="true">✓</div>
+      <h2>收件箱已清空</h2>
+      <p class="muted">从手机分享、粘贴一段对话，或上传导出文件，新内容会先出现在这里。</p>
+      <div class="form-actions empty-actions">
+        <a class="btn btn-primary" href="/share">收一段问答</a>
+        <a class="btn" href="/imports">上传文件</a>
+      </div>
+    </div>
+  </section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var all = document.querySelector("[data-select-all]");
+    var boxes = Array.from(document.querySelectorAll("[data-select-item]"));
+    if (!all || !boxes.length) return;
+    all.addEventListener("change", function () {
+      boxes.forEach(function (box) { box.checked = all.checked; });
+    });
+    boxes.forEach(function (box) {
+      box.addEventListener("change", function () {
+        all.checked = boxes.every(function (item) { return item.checked; });
+      });
+    });
+    var row = document.querySelector(".conv-highlight");
+    if (row) row.scrollIntoView({ block: "center" });
+  })();
+</script>
+{% endblock %}

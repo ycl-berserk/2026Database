@@ -280,6 +280,25 @@ def main() -> int:
         annotation_count, review_count = seed_annotations(conn, user_ids)
         print(f"seeded annotations: {annotation_count}, review items: {review_count}")
 
+        unclassified = conn.execute(
+            """
+            WITH picked AS (
+                SELECT v.id
+                  FROM app.conversations v
+                  JOIN app.courses c ON c.id = v.course_id
+                 WHERE c.code = 'DS'
+                 ORDER BY v.id
+                 LIMIT 3
+            )
+            UPDATE app.conversations v
+               SET course_id = NULL
+              FROM picked
+             WHERE v.id = picked.id
+            RETURNING v.id
+            """
+        ).fetchall()
+        print(f"left {len(unclassified)} conversations in inbox")
+
         conn.commit()
 
     print("seeded users:", ", ".join(user_ids))

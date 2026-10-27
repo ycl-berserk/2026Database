@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}导入结果{% endblock %}
+{% block page_title %}导入结果{% endblock %}
+{% block page_subtitle %}{{ batch.file_name }} · {{ batch.imported_at | dt if batch.imported_at else batch.created_at | dt }}{% endblock %}
+
+{% block topbar_actions %}
+  <a class="btn btn-ghost" href="/imports">再次导入</a>
+{% endblock %}
+
+{% block content %}
+<ol class="wizard-steps" aria-label="导入步骤">
+  <li class="done"><span>1</span><div><strong>选择内容</strong><small>已完成</small></div></li>
+  <li class="done"><span>2</span><div><strong>预览确认</strong><small>已完成</small></div></li>
+  <li class="active"><span>3</span><div><strong>完成</strong><small>结果摘要</small></div></li>
+</ol>
+
+<section class="panel import-result">
+  {% if batch.status == 'imported' %}
+    <div class="result-mark" aria-hidden="true">✓</div>
+    <div class="result-copy">
+      <h2>导入完成</h2>
+      <p class="muted">
+        {% if summary.conversations_new is defined %}
+          新增 {{ summary.conversations_new }} 个会话、{{ summary.messages_new }} 条消息；
+          跳过 {{ summary.messages_skipped }} 条重复消息。
+        {% else %}
+          内容已写入学习空间。
+        {% endif %}
+      </p>
+      {% if summary.conflicts %}
+        <p class="conflict-text">有 {{ summary.conflicts }} 条消息因内容不同未覆盖，可在会话中核对。</p>
+      {% endif %}
+    </div>
+  {% else %}
+    <div class="result-mark result-mark-warn" aria-hidden="true">!</div>
+    <div class="result-copy">
+      <h2>这个批次尚未完成</h2>
+      <p class="muted">当前状态：{{ status_label(batch.status) }}。你可以返回预览继续处理，或重新选择内容。</p>
+    </div>
+  {% endif %}
+
+  <div class="result-summary">
+    <div><strong>{{ summary.conversations_new | default(0) }}</strong><span>新增会话</span></div>
+    <div><strong>{{ summary.conversations_updated | default(0) }}</strong><span>更新会话</span></div>
+    <div><strong>{{ summary.messages_new | default(0) }}</strong><span>新增消息</span></div>
+    <div><strong>{{ summary.tags_new | default(0) }}</strong><span>新增标签</span></div>
+  </div>
+
+  <div class="form-actions result-actions">
+    {% if summary.conversations_new or summary.conversations_updated %}
+      <a class="btn btn-primary" href="/inbox">去收件箱整理</a>
+      <a class="btn" href="/conversations">查看全部会话</a>
+    {% elif batch.status == 'preview' %}
+      <a class="btn btn-primary" href="/imports/preview/{{ batch.preview_token }}">继续预览</a>
+    {% endif %}
+    <a class="btn btn-ghost" href="/imports">继续导入</a>
+  </div>
+
+  <dl class="result-meta">
+    <div><dt>来源</dt><dd>{{ platform_label(batch.platform) }} · {{ batch.account_label }}</dd></div>
+    <div><dt>文件</dt><dd>{{ batch.file_name }}</dd></div>
+    <div><dt>批次</dt><dd class="mono">#{{ batch.id }}</dd></div>
+    {% if batch.imported_at %}<div><dt>导入时间</dt><dd>{{ batch.imported_at | dt }}</dd></div>{% endif %}
+  </dl>
+</section>
+{% endblock %}

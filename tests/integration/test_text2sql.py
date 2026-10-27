@@ -53,6 +53,68 @@ def test_reader_role_is_read_only_and_isolated(t2s_conn):
     t2s_conn.rollback()
 
 
+def test_preflight_reports_plan_and_rejects_over_budget(t2s_conn, base):
+    plan = svc.preflight_query(
+        t2s_conn,
+        "SELECT code, name FROM v_my_courses ORDER BY code",
+        base["users"]["alice"],
+    )
+    assert plan["total_cost"] > 0
+    assert plan["plan_rows"] >= 1
+
+    original_cost = settings.text2sql_max_cost
+    try:
+        object.__setattr__(settings, "text2sql_max_cost", 0.01)
+        with pytest.raises(svc.PreflightError):
+            svc.preflight_query(
+                t2s_conn,
+                "SELECT a.message_id FROM v_my_messages a "
+                "CROSS JOIN v_my_messages b ORDER BY a.message_id",
+                base["users"]["alice"],
+            )
+    finally:
+        object.__setattr__(settings, "text2sql_max_cost", original_cost)
+
+
+def test_preflight_can_be_disabled(t2s_conn, base):
+    original = settings.text2sql_preflight_enabled
+    try:
+        object.__setattr__(settings, "text2sql_preflight_enabled", False)
+        assert (
+            svc.preflight_query(
+                t2s_conn, "SELECT code FROM v_my_courses", base["users"]["alice"]
+            )
+            is None
+        )
+    finally:
+        object.__setattr__(settings, "text2sql_preflight_enabled", original)
+
+
+def test_run_rejects_expensive_query_and_logs(conn, t2s_conn, base, monkeypatch):
+    monkeypatch.setattr(
+        svc,
+        "generate_sql",
+        _fake_generate(
+            "SELECT a.message_id FROM v_my_messages a "
+            "CROSS JOIN v_my_messages b ORDER BY a.message_id"
+        ),
+    )
+    original = settings.text2sql_max_cost
+    try:
+        object.__setattr__(settings, "text2sql_max_cost", 0.01)
+        with pytest.raises(svc.PreflightError):
+            asyncio.run(
+                svc.run("笛卡尔积", base["users"]["alice"], t2s_conn, conn)
+            )
+    finally:
+        object.__setattr__(settings, "text2sql_max_cost", original)
+
+    log = svc.history(conn, base["users"]["alice"])[0]
+    assert log["status"] == "rejected"
+    assert "预估代价" in log["error_message"]
+    assert log["row_count"] is None
+
+
 def test_run_success_records_log(conn, t2s_conn, base, monkeypatch):
     monkeypatch.setattr(
         svc,
@@ -66,6 +128,8 @@ def test_run_success_records_log(conn, t2s_conn, base, monkeypatch):
     assert result["columns"] == ["title", "message_count"]
     assert result["row_count"] == 3
     assert result["truncated"] is False
+    assert result["plan"]["total_cost"] > 0
+    assert result["plan"]["plan_rows"] >= 1
     assert {row["title"] for row in result["rows"]} == {
         "事务与隔离级别",
         "进程调度",
@@ -94,14 +158,15 @@ def test_run_rejects_malicious_sql_and_logs(conn, t2s_conn, base, monkeypatch):
 
 
 def test_run_logs_execution_errors(conn, t2s_conn, base, monkeypatch):
-    monkeypatch.setattr(svc, "generate_sql", _fake_generate("SELECT 1 / 0"))
+    sql = "SELECT 1 / (seq_no - 1) FROM v_my_messages"
+    monkeypatch.setattr(svc, "generate_sql", _fake_generate(sql))
     with pytest.raises(ValidationError) as excinfo:
         asyncio.run(svc.run("除以零", base["users"]["alice"], t2s_conn, conn))
     assert "查询执行失败" in excinfo.value.message
 
     log = svc.history(conn, base["users"]["alice"])[0]
     assert log["status"] == "error"
-    assert log["generated_sql"] == "SELECT 1 / 0"
+    assert log["generated_sql"] == sql
 
 
 def test_row_limit_marks_truncated(conn, t2s_conn, base, monkeypatch):

@@ -56,6 +56,17 @@ class Settings:
     preview_ttl_minutes: int = 30
     text2sql_row_limit: int = 200
     text2sql_timeout_ms: int = 3000
+    text2sql_preflight_enabled: bool = field(
+        default_factory=lambda: os.getenv("TEXT2SQL_PREFLIGHT", "1").lower()
+        not in ("0", "false", "off")
+    )
+    text2sql_preflight_timeout_ms: int = 1000
+    text2sql_max_cost: float = field(
+        default_factory=lambda: float(os.getenv("TEXT2SQL_MAX_COST", "500000"))
+    )
+    text2sql_max_est_rows: int = field(
+        default_factory=lambda: int(os.getenv("TEXT2SQL_MAX_EST_ROWS", "200000"))
+    )
 
     @property
     def is_dev(self) -> bool:

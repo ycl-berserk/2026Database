@@ -13,6 +13,23 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def test_token_page_documents_one_time_secret_and_ingest_contract():
+    body = _read(TEMPLATES / "tokens" / "list.html")
+    assert "只显示这一次" in body
+    assert "data-copy=\"{{ new_token }}\"" in body
+    assert "Authorization: Bearer" in body
+    assert "/api/ingest" in body
+    assert "每分钟最多" in body
+    assert 'action="/tokens/{{ token.id }}/revoke"' in body
+
+    nav = _read(TEMPLATES / "base.html")
+    assert 'href="/tokens"' in nav
+
+    css = _read(STATIC / "app.css")
+    assert ".token-reveal" in css
+    assert ".token-copy" in css
+
+
 def test_login_exposes_one_click_demo_accounts():
     login = _read(TEMPLATES / "login.html")
     assert "data-demo-login" in login

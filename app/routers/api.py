@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
-from ..auth import ensure_csrf, require_user, verify_csrf
+from ..auth import ensure_csrf, require_token, require_user, verify_csrf
+from ..config import settings
 from ..db import get_conn
 from ..errors import NotFoundError, PermissionDenied, ValidationError
-from ..services import annotation_service, conversation_service, review_service
+from ..services import (
+    annotation_service,
+    conversation_service,
+    import_service,
+    review_service,
+)
 
 router = APIRouter(prefix="/api")
 
@@ -76,6 +83,43 @@ def offline_reviews(
         "items": jsonable_encoder(items),
     }
     return JSONResponse(payload)
+
+
+@router.post("/ingest")
+async def ingest(
+    request: Request,
+    user=Depends(require_token),
+    conn=Depends(get_conn),
+):
+    """用采集令牌一次性写入统一 JSON；脚本与浏览器扩展的入口。"""
+    _require_student(user)
+    raw = await request.body()
+    if len(raw) > settings.import_max_bytes:
+        limit = settings.import_max_bytes // (1024 * 1024)
+        raise ValidationError(f"单次导入不能超过 {limit} MB")
+    try:
+        document = json.loads(raw.decode("utf-8-sig"))
+    except UnicodeDecodeError as exc:
+        raise ValidationError("文件不是有效的 UTF-8 文本") from exc
+    except json.JSONDecodeError as exc:
+        raise ValidationError(
+            f"JSON 解析失败：第 {exc.lineno} 行第 {exc.colno} 列，{exc.msg}"
+        ) from exc
+    if not isinstance(document, dict):
+        raise ValidationError("请求体必须是包含 platform 与 conversations 的 JSON 对象")
+
+    course_id = None
+    raw_course = document.get("course_id")
+    if raw_course not in (None, ""):
+        try:
+            course_id = int(raw_course)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError("课程标识无效") from exc
+
+    result = import_service.ingest_json(
+        conn, user=user, document=document, course_id=course_id
+    )
+    return JSONResponse(jsonable_encoder({"ok": True, **result}))
 
 
 @router.post("/annotations")

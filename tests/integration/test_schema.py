@@ -11,7 +11,7 @@ def test_schema_has_tables_and_views(conn):
     views = conn.execute(
         "SELECT count(*) AS n FROM information_schema.views WHERE table_schema = 't2s'"
     ).fetchone()["n"]
-    assert tables == 13
+    assert tables == 14
     assert views == 13
 
 

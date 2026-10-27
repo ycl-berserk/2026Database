@@ -81,3 +81,25 @@ def optional_user(request: Request, conn=Depends(get_conn)) -> dict | None:
     user = load_user(request, conn)
     request.state.user = user
     return user
+
+
+def require_token(request: Request, conn=Depends(get_conn)) -> dict:
+    """Bearer 采集令牌认证，不依赖浏览器会话。"""
+    scheme, _, value = request.headers.get("authorization", "").partition(" ")
+    token = value.strip()
+    if scheme.lower() != "bearer" or not token:
+        raise AuthRequired("请在 Authorization: Bearer 中提供采集令牌")
+    from .services.token_service import authenticate
+
+    info = authenticate(conn, token)
+    if info["system_role"] == "admin":
+        raise PermissionDenied("管理员不参与聊天记录采集")
+    user = {
+        "id": info["user_id"],
+        "username": None,
+        "display_name": info["display_name"],
+        "system_role": info["system_role"],
+        "is_active": True,
+    }
+    request.state.user = user
+    return user

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -365,6 +366,79 @@ def ingest_plain_text(
     return {
         **counts,
         "conversation_id": conversation["id"],
+        "warnings": result.warnings,
+    }
+
+
+def ingest_json(
+    conn,
+    *,
+    user: dict,
+    document: dict,
+    course_id: int | None = None,
+) -> dict:
+    """一次性写入统一 JSON 文档，供采集令牌 / 脚本 / 扩展调用。"""
+    if not isinstance(document, dict):
+        raise ValidationError("请求体必须是包含 platform 与 conversations 的 JSON 对象")
+    try:
+        raw = json.dumps(document, ensure_ascii=False).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValidationError("导入内容无法序列化为 JSON") from exc
+    if len(raw) > settings.import_max_bytes:
+        limit = settings.import_max_bytes // (1024 * 1024)
+        raise ValidationError(f"单次导入不能超过 {limit} MB")
+
+    result = json_importer.parse(raw, max_messages=settings.import_max_messages)
+    if not result.ok:
+        raise ValidationError("；".join(result.errors[:3]) or "导入内容没有通过校验")
+    if result.platform not in PLATFORMS:
+        raise ValidationError("无法确定来源平台")
+
+    editable = editable_courses(conn, user["id"])
+    course_by_code = {row["code"].upper(): row["id"] for row in editable}
+    if course_id is not None and course_id not in {row["id"] for row in editable}:
+        raise ValidationError("只能把内容归类到自己可编辑的课程")
+
+    course_map: dict[int, int | None] = {}
+    for index, conv in enumerate(result.conversations):
+        target = course_id
+        if target is None and conv.get("course_code"):
+            target = course_by_code.get(conv["course_code"].upper())
+        course_map[index] = target
+
+    with conn.transaction():
+        source_id = get_or_create_source(
+            conn, user["id"], result.platform, result.account_label
+        )
+        batch = save_preview(
+            conn,
+            user_id=user["id"],
+            source_id=source_id,
+            file_name="采集 API",
+            raw=raw,
+            result=result,
+        )
+        counts = confirm_import(
+            conn,
+            token=str(batch["preview_token"]),
+            user=user,
+            selected=set(range(len(result.conversations))),
+            course_map=course_map,
+        )
+
+    conversations = conn.execute(
+        """
+        SELECT id, external_id, course_id
+          FROM app.conversations
+         WHERE source_id = %s AND external_id = ANY(%s)
+         ORDER BY id
+        """,
+        (source_id, [conv["external_id"] for conv in result.conversations]),
+    ).fetchall()
+    return {
+        **counts,
+        "batch_id": batch["id"],
+        "conversations": conversations,
         "warnings": result.warnings,
     }
 

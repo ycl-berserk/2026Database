@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import sys
 import time
@@ -24,7 +25,7 @@ from psycopg.rows import dict_row
 
 from app.auth import verify_password
 from app.config import settings
-from app.errors import NotFoundError, PermissionDenied
+from app.errors import AuthRequired, NotFoundError, PermissionDenied, RateLimited
 from app.permissions import get_course_role, require_conversation_edit
 from app.services import (
     annotation_service,
@@ -35,6 +36,7 @@ from app.services import (
     search_service,
     stats_service,
     text2sql_service,
+    token_service,
 )
 
 ALICE = {"username": "alice", "password": "Alice123!"}
@@ -102,6 +104,7 @@ def _snapshot(conn) -> dict[str, int]:
             "users", "courses", "course_members", "sources", "conversations",
             "messages", "tags", "conversation_tags", "annotations",
             "review_items", "review_logs", "import_batches", "text2sql_log",
+            "api_tokens",
         )
     }
 
@@ -124,10 +127,10 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             conn,
             "SELECT count(*) AS n FROM pg_views WHERE schemaname = 't2s'",
         )
-        _ok(tables == 13, f"app 表数量应为 13，实际 {tables}")
+        _ok(tables == 14, f"app 表数量应为 14，实际 {tables}")
         _ok(views == 13, f"t2s 视图数量应为 13，实际 {views}")
-        return f"13 张表、13 个权限视图"
-    report.run("schema.tables", "Schema：13 张业务表与 13 个 t2s 视图", schema_tables)
+        return f"14 张表、13 个权限视图"
+    report.run("schema.tables", "Schema：14 张业务表与 13 个 t2s 视图", schema_tables)
 
     def schema_constraints():
         constraints = {
@@ -146,6 +149,8 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             "review_items_status_check",
             "review_logs_event_unique",
             "annotations_client_event_unique",
+            "api_tokens_hash_unique",
+            "api_tokens_name_check",
             "messages_sender_check",
         }
         missing = required - constraints
@@ -162,6 +167,7 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             "messages_content_md5_idx",
             "conversations_title_trgm",
             "review_items_queue_idx",
+            "api_tokens_user_idx",
         }
         missing_idx = required_indexes - indexes
         _ok(not missing_idx, f"缺少索引：{sorted(missing_idx)}")
@@ -551,6 +557,75 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             "重复收录应跳过 2 条相同消息")
         return "粘贴识别 2 条角色消息，重复收录幂等"
     report.run("capture.paste", "采集：粘贴解析、收录与幂等", capture_paste)
+
+    def token_ingest():
+        created = token_service.create_token(conn, alice["id"], "验收脚本")
+        stored = conn.execute(
+            "SELECT token_hash, token_prefix FROM app.api_tokens WHERE id = %s",
+            (created["id"],),
+        ).fetchone()
+        digest = hashlib.sha256(created["token"].encode("utf-8")).digest()
+        _ok(bytes(stored["token_hash"]) == digest, "数据库应只保存令牌的 SHA-256 哈希")
+        _ok(created["token"].startswith(stored["token_prefix"]), "令牌前缀与明文不一致")
+        info = token_service.authenticate(conn, created["token"])
+        _ok(info["user_id"] == alice["id"], "Bearer 认证未解析到正确用户")
+
+        document = {
+            "platform": "qoder",
+            "account_label": "verify-token",
+            "conversations": [
+                {
+                    "external_id": "verify-ingest-1",
+                    "title": "验收采集",
+                    "course_code": "DB",
+                    "started_at": "2026-03-01T09:00:00+08:00",
+                    "tags": ["验收"],
+                    "messages": [
+                        {"role": "user", "content": "采集令牌写入的问题"},
+                        {"role": "assistant", "content": "采集令牌写入的回答"},
+                    ],
+                }
+            ],
+        }
+        first = import_service.ingest_json(
+            conn, user=alice_ctx, document=document
+        )
+        _ok(first["conversations_new"] == 1 and first["messages_new"] == 2,
+            f"令牌采集应新增 1 会话 / 2 消息，实际 {first}")
+        db_course = conn.execute(
+            "SELECT id FROM app.courses WHERE code = 'DB'"
+        ).fetchone()["id"]
+        _ok(first["conversations"][0]["course_id"] == db_course,
+            "course_code 未自动映射到 DB 课程")
+        again = import_service.ingest_json(
+            conn, user=alice_ctx, document=document
+        )
+        _ok(again["messages_new"] == 0 and again["messages_skipped"] == 2,
+            "重复采集应只跳过相同消息")
+
+        conn.execute(
+            "UPDATE app.api_tokens SET window_started_at = now(), window_count = 60 "
+            "WHERE id = %s",
+            (created["id"],),
+        )
+        try:
+            token_service.authenticate(conn, created["token"])
+            raise AssertionError("超过每分钟 60 次时应限流")
+        except RateLimited:
+            pass
+        conn.execute(
+            "UPDATE app.api_tokens SET window_started_at = NULL, window_count = 0 "
+            "WHERE id = %s",
+            (created["id"],),
+        )
+        token_service.revoke_token(conn, created["id"], alice["id"])
+        try:
+            token_service.authenticate(conn, created["token"])
+            raise AssertionError("已撤销令牌不应通过认证")
+        except AuthRequired:
+            pass
+        return "哈希存储、课程映射、重复幂等、60 次/分钟限流与撤销均生效"
+    report.run("token.ingest", "采集令牌：哈希存储、Bearer 认证、限流与幂等入库", token_ingest)
 
     def search_global():
         alice_hits = search_service.global_search(conn, alice_ctx, "验收速记")

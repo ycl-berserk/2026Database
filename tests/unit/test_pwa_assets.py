@@ -51,6 +51,7 @@ def test_service_worker_served_from_root_with_scope_header():
     body = response.text
     assert 'request.mode === "navigate"' in body
     assert 'caches.match("/static/offline.html")' in body
+    assert "ignoreSearch: true" in body
 
 
 def test_service_worker_does_not_cache_authenticated_html():

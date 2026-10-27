@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>{% block title %}{{ app_name }}{% endblock %} · {{ app_name }}</title>
-  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/app.css?v={{ asset_version }}">
 </head>
 <body>
 <a class="skip-link" href="#content">跳到主要内容</a>
@@ -47,23 +47,23 @@
     <nav class="nav">
       {% if current_user and current_user.system_role == 'admin' %}
         <span class="nav-label">管理</span>
-        <a class="nav-link {% if active_path == '/dashboard' %}active{% endif %}" href="/dashboard">概览</a>
-        <a class="nav-link {% if active_path.startswith('/admin') %}active{% endif %}" href="/admin">用户与系统</a>
+        <a class="nav-link {% if active_path == '/dashboard' %}active{% endif %}" href="/dashboard" {% if active_path == '/dashboard' %}aria-current="page"{% endif %}>概览</a>
+        <a class="nav-link {% if active_path.startswith('/admin') %}active{% endif %}" href="/admin" {% if active_path.startswith('/admin') %}aria-current="page"{% endif %}>用户与系统</a>
       {% else %}
         <span class="nav-label">学习</span>
-        <a class="nav-link {% if active_path == '/dashboard' %}active{% endif %}" href="/dashboard">概览</a>
-        <a class="nav-link {% if active_path.startswith('/inbox') %}active{% endif %}" href="/inbox">收件箱</a>
-        <a class="nav-link {% if active_path.startswith('/share') %}active{% endif %}" href="/share">快速收录</a>
-        <a class="nav-link {% if active_path.startswith('/courses') %}active{% endif %}" href="/courses">课程</a>
-        <a class="nav-link {% if active_path.startswith('/conversations') %}active{% endif %}" href="/conversations">会话</a>
-        <a class="nav-link {% if active_path.startswith('/tags') %}active{% endif %}" href="/tags">标签</a>
-        <a class="nav-link {% if active_path.startswith('/imports') %}active{% endif %}" href="/imports">导入记录</a>
+        <a class="nav-link {% if active_path == '/dashboard' %}active{% endif %}" href="/dashboard" {% if active_path == '/dashboard' %}aria-current="page"{% endif %}>概览</a>
+        <a class="nav-link {% if active_path.startswith('/inbox') %}active{% endif %}" href="/inbox" {% if active_path.startswith('/inbox') %}aria-current="page"{% endif %}>收件箱</a>
+        <a class="nav-link {% if active_path.startswith('/share') %}active{% endif %}" href="/share" {% if active_path.startswith('/share') %}aria-current="page"{% endif %}>快速收录</a>
+        <a class="nav-link {% if active_path.startswith('/courses') %}active{% endif %}" href="/courses" {% if active_path.startswith('/courses') %}aria-current="page"{% endif %}>课程</a>
+        <a class="nav-link {% if active_path.startswith('/conversations') %}active{% endif %}" href="/conversations" {% if active_path.startswith('/conversations') %}aria-current="page"{% endif %}>会话</a>
+        <a class="nav-link {% if active_path.startswith('/tags') %}active{% endif %}" href="/tags" {% if active_path.startswith('/tags') %}aria-current="page"{% endif %}>标签</a>
+        <a class="nav-link {% if active_path.startswith('/imports') %}active{% endif %}" href="/imports" {% if active_path.startswith('/imports') %}aria-current="page"{% endif %}>导入记录</a>
         <span class="nav-label">复习</span>
-        <a class="nav-link {% if active_path.startswith('/annotations') %}active{% endif %}" href="/annotations">批注</a>
-        <a class="nav-link {% if active_path.startswith('/reviews') %}active{% endif %}" href="/reviews">复习队列</a>
+        <a class="nav-link {% if active_path.startswith('/annotations') %}active{% endif %}" href="/annotations" {% if active_path.startswith('/annotations') %}aria-current="page"{% endif %}>批注</a>
+        <a class="nav-link {% if active_path.startswith('/reviews') %}active{% endif %}" href="/reviews" {% if active_path.startswith('/reviews') %}aria-current="page"{% endif %}>复习队列</a>
         <span class="nav-label">分析</span>
-        <a class="nav-link {% if active_path.startswith('/stats') %}active{% endif %}" href="/stats">统计</a>
-        <a class="nav-link {% if active_path.startswith('/text2sql') %}active{% endif %}" href="/text2sql">Text2SQL</a>
+        <a class="nav-link {% if active_path.startswith('/stats') %}active{% endif %}" href="/stats" {% if active_path.startswith('/stats') %}aria-current="page"{% endif %}>统计</a>
+        <a class="nav-link {% if active_path.startswith('/text2sql') %}active{% endif %}" href="/text2sql" {% if active_path.startswith('/text2sql') %}aria-current="page"{% endif %}>Text2SQL</a>
       {% endif %}
     </nav>
 
@@ -160,7 +160,7 @@
     </nav>
   {% endif %}
 </div>
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v={{ asset_version }}"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

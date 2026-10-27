@@ -12,7 +12,7 @@
 
 本项目实现了一个以“聊天记录”为核心的关系数据库应用系统。系统把 Qoder、ChatGPT、DeepSeek 等平台的问答导出文件解析为统一格式，按课程、来源、标签组织；支持中文检索、会话上下文、批注、间隔复习、统计导出，并额外实现了受数据库只读权限视图保护的 Text2SQL 页面。
 
-数据库包含 12 张业务表、13 个权限视图、5 个触发器、多组唯一/检查/外键约束；应用层使用参数化 SQL 与显式事务，不依赖 ORM。导入流水线采用“解析 → 校验 → 持久化预览 → 单事务确认 → 查重”的结构。系统通过 116 个自动化测试与 26 项端到端验收检查，覆盖 schema、权限、导入幂等、中文检索、统计、批注复习、导出、Text2SQL 安全与事务回滚。
+数据库包含 12 张业务表、13 个权限视图、5 个触发器、多组唯一/检查/外键约束；应用层使用参数化 SQL 与显式事务，不依赖 ORM。导入流水线采用“解析 → 校验 → 持久化预览 → 单事务确认 → 查重”的结构。系统通过 146 个自动化测试与 29 项端到端验收检查，覆盖 schema、权限、导入幂等、中文检索、统计、批注复习、导出、Text2SQL 安全与事务回滚。
 
 ---
 
@@ -246,11 +246,29 @@ Text2SQL 页面提供示例问题、结果表格、生成的 SQL、解释和最�
 
 ### 6.8 管理与越权
 
-管理员只看到用户管理与系统聚合统计，不能进入课程/会话页面。bob 作为数据库课程 viewer，访问课程编辑页返回 403。
+管理员只看到用户管理与系统聚合统计，不能进入课程/会话页面。bob 作为数据库课程 viewer，访问课程编辑页返回 403。错误页会说明可能原因，并提供“看看我参与的课程”“回到概览”“返回上一页”等恢复入口。
 
 ![管理员](screenshots/14-admin.png)
 
 ![越权 403](screenshots/15-permission-denied.png)
+
+### 6.9 采集闭环与体验
+
+除了文件导入，系统提供三条更低摩擦的采集路径：手机从任意 App 通过 PWA Share Target 分享文本，粘贴一段问答，或直接上传文件。解析结果统一进入 `import_batches` 暂存，再走同一套预览与单事务入库流程；未指定课程的会话进入收件箱，可批量归入课程。
+
+- 导入向导固定为“选择 → 预览 → 结果”三步，支持拖放上传与粘贴双入口。
+- 收件箱只允许移动本人且当前未归类的会话，避免编辑者误动共享课程数据。
+- 删除批注、复习项或标签后提供 5 秒撤销；离开页面时兜底提交，避免“看起来删了其实没删”。
+- 登录页演示账号可一键进入；新账号概览给出建课、导入、收件箱三步引导。
+- 静态资源使用 GZip 与版本化长缓存，首屏 JS 约 8KB。
+
+![收件箱](screenshots/17-inbox.png)
+
+![分享预览](screenshots/18-share.png)
+
+![导入结果](screenshots/19-import-result.png)
+
+![粘贴导入](screenshots/20-import-paste.png)
 
 ## 7. 关键 SQL
 
@@ -313,22 +331,22 @@ Text2SQL 的风险不在“生成得对不对”，而在“生成了危险语�
 ### 10.1 自动化测试
 
 ```text
-56 unit tests
-60 integration tests
-116 total, all passed
+78 unit tests
+68 integration tests
+146 total, all passed
 ```
 
-- 单元：密码哈希/校验、CSRF、JSON/Markdown 解析、字段校验、去重分类、Text2SQL 守卫、mock 规则。
-- 集成：schema 约束与删除行为、权限边界、导入预览/确认/幂等/损坏文件、检索筛选与分页、批注复习间隔、统计、管理员、Text2SQL 只读/越权/审计。
+- 单元：密码哈希/校验、CSRF、JSON/Markdown/裸文本解析、字段校验、去重分类、Text2SQL 守卫、mock 规则、PWA 资产、引导/撤销/错误页/静态缓存与性能预算。
+- 集成：schema 约束与删除行为、权限边界、导入预览/确认/幂等/损坏文件、收件箱批量归类、检索筛选与分页、批注复习间隔、统计、管理员、Text2SQL 只读/越权/审计。
 
 集成测试只连接以 `_test` 结尾的数据库，每个用例前 `TRUNCATE app.users RESTART IDENTITY CASCADE`。测试脚手架使用管理员连接执行 TRUNCATE，因为应用角色 `ls_app` 被刻意设计为没有 TRUNCATE 权限。
 
 ### 10.2 端到端验收
 
-`scripts/verify.py` 在演示库上执行 26 项检查，所有写操作放在外层事务中，最后主动回滚：
+`scripts/verify.py` 在演示库上执行 29 项检查，所有写操作放在外层事务中，最后主动回滚：
 
 ```text
-结果：26/26 PASS，0 FAIL，耗时 815 ms
+结果：29/29 PASS，0 FAIL，耗时 767 ms
 报告：data/verification/report.json
 ```
 
@@ -340,12 +358,15 @@ Text2SQL 的风险不在“生成得对不对”，而在“生成了危险语�
 - 关键词检索、课程/标签筛选、上下文与批注内联
 - 统计概览、CSV、Markdown
 - 批注 → 复习项 → 间隔 2/4 天
+- 粘贴收录、重复收录幂等、收件箱批量归类
 - Text2SQL mock 查询、用户过滤、恶意 SQL 拒绝、审计、只读角色
 - 事务回滚后计数不变、`ls_app` 无 DDL 权限
 
 ### 10.3 UI 验证
 
-Playwright 脚本登录 alice / bob / admin，逐页截图 17 张，检查控制台错误；bob 的 403 页面是预期行为，脚本单独放行。截图过程中发现并修复了三个问题：
+Playwright 脚本登录 alice / bob / admin，生成桌面 22 张与移动端 10 张截图，检查控制台错误与 390px 横向溢出；bob 的 403 页面是预期行为，脚本单独放行。另外用 Performance API 验证首屏 JS 8KB、请求数 2、移动端 LCP 268ms，并检查 Service Worker 缓存版本与静态资源版本参数。
+
+截图与走查过程中发现并修复了三个问题：
 
 1. 导入预览“可更新”计数显示为 Python 方法对象（Jinja2 属性解析把 `counts.update` 当成 `dict.update`）。
 2. 错误页始终显示 400（`render` 的 `status_code` 是 HTTP 参数，模板却把它当上下文变量）。
@@ -413,7 +434,7 @@ docker compose up -d db
 | `app/services/import_service.py` | 导入解析、预览、确认事务 |
 | `app/services/text2sql_service.py` | 生成、守卫、只读执行、审计 |
 | `app/permissions.py` | 课程角色与会话可见性 |
-| `scripts/verify.py` | 26 项端到端验收 |
+| `scripts/verify.py` | 29 项端到端验收 |
 | `docs/design.md` | 数据库设计详解 |
 | `docs/requirements.md` | R01-F01 需求拆解 |
 | `docs/sql-showcase.md` | 关键 SQL 与结果 |

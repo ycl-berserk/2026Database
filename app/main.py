@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from .config import settings
@@ -61,6 +62,24 @@ app.add_middleware(
     https_only=not settings.is_dev,
     max_age=60 * 60 * 24 * 7,
 )
+app.add_middleware(GZipMiddleware, minimum_size=600)
+
+
+@app.middleware("http")
+async def response_headers(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        if request.query_params.get("v"):
+            response.headers.setdefault(
+                "Cache-Control", "public, max-age=31536000, immutable"
+            )
+        else:
+            response.headers.setdefault("Cache-Control", "public, max-age=300")
+    elif response.headers.get("content-type", "").startswith("text/html"):
+        response.headers.setdefault("Cache-Control", "no-store")
+    return response
+
+
 app.mount("/static", StaticFiles(directory=str(settings.static_dir)), name="static")
 
 

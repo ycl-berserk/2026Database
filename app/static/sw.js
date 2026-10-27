@@ -1,4 +1,4 @@
-const CACHE_NAME = "ls-shell-v2";
+const CACHE_NAME = "ls-shell-v3";
 const SHELL = [
   "/static/app.css",
   "/static/app.js",
@@ -43,7 +43,8 @@ self.addEventListener("fetch", (event) => {
 
   if (url.pathname.startsWith("/static/")) {
     event.respondWith(
-      caches.match(request).then((hit) => {
+      // 版本化 URL（?v=）与预缓存的无参数 URL 视为同一份静态资源。
+      caches.match(request, { ignoreSearch: true }).then((hit) => {
         const network = fetch(request)
           .then((response) => {
             if (response.ok) {

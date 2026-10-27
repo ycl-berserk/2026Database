@@ -576,9 +576,9 @@ def slide_permissions(prs):
 
 def slide_tests(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "13 / 测试与验收", "203 项测试与 34 项端到端验收全部通过", 14)
+    header(slide, "13 / 测试与验收", "208 项测试与 35 项端到端验收全部通过", 14)
 
-    stats = [("203", "自动化测试"), ("34", "端到端检查"), ("0", "失败项")]
+    stats = [("208", "自动化测试"), ("35", "端到端检查"), ("0", "失败项")]
     for index, (value, label) in enumerate(stats):
         x = 0.72 + index * 2.15
         rect(slide, x, 1.62, 1.95, 1.35, WHITE, radius=True, line=LINE, width=0.7)
@@ -587,11 +587,11 @@ def slide_tests(prs):
 
     code_block(slide, 0.72, 3.3, 6.0, 2.4,
                ".venv/Scripts/python.exe -m pytest -q\n"
-               "# 117 unit + 86 integration\n\n"
+               "# 121 unit + 87 integration\n\n"
                ".venv/Scripts/python.exe scripts/verify.py \\\n"
                "  --json data/verification/report.json", size=10.5)
     text(slide, 0.9, 5.78, 5.6, 0.75,
-         "输出：34/34 PASS，0 FAIL，约 0.8 秒\n所有写入检查在结束时整体回滚。", size=11.5, color=GREEN)
+         "输出：35/35 PASS，0 FAIL，约 1.4 秒\n所有写入检查在结束时整体回滚。", size=11.5, color=GREEN)
 
     right = [
         "Schema：表、FK、UNIQUE、CHECK、索引、触发器",
@@ -600,7 +600,7 @@ def slide_tests(prs):
         "检索：关键词、课程、标签、全局搜索",
         "统计：种子数据下的计数与排名",
         "采集：令牌哈希、限流、Bearer 幂等入库",
-        "Text2SQL：恶意 SQL、跨用户、只读兜底",
+        "Text2SQL：AST / 预检 / 金标准评测",
     ]
     for index, item in enumerate(right):
         y = 1.62 + index * 0.68
@@ -647,7 +647,7 @@ def slide_end(prs):
         "导入、检索、批注、复习、统计、导出的闭环",
         "令牌 + 扩展 + 平台导出，离线也可读可复习",
         "Text2SQL 由只读视图与角色做最终兜底",
-        "203 项测试 + 34 项验收，全部通过",
+        "208 项测试 + 35 项验收，全部通过",
         "README 五条命令从零复现",
     ]
     bullets(slide, 0.85, 3.15, 6.4, 2.4, left, size=14, color=RGBColor(0xE8, 0xE3, 0xD3), gap=8,

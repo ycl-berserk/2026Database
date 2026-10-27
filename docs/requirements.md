@@ -107,6 +107,7 @@
 | R07-F04 | 审计历史 | 每次查询 | 问题、SQL、状态、耗时、行数、错误 | 成功/拒绝/异常都记录 | `record_log`、`history` | `verify.t2sql.audit` |
 | R07-F05 | 模式切换 | `TEXT2SQL_MODE` / `LLM_API_KEY` | auto / mock / llm | 无 Key 时明确标注“本地规则模式” | `provider_mode`、页面 badge | `test_text2sql_guard.py` |
 | R07-F06 | EXPLAIN 预检 | 已通过守卫的 SQL、当前用户 ID | 只读 `EXPLAIN (FORMAT JSON)`；返回总代价与估算行数 | 超过代价/行数阈值拒绝并记 `rejected`；预检异常记 `error`；可配置关闭 | `preflight_query`、`TEXT2SQL_MAX_COST` / `TEXT2SQL_MAX_EST_ROWS` | `test_text2sql.py`、`verify.t2s.preflight` |
+| R07-F07 | 金标准评测 | 30 个自然语言问题、10 条恶意 SQL、2 条跨用户用例 | 执行准确率、金标准/生成 SQL 合法率、越权拦截率、平均耗时 | 金标准或拦截率不足 100% 时退出码非 0；mock 准确率低于 50% 时失败 | `text2sql_eval_service.py`、`scripts/eval_text2sql.py`、`data/text2sql_eval.json` | `tests/unit/test_text2sql_eval.py`、`test_text2sql_eval_run.py`、`verify.t2s.eval` |
 
 **设计要点**
 
@@ -153,7 +154,7 @@
 | 性能 | 列表分页、关键查询有索引、统计实时但规模可控 | 索引设计、`LIMIT/OFFSET`、部分索引、trgm |
 | 可维护性 | 关键 SQL 可定位、无 ORM 黑盒 | `sql/` + `services/` + 本文件映射 |
 | 可演示性 | 离线可演示、模拟数据可复现 | mock Text2SQL、`make_samples.py`、`seed_demo.py` |
-| 可验收 | 自动化测试与端到端报告 | 203 个 pytest 用例 + 34 项 `verify.py` 检查 |
+| 可验收 | 自动化测试与端到端报告 | 208 个 pytest 用例 + 35 项 `verify.py` 检查 |
 
 ## 需求到验收命令的映射
 
@@ -163,6 +164,9 @@
 
 # 端到端 PASS/FAIL（含权限、导入、检索、统计、导出、Text2SQL、事务）
 .venv/Scripts/python.exe scripts/verify.py --json data/verification/report.json
+
+# Text2SQL 金标准评测（准确率 / 合法率 / 越权拦截率）
+.venv/Scripts/python.exe scripts/eval_text2sql.py
 ```
 
-验收输出示例见 `data/verification/report.json`：34/34 PASS，0 FAIL。
+验收输出示例见 `data/verification/report.json`：35/35 PASS，0 FAIL。

@@ -35,6 +35,7 @@ from app.services import (
     review_service,
     search_service,
     stats_service,
+    text2sql_eval_service,
     text2sql_service,
     token_service,
 )
@@ -539,6 +540,34 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
         _ok(caught, "高成本查询未被预检拦截")
         return f"正常查询代价 {plan['total_cost']}，高成本笛卡尔积被拒绝"
     report.run("t2s.preflight", "Text2SQL：EXPLAIN 预检拦截高成本查询", t2s_preflight)
+
+    def t2s_eval():
+        cases = text2sql_eval_service.load_cases(ROOT / "data" / "text2sql_eval.json")
+        result = text2sql_eval_service.evaluate(cases, conn, t2s_conn, provider="mock")
+        questions = result["questions"]
+        security = result["security"]
+        _ok(
+            result["legality"]["gold_rate"] == 1.0,
+            f"金标准 SQL 合法率应为 100%，实际 {result['legality']['gold_rate']}",
+        )
+        _ok(
+            result["legality"]["generated_rate"] == 1.0,
+            f"生成 SQL 合法率应为 100%，实际 {result['legality']['generated_rate']}",
+        )
+        _ok(
+            security["rate"] == 1.0,
+            f"越权拦截率应为 100%，实际 {security['passed']}/{security['total']}",
+        )
+        _ok(
+            questions["accuracy"] >= 0.5,
+            f"mock 执行准确率应不低于 50%，实际 {questions['accuracy']}",
+        )
+        return (
+            f"30 题金标准全部合法，mock 准确率 "
+            f"{questions['accuracy'] * 100:.1f}%，越权拦截 "
+            f"{security['passed']}/{security['total']}"
+        )
+    report.run("t2s.eval", "Text2SQL：金标准评测集与越权拦截", t2s_eval)
 
     def t2s_rejected_log():
         original = text2sql_service.generate_sql

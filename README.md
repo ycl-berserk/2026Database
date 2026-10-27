@@ -78,11 +78,14 @@ py -3.13 -m venv .venv
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（117 单元 + 86 集成，共 203 项）；集成测试需先初始化测试库
+# 全量测试（121 单元 + 87 集成，共 208 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest -q
 
-# 端到端验收：34 项 PASS/FAIL，写入 data/verification/report.json
+# 端到端验收：35 项 PASS/FAIL，写入 data/verification/report.json
 .venv/Scripts/python.exe scripts/verify.py --json data/verification/report.json
+
+# Text2SQL 金标准评测：30 题 + 10 条恶意 SQL + 2 条跨用户用例
+.venv/Scripts/python.exe scripts/eval_text2sql.py
 
 # 重新生成导入样例（正常 / 重复 / 损坏）
 .venv/Scripts/python.exe scripts/make_samples.py
@@ -151,6 +154,10 @@ learning-space/
 - `TEXT2SQL_MODE=llm`：强制真实模型；失败时返回错误并写审计日志。
 
 SQL 先经 `sqlglot` PostgreSQL 方言 AST 校验（单条 SELECT/WITH、拒绝嵌套 DML/表函数/锁/危险函数、视图与 CTE 白名单），再经关键字黑名单、注释禁用与 200 行包装，最终由 `t2s_reader` 在只读事务中执行。完整的表结构说明见 `docs/design.md`，验收与演示说明见 `docs/report.md` 与 `docs/demo-script.md`。
+
+### 金标准评测
+
+`data/text2sql_eval.json` 固定 30 个自然语言问题、10 条恶意 SQL 与 2 条跨用户用例；`scripts/eval_text2sql.py` 对比金标准 SQL 与生成 SQL 的执行结果，统计执行准确率、合法率与越权拦截率。当前离线 mock 基线为 **17/30（56.7%）**，金标准与生成 SQL 合法率均为 **100%**，越权拦截 **12/12**。mock 只覆盖固定问法，换一种说法会落入课程总览兜底，因此这个数字是诚实的离线下限；配置 `LLM_API_KEY` 后可用 `--provider llm` 复测真实模型。结果写入 `data/verification/text2sql_eval.json`。
 
 ## v2 改进路线（Roadmap）
 

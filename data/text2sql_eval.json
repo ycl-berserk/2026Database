@@ -1,0 +1,254 @@
+{
+  "version": 1,
+  "description": "Text2SQL 金标准评测集：questions 为自然语言问题 + 金标准 SQL；guard_cases 为应被 AST 守卫拒绝的语句；scope_cases 验证权限视图按用户过滤。数据为 seed_demo.py 生成的模拟数据。",
+  "questions": [
+    {
+      "id": "Q01",
+      "question": "数据库课程下有哪些会话？",
+      "user": "alice",
+      "gold_sql": "SELECT title, message_count, started_at FROM v_my_conversations WHERE course_code = 'DB' ORDER BY started_at DESC NULLS LAST LIMIT 20"
+    },
+    {
+      "id": "Q02",
+      "question": "操作系统课程下有哪些会话？",
+      "user": "alice",
+      "gold_sql": "SELECT title, message_count, started_at FROM v_my_conversations WHERE course_code = 'OS' ORDER BY started_at DESC NULLS LAST LIMIT 20"
+    },
+    {
+      "id": "Q03",
+      "question": "计算机网络课程下有哪些会话？",
+      "user": "alice",
+      "gold_sql": "SELECT title, message_count, started_at FROM v_my_conversations WHERE course_code = 'NET' ORDER BY started_at DESC NULLS LAST LIMIT 20"
+    },
+    {
+      "id": "Q04",
+      "question": "机器学习课程下有哪些会话？",
+      "user": "alice",
+      "gold_sql": "SELECT title, message_count, started_at FROM v_my_conversations WHERE course_code = 'ML' ORDER BY started_at DESC NULLS LAST LIMIT 20"
+    },
+    {
+      "id": "Q05",
+      "question": "数据结构课程下有哪些会话？",
+      "user": "alice",
+      "gold_sql": "SELECT title, message_count, started_at FROM v_my_conversations WHERE course_code = 'DS' ORDER BY started_at DESC NULLS LAST LIMIT 20"
+    },
+    {
+      "id": "Q06",
+      "question": "今天到期的复习项",
+      "user": "alice",
+      "gold_sql": "SELECT annotation_content, annotation_kind, course_name, due_date, status FROM v_my_review_items WHERE status <> 'mastered' AND due_date <= current_date ORDER BY due_date"
+    },
+    {
+      "id": "Q07",
+      "question": "我的复习队列",
+      "user": "alice",
+      "gold_sql": "SELECT annotation_content, annotation_kind, course_name, due_date, status FROM v_my_review_items WHERE status <> 'mastered' ORDER BY due_date"
+    },
+    {
+      "id": "Q08",
+      "question": "未解决的批注",
+      "user": "alice",
+      "gold_sql": "SELECT kind, content, course_name, created_at FROM v_my_annotations WHERE status = 'open' ORDER BY created_at DESC LIMIT 20"
+    },
+    {
+      "id": "Q09",
+      "question": "按类型统计批注",
+      "user": "alice",
+      "gold_sql": "SELECT kind, count(*) AS total FROM v_my_annotations GROUP BY kind ORDER BY total DESC"
+    },
+    {
+      "id": "Q10",
+      "question": "标签使用情况",
+      "user": "alice",
+      "gold_sql": "SELECT name, conversation_count, message_count FROM v_my_tag_stats ORDER BY conversation_count DESC LIMIT 12"
+    },
+    {
+      "id": "Q11",
+      "question": "每月的活跃情况",
+      "user": "alice",
+      "gold_sql": "SELECT month, message_count, conversation_count FROM v_my_monthly_activity ORDER BY month"
+    },
+    {
+      "id": "Q12",
+      "question": "提问与回答的比例",
+      "user": "alice",
+      "gold_sql": "SELECT course_name, sender, message_count FROM v_my_sender_stats ORDER BY course_name, sender"
+    },
+    {
+      "id": "Q13",
+      "question": "最近的导入记录",
+      "user": "alice",
+      "gold_sql": "SELECT file_name, platform, status, created_at FROM v_my_import_stats ORDER BY created_at DESC LIMIT 10"
+    },
+    {
+      "id": "Q14",
+      "question": "text2sql 查询记录",
+      "user": "alice",
+      "gold_sql": "SELECT question, status, latency_ms, row_count, created_at FROM v_my_t2s_stats ORDER BY created_at DESC LIMIT 10"
+    },
+    {
+      "id": "Q15",
+      "question": "最近的会话",
+      "user": "alice",
+      "gold_sql": "SELECT title, course_code, message_count, started_at FROM v_my_conversations ORDER BY started_at DESC NULLS LAST LIMIT 10"
+    },
+    {
+      "id": "Q16",
+      "question": "未归类的会话",
+      "user": "alice",
+      "gold_sql": "SELECT title, message_count, started_at FROM v_my_conversations WHERE course_id IS NULL ORDER BY started_at DESC NULLS LAST"
+    },
+    {
+      "id": "Q17",
+      "question": "课程消息统计",
+      "user": "alice",
+      "gold_sql": "SELECT code, name, conversation_count, message_count, annotation_count FROM v_my_course_stats ORDER BY message_count DESC"
+    },
+    {
+      "id": "Q18",
+      "question": "数据库课程有多少会话和消息？",
+      "user": "alice",
+      "gold_sql": "SELECT code, name, conversation_count, message_count FROM v_my_course_stats WHERE code = 'DB'"
+    },
+    {
+      "id": "Q19",
+      "question": "操作系统课程的消息统计",
+      "user": "alice",
+      "gold_sql": "SELECT code, name, conversation_count, message_count, annotation_count FROM v_my_course_stats WHERE code = 'OS'"
+    },
+    {
+      "id": "Q20",
+      "question": "机器学习里讨论过哪些主题？",
+      "user": "alice",
+      "gold_sql": "SELECT title, tag_names FROM v_my_conversations WHERE course_code = 'ML' ORDER BY started_at DESC NULLS LAST"
+    },
+    {
+      "id": "Q21",
+      "question": "每门课程的消息数排名",
+      "user": "alice",
+      "gold_sql": "SELECT code, name, message_count, rank() OVER (ORDER BY message_count DESC) AS message_rank FROM v_my_course_stats ORDER BY message_rank"
+    },
+    {
+      "id": "Q22",
+      "question": "消息最多的前 3 个会话",
+      "user": "alice",
+      "gold_sql": "SELECT title, message_count FROM v_my_conversations ORDER BY message_count DESC, conversation_id LIMIT 3"
+    },
+    {
+      "id": "Q23",
+      "question": "已掌握的复习项",
+      "user": "alice",
+      "gold_sql": "SELECT annotation_content, course_name, due_date, status FROM v_my_review_items WHERE status = 'mastered' ORDER BY due_date"
+    },
+    {
+      "id": "Q24",
+      "question": "逾期未复习的批注",
+      "user": "alice",
+      "gold_sql": "SELECT annotation_content, course_name, due_date, status FROM v_my_review_items WHERE status <> 'mastered' AND due_date < current_date ORDER BY due_date"
+    },
+    {
+      "id": "Q25",
+      "question": "数据库课程未解决的批注",
+      "user": "alice",
+      "gold_sql": "SELECT kind, content, created_at FROM v_my_annotations WHERE status = 'open' AND course_name = '数据库系统概论' ORDER BY created_at DESC"
+    },
+    {
+      "id": "Q26",
+      "question": "每个标签关联多少消息",
+      "user": "alice",
+      "gold_sql": "SELECT name, message_count FROM v_my_tag_stats ORDER BY message_count DESC, name"
+    },
+    {
+      "id": "Q27",
+      "question": "我的批注解决率",
+      "user": "alice",
+      "gold_sql": "SELECT count(*) FILTER (WHERE status = 'resolved')::numeric / nullif(count(*), 0) AS resolution_rate FROM v_my_annotations"
+    },
+    {
+      "id": "Q28",
+      "question": "复习状态分布",
+      "user": "alice",
+      "gold_sql": "SELECT status, count(*) AS total FROM v_my_review_items GROUP BY status ORDER BY status"
+    },
+    {
+      "id": "Q29",
+      "question": "每个来源平台有多少会话",
+      "user": "alice",
+      "gold_sql": "SELECT source_platform, count(*) AS total FROM v_my_conversations GROUP BY source_platform ORDER BY total DESC, source_platform"
+    },
+    {
+      "id": "Q30",
+      "question": "最近 7 天新增消息",
+      "user": "alice",
+      "gold_sql": "SELECT count(*) AS total FROM v_my_messages WHERE created_at >= now() - interval '7 days'"
+    }
+  ],
+  "guard_cases": [
+    {
+      "id": "G01",
+      "sql": "DROP TABLE app.users",
+      "reason": "DDL"
+    },
+    {
+      "id": "G02",
+      "sql": "SELECT 1; DELETE FROM app.messages",
+      "reason": "多语句 + DML"
+    },
+    {
+      "id": "G03",
+      "sql": "WITH x AS (DELETE FROM app.users RETURNING id) SELECT * FROM x",
+      "reason": "嵌套 DML"
+    },
+    {
+      "id": "G04",
+      "sql": "SELECT * FROM app.users",
+      "reason": "越权基表"
+    },
+    {
+      "id": "G05",
+      "sql": "SELECT * FROM pg_catalog.pg_tables",
+      "reason": "系统表"
+    },
+    {
+      "id": "G06",
+      "sql": "SELECT pg_read_file('/etc/passwd')",
+      "reason": "危险函数"
+    },
+    {
+      "id": "G07",
+      "sql": "SELECT * FROM v_my_courses FOR UPDATE",
+      "reason": "锁"
+    },
+    {
+      "id": "G08",
+      "sql": "SELECT * FROM generate_series(1, 5)",
+      "reason": "表函数"
+    },
+    {
+      "id": "G09",
+      "sql": "SELECT current_setting('app.user_id')",
+      "reason": "会话配置"
+    },
+    {
+      "id": "G10",
+      "sql": "SELECT * FROM v_my_courses -- comment",
+      "reason": "注释"
+    }
+  ],
+  "scope_cases": [
+    {
+      "id": "S01",
+      "user": "bob",
+      "sql": "SELECT title FROM v_my_conversations ORDER BY title",
+      "forbidden_values": ["未归类的问题"],
+      "reason": "bob 不应看到 alice 未分享的收件箱会话"
+    },
+    {
+      "id": "S02",
+      "user": "admin",
+      "sql": "SELECT conversation_id, title FROM v_my_conversations",
+      "expect_empty": true,
+      "reason": "管理员视图不返回任何他人会话"
+    }
+  ]
+}

@@ -532,7 +532,7 @@ def write_qoder_export(path: Path) -> int:
 
 def write_deepseek_markdown(path: Path) -> int:
     conversations = build_file("NET", "deepseek", "alice@deepseek")[:2]
-    lines = ["- **Platform:** DeepSeek", "- **Account:** alice@deepseek", ""]
+    lines = ["- **Platform:** DeepSeek", "- **Account:** alice@deepseek-export", ""]
     for conv in conversations:
         lines.extend(
             [

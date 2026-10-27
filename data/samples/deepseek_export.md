@@ -1,5 +1,5 @@
 - **Platform:** DeepSeek
-- **Account:** alice@deepseek
+- **Account:** alice@deepseek-export
 
 # TCP 三次握手与四次挥手
 - **Session ID:** net-03-01

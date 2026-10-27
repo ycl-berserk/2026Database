@@ -107,7 +107,7 @@ def test_deepseek_markdown_export_normalizes_headings_and_meta():
     result = markdown_importer.parse((SAMPLES / "deepseek_export.md").read_bytes())
     assert result.ok, result.errors
     assert result.platform == "deepseek"
-    assert result.account_label == "alice@deepseek"
+    assert result.account_label == "alice@deepseek-export"
     assert len(result.conversations) == 2
     assert result.message_count == 28
     first = result.conversations[0]

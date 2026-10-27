@@ -121,18 +121,18 @@
   </div>
   {% if conversations %}
     <div class="table-wrap">
-      <table class="table">
+      <table class="table table-stack">
         <thead>
           <tr><th>标题</th><th>平台</th><th>消息</th><th>开始时间</th><th>最近消息</th></tr>
         </thead>
         <tbody>
           {% for conv in conversations %}
             <tr>
-              <td><a class="record-title" href="/conversations/{{ conv.id }}">{{ conv.title }}</a></td>
-              <td><span class="chip">{{ platform_label(conv.platform) }}</span></td>
-              <td>{{ conv.message_count }}</td>
-              <td class="muted">{{ conv.started_at | dt }}</td>
-              <td class="muted">{{ conv.last_message_at | dt }}</td>
+              <td data-label="标题"><a class="record-title" href="/conversations/{{ conv.id }}">{{ conv.title }}</a></td>
+              <td data-label="平台"><span class="chip">{{ platform_label(conv.platform) }}</span></td>
+              <td data-label="消息">{{ conv.message_count }}</td>
+              <td data-label="开始时间" class="muted">{{ conv.started_at | dt }}</td>
+              <td data-label="最近消息" class="muted">{{ conv.last_message_at | dt }}</td>
             </tr>
           {% endfor %}
         </tbody>

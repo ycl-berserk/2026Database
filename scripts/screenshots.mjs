@@ -22,7 +22,8 @@ function watch(page, label, ignoreConsole) {
   page.on("console", (message) => {
     if (message.type() === "error") {
       if (ignoreConsole && ignoreConsole(message.text())) return;
-      problems.push(`${label} console: ${message.text()}`);
+      const where = message.location()?.url;
+      problems.push(`${label} console: ${message.text()}${where ? ` (${where})` : ""}`);
     }
   });
   page.on("pageerror", (error) => {
@@ -160,6 +161,8 @@ async function run() {
     console.log("  ✓ 16-er-chen.png");
     await erContext.close();
 
+    await mobilePass(browser);
+
     if (RECORD) await recordTour(browser);
   } finally {
     await browser.close();
@@ -172,6 +175,88 @@ async function run() {
   } else {
     console.log("\n全部页面截图完成，控制台无报错。");
   }
+}
+
+async function mobilePass(browser) {
+  const dir = path.join(OUT, "mobile");
+  fs.mkdirSync(dir, { recursive: true });
+
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await context.newPage();
+  watch(page, "mobile");
+
+  const mobileShot = async (name, options = {}) => {
+    await settle(page);
+    await page.screenshot({
+      path: path.join(dir, name),
+      fullPage: true,
+      animations: "disabled",
+      ...options,
+    });
+    console.log(`  ✓ mobile/${name}`);
+  };
+
+  await page.goto(`${BASE}/login`, { waitUntil: "networkidle" });
+  await mobileShot("00-login.png");
+
+  await page.fill('input[name="username"]', ACCOUNTS.alice.username);
+  await page.fill('input[name="password"]', ACCOUNTS.alice.password);
+  await Promise.all([
+    page.waitForURL("**/dashboard"),
+    page.click('button[type="submit"]'),
+  ]);
+
+  await mobileShot("01-dashboard.png");
+
+  await page.goto(`${BASE}/conversations`, { waitUntil: "networkidle" });
+  await mobileShot("02-conversations.png");
+
+  await page.goto(`${BASE}/courses/1`, { waitUntil: "networkidle" });
+  await mobileShot("03-course-detail.png");
+
+  await page.goto(`${BASE}/conversations/7`, { waitUntil: "networkidle" });
+  await mobileShot("04-reading.png");
+
+  await page.goto(`${BASE}/imports`, { waitUntil: "networkidle" });
+  await mobileShot("05-imports.png");
+
+  await page.goto(`${BASE}/reviews`, { waitUntil: "networkidle" });
+  await mobileShot("06-reviews.png");
+
+  await page.goto(`${BASE}/dashboard`, { waitUntil: "networkidle" });
+  await page.click(".mobile-bar [data-nav-toggle]");
+  await page.waitForTimeout(260);
+  await page.screenshot({
+    path: path.join(dir, "07-drawer.png"),
+    fullPage: false,
+    animations: "disabled",
+  });
+  console.log("  ✓ mobile/07-drawer.png");
+
+  const manifestLinked = await page.evaluate(
+    () => Boolean(document.querySelector('link[rel="manifest"]'))
+  );
+  if (!manifestLinked) problems.push("mobile: 页面缺少 manifest 链接");
+
+  let swReady = false;
+  try {
+    await page.waitForFunction(
+      async () => Boolean(await navigator.serviceWorker.getRegistration()),
+      undefined,
+      { timeout: 5000 }
+    );
+    swReady = true;
+  } catch {
+    swReady = false;
+  }
+  if (!swReady) problems.push("mobile: Service Worker 未注册（需 localhost 或 HTTPS）");
+
+  await context.close();
 }
 
 async function recordTour(browser) {

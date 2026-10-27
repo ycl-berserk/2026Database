@@ -83,5 +83,60 @@
   }
   document.addEventListener("click", copyText);
 
-  window.LS = { api: api, toast: toast, csrf: csrf, confirmSubmit: confirmSubmit };
+  const navToggles = document.querySelectorAll("[data-nav-toggle]");
+  const navBackdrop = document.querySelector(".nav-backdrop");
+  const sidebar = document.getElementById("sidebar");
+  const mobileQuery = window.matchMedia("(max-width: 820px)");
+
+  function setNavOpen(open) {
+    document.body.classList.toggle("nav-open", open);
+    navToggles.forEach(function (el) {
+      el.setAttribute("aria-expanded", String(open));
+    });
+    if (navBackdrop) navBackdrop.setAttribute("aria-hidden", String(!open));
+    if (open && mobileQuery.matches && sidebar) {
+      const first = sidebar.querySelector(".nav-link");
+      if (first) {
+        try { first.focus({ preventScroll: true }); } catch (_) { first.focus(); }
+      }
+    }
+  }
+
+  navToggles.forEach(function (el) {
+    el.addEventListener("click", function () {
+      setNavOpen(!document.body.classList.contains("nav-open"));
+    });
+  });
+  if (navBackdrop) navBackdrop.addEventListener("click", function () { setNavOpen(false); });
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") setNavOpen(false);
+  });
+  if (sidebar) {
+    sidebar.querySelectorAll(".nav-link").forEach(function (link) {
+      link.addEventListener("click", function () {
+        if (mobileQuery.matches) setNavOpen(false);
+      });
+    });
+  }
+  if (mobileQuery.addEventListener) {
+    mobileQuery.addEventListener("change", function (event) {
+      if (!event.matches) setNavOpen(false);
+    });
+  }
+
+  if ("serviceWorker" in navigator && window.isSecureContext) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(function () {
+        /* 离线能力不可用时不影响页面使用 */
+      });
+    });
+  }
+
+  window.LS = {
+    api: api,
+    toast: toast,
+    csrf: csrf,
+    confirmSubmit: confirmSubmit,
+    setNavOpen: setNavOpen
+  };
 })();

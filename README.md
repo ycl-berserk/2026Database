@@ -18,6 +18,9 @@
 | 用户与权限 | Session 登录、PBKDF2 密码哈希、CSRF、系统角色 + 课程角色、应用层与数据库层双重防护 |
 | Text2SQL | 自然语言→SQL→校验→只读执行→表格展示、解释、审计历史；无 API Key 时使用本地规则 mock |
 | 管理 | 用户启停、系统聚合统计（不读正文） |
+| 移动端与安装 | 390px 优先的底部标签栏 / 抽屉导航、列表卡片化、专注阅读模式；PWA manifest + Service Worker 应用壳缓存、离线页、桌面安装 |
+
+> PWA 安装与 Service Worker 只在 `localhost` 或 HTTPS 下启用；通过局域网 HTTP 访问手机时仍可使用完整响应式界面，但不会缓存静态资源。
 
 ## 技术栈
 
@@ -68,7 +71,7 @@ py -3.13 -m venv .venv
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（60 单元 + 63 集成）；集成测试需先初始化测试库
+# 全量测试（64 单元 + 63 集成）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest -q
 
 # 端到端验收：26 项 PASS/FAIL，写入 data/verification/report.json
@@ -101,7 +104,7 @@ learning-space/
 │   ├── services/            # 业务 SQL、事务与导出
 │   ├── importers/           # JSON / Markdown 解析与校验
 │   ├── templates/           # Jinja2 页面
-│   └── static/              # CSS / 原生 JS
+│   └── static/              # CSS / JS / PWA manifest、Service Worker、离线页与图标
 ├── sql/
 │   ├── schema.sql           # 12 张表、约束、索引、触发器
 │   ├── views.sql            # 13 个 t2s 只读权限视图
@@ -111,7 +114,7 @@ learning-space/
 ├── scripts/                 # 初始化、迁移、种子、样例、验收、E-R、截图
 ├── data/samples/            # 模拟导入样例
 ├── tests/unit|integration/  # 单元与集成测试
-└── docs/                    # 报告、设计、需求、SQL 展示、截图
+└── docs/                    # 报告、设计、需求、SQL 展示、桌面与移动端截图
 ```
 
 ## 数据与安全说明

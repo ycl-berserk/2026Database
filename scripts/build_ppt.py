@@ -263,21 +263,23 @@ def slide_scope(prs):
         x = 0.72 + index * 4.05
         card(slide, x, 1.62, 3.7, 1.72, name, body, accent=accent)
 
-    text(slide, 0.72, 3.66, 4.0, 0.35, "八项功能需求", size=13, bold=True, color=GREEN)
+    text(slide, 0.72, 3.66, 4.0, 0.35, "十项功能需求", size=13, bold=True, color=GREEN)
     rows = [
         ["ID", "能力", "关键数据库点"],
         ["R01", "记录导入", "JSONB 预览、唯一键、单事务"],
         ["R02", "课程与标签", "M:N、部分唯一索引、触发器"],
-        ["R03", "检索阅读", "trgm + ILIKE、分页、上下文"],
-        ["R04", "批注复习", "1:N、复合唯一键、部分索引"],
+        ["R03", "检索阅读", "trgm + ILIKE、全局搜索、上下文"],
+        ["R04", "批注复习", "1:N、复合唯一键、事件流水"],
         ["R05", "统计导出", "JOIN、FILTER、窗口函数、CTE"],
         ["R06", "用户权限", "应用层 + SQL 作用域 + DB 角色"],
         ["R07", "Text2SQL", "只读视图、SQL 守卫、审计"],
         ["R08", "管理", "聚合查询、账号启停"],
+        ["R09", "快速采集", "令牌哈希、限流、Bearer 复用事务"],
+        ["R10", "离线学习", "IndexedDB、事件 ID 幂等同步"],
     ]
-    table(slide, 0.72, 4.05, 7.45, 2.55, rows, [0.72, 1.55, 5.18], font_size=10, header_size=10)
+    table(slide, 0.72, 4.05, 7.45, 2.55, rows, [0.72, 1.55, 5.18], font_size=9.5, header_size=10)
     picture_fit(slide, "01-dashboard.png", 8.55, 3.78, 4.0, 2.85)
-    notes(slide, "30 秒：强调 alice/bob 的课程级权限与 admin 的聚合边界；R01–R08 与报告需求表对应。")
+    notes(slide, "30 秒：强调 alice/bob 的课程级权限与 admin 的聚合边界；R01–R10 与报告需求表对应。")
 
 
 def slide_data(prs):
@@ -306,8 +308,8 @@ def slide_data(prs):
         text(slide, x + 0.12, y + 0.58, 1.44, 0.25, label, size=10, color=MUTED)
 
     cards = [
-        ("JSON 为主", "结构化字段完整，便于校验与映射；真实平台导出可加适配层。"),
-        ("Markdown 为辅", "# 标题 + 课程/标签元信息 + 用户/助手分段。"),
+        ("JSON 为主", "结构化字段完整；已适配 ChatGPT conversations.json 与 Qoder 会话导出。"),
+        ("Markdown 为辅", "# 标题 + 课程/标签元信息 + 用户/助手分段；兼容 DeepSeek 原生标题。"),
         ("可复现", "make_samples.py 生成样例，seed_demo.py 走真实导入服务。"),
     ]
     for index, (name, body) in enumerate(cards):
@@ -327,7 +329,7 @@ def slide_er(prs):
 
     bullets(slide, 0.72, 1.62, 5.35, 4.7, [
         "用户、课程、来源、会话、消息、标签、批注、复习项",
-        "课程成员、导入批次、Text2SQL 日志是操作型实体",
+        "课程成员、导入批次、Text2SQL 日志、复习事件、采集令牌是操作型实体",
         "批注与复习项按弱实体处理，依赖消息 / 批注存在",
         "用户 M:N 课程（带角色）；会话 M:N 标签",
         "用户 1:N 来源 → 会话 → 消息 → 批注",
@@ -342,15 +344,15 @@ def slide_er(prs):
 
 def slide_schema(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "05 / 逻辑设计", "12 张表：核心业务与操作型数据分离", 6)
+    header(slide, "05 / 逻辑设计", "14 张表：核心业务与操作型数据分离", 6)
 
     rows = [
         ["领域", "表", "关键约束"],
         ["账户与权限", "users · course_members", "系统角色；每课一个 owner；复合主键"],
         ["内容", "sources · conversations · messages", "(source, external_id)、(conversation, seq_no) 唯一"],
         ["组织", "courses · tags · conversation_tags", "(created_by, code, semester) 唯一；标签同 owner"],
-        ["学习", "annotations · review_items", "UNIQUE(user_id, annotation_id)；级联删除"],
-        ["运维", "import_batches · text2sql_log", "预览 token 唯一；执行结果审计"],
+        ["学习", "annotations · review_items · review_logs", "UNIQUE(user_id, annotation_id)；事件流水幂等"],
+        ["采集与运维", "import_batches · api_tokens · text2sql_log", "预览 token 唯一；令牌只存哈希；执行审计"],
     ]
     table(slide, 0.72, 1.62, 11.9, 3.3, rows, [1.7, 4.2, 6.0], font_size=11.5, header_size=11.5)
 
@@ -386,7 +388,7 @@ def slide_norm(prs):
     text(slide, 7.0, 1.62, 5.5, 0.35, "完整性约束", size=13, bold=True, color=GREEN)
     rows = [
         ["类型", "例子"],
-        ["主键 / 外键", "12 张表全部有 PK；关键关系均有 FK"],
+        ["主键 / 外键", "14 张表全部有 PK；关键关系均有 FK"],
         ["UNIQUE", "会话外部 ID、消息序号、标签名"],
         ["CHECK", "角色枚举、消息非空、结束时间 ≥ 开始"],
         ["部分唯一", "每门课最多一个 owner"],
@@ -436,6 +438,7 @@ def slide_import(prs):
     bullets(slide, 8.5, 5.38, 4.15, 1.25, [
         "失败整体回滚，批次单独标记 failed",
         "重复导入只补新增消息",
+        "平台导出与 Bearer 接口共用同一事务",
     ], size=11.5, gap=5)
     notes(slide, "40 秒：三段式导入；强调预览不写业务表、确认阶段单事务与幂等。")
 
@@ -572,9 +575,9 @@ def slide_permissions(prs):
 
 def slide_tests(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "13 / 测试与验收", "116 项测试与 26 项端到端验收全部通过", 14)
+    header(slide, "13 / 测试与验收", "184 项测试与 33 项端到端验收全部通过", 14)
 
-    stats = [("116", "自动化测试"), ("26", "端到端检查"), ("0", "失败项")]
+    stats = [("184", "自动化测试"), ("33", "端到端检查"), ("0", "失败项")]
     for index, (value, label) in enumerate(stats):
         x = 0.72 + index * 2.15
         rect(slide, x, 1.62, 1.95, 1.35, WHITE, radius=True, line=LINE, width=0.7)
@@ -583,20 +586,20 @@ def slide_tests(prs):
 
     code_block(slide, 0.72, 3.3, 6.0, 2.4,
                ".venv/Scripts/python.exe -m pytest -q\n"
-               "# 56 unit + 60 integration\n\n"
+               "# 101 unit + 83 integration\n\n"
                ".venv/Scripts/python.exe scripts/verify.py \\\n"
                "  --json data/verification/report.json", size=10.5)
     text(slide, 0.9, 5.78, 5.6, 0.75,
-         "输出：26/26 PASS，0 FAIL，约 0.8 秒\n所有写入检查在结束时整体回滚。", size=11.5, color=GREEN)
+         "输出：33/33 PASS，0 FAIL，约 0.7 秒\n所有写入检查在结束时整体回滚。", size=11.5, color=GREEN)
 
     right = [
         "Schema：表、FK、UNIQUE、CHECK、索引、触发器",
         "权限：alice / bob / viewer / admin 边界",
-        "导入：幂等、重复、损坏文件、事务回滚",
-        "检索：关键词、课程、标签、上下文",
+        "导入：幂等、重复、损坏文件、平台适配",
+        "检索：关键词、课程、标签、全局搜索",
         "统计：种子数据下的计数与排名",
+        "采集：令牌哈希、限流、Bearer 幂等入库",
         "Text2SQL：恶意 SQL、跨用户、只读兜底",
-        "导出：CSV 与 Markdown 声明",
     ]
     for index, item in enumerate(right):
         y = 1.62 + index * 0.68
@@ -639,10 +642,11 @@ def slide_end(prs):
          color=WHITE, spacing=1.18)
 
     left = [
-        "8 个核心实体，12 张表，完整 E-R 与范式分析",
+        "8 个核心实体，14 张表，完整 E-R 与范式分析",
         "导入、检索、批注、复习、统计、导出的闭环",
+        "令牌 + 扩展 + 平台导出，离线也可读可复习",
         "Text2SQL 由只读视图与角色做最终兜底",
-        "116 项测试 + 26 项验收，全部通过",
+        "184 项测试 + 33 项验收，全部通过",
         "README 五条命令从零复现",
     ]
     bullets(slide, 0.85, 3.15, 6.4, 2.4, left, size=14, color=RGBColor(0xE8, 0xE3, 0xD3), gap=8,

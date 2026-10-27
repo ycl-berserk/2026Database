@@ -96,6 +96,23 @@ async function run() {
     await alice.goto(`${BASE}/tags`, { waitUntil: "networkidle" });
     await shot(alice, "06-tags.png");
 
+    await alice.goto(`${BASE}/tokens`, { waitUntil: "networkidle" });
+    await alice.fill('input[name="name"]', "演示扩展");
+    await alice.click('form[action="/tokens"] button[type="submit"]');
+    await alice.waitForSelector(".token-reveal");
+    await alice.goto(`${BASE}/tokens`, { waitUntil: "networkidle" });
+    await shot(alice, "22-tokens.png");
+
+    await alice.goto(`${BASE}/search?q=${encodeURIComponent("事务")}`, { waitUntil: "networkidle" });
+    await shot(alice, "23-search.png");
+
+    await alice.goto(`${BASE}/dashboard`, { waitUntil: "networkidle" });
+    await alice.keyboard.press("Control+k");
+    await alice.waitForSelector("dialog[open]");
+    await alice.fill("[data-search-input]", "事务");
+    await alice.waitForTimeout(180);
+    await shot(alice, "23b-search-dialog.png", { fullPage: false });
+
     await alice.goto(`${BASE}/imports`, { waitUntil: "networkidle" });
     await shot(alice, "07-imports.png");
 
@@ -120,11 +137,41 @@ async function run() {
     ]);
     await shot(alice, "08-import-preview.png");
 
+    // 平台原生导出：DeepSeek Markdown → 统一格式预览
+    await alice.goto(`${BASE}/imports`, { waitUntil: "networkidle" });
+    await alice.setInputFiles('input[type="file"]', path.resolve("data", "samples", "deepseek_export.md"));
+    await Promise.all([
+      alice.waitForURL("**/imports/preview/**"),
+      alice.click('form[action="/imports/preview"] button[type="submit"]'),
+    ]);
+    await shot(alice, "26-platform-import.png");
+
     await alice.goto(`${BASE}/annotations`, { waitUntil: "networkidle" });
     await shot(alice, "09-annotations.png");
 
     await alice.goto(`${BASE}/reviews`, { waitUntil: "networkidle" });
     await shot(alice, "10-reviews.png");
+    await alice.locator(".review-heatmap").screenshot({
+      path: path.join(OUT, "10b-review-heatmap.png"),
+      animations: "disabled",
+    });
+    console.log("  ✓ 10b-review-heatmap.png");
+
+    await alice.goto(`${BASE}/conversations/7`, { waitUntil: "networkidle" });
+    await alice.click("[data-offline-save]");
+    await alice.waitForFunction(() =>
+      String(document.querySelector("[data-offline-save]").textContent).includes("已保存")
+    );
+    await alice.goto(`${BASE}/offline`, { waitUntil: "networkidle" });
+    await alice.waitForSelector("#list .item");
+    await shot(alice, "24-offline-saved.png");
+    await alice.click("#list .item");
+    await alice.waitForSelector("#reader:not([hidden])");
+    await shot(alice, "24b-offline-reader.png");
+    await alice.click("#back");
+    await alice.click("#tab-reviews");
+    await alice.waitForSelector("#review-view:not([hidden])");
+    await shot(alice, "25-offline-review.png", { fullPage: false });
 
     await alice.goto(`${BASE}/stats`, { waitUntil: "networkidle" });
     await shot(alice, "11-stats.png");
@@ -206,6 +253,10 @@ async function mobilePass(browser) {
 
   const mobileShot = async (name, options = {}) => {
     await settle(page);
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+    );
+    if (overflow > 1) problems.push(`mobile/${name} 横向溢出 ${overflow}px`);
     await page.screenshot({
       path: path.join(dir, name),
       fullPage: true,

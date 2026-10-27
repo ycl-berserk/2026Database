@@ -2,7 +2,7 @@
 
 《数据库系统概论》大作业 · 选题 2：围绕“与大模型的聊天记录”构建一个可查阅、可批注、可复习的课程资料库。
 
-系统把 Qoder / ChatGPT / DeepSeek 等平台的问答导出文件解析为统一结构，按课程、来源、标签整理；提供中文检索、会话上下文、批注、间隔复习、统计导出，并额外实现一个受只读权限视图保护的 **Text2SQL** 页面。
+系统把 Qoder / ChatGPT / DeepSeek 等平台的问答导出文件解析为统一结构，按课程、来源、标签整理；提供中文检索、全局搜索、会话上下文、批注、间隔复习、统计导出，并额外实现一个受只读权限视图保护的 **Text2SQL** 页面。采集侧支持平台原生导出适配、采集令牌 + Bearer 导入接口，以及一个“点击才上传”的 MV3 浏览器扩展。
 
 > 演示数据全部为围绕课程知识点生成的模拟聊天记录，不含任何真实个人信息。系统管理员只查看用户与聚合统计，不读取他人消息正文或批注。
 
@@ -11,16 +11,17 @@
 | 模块 | 能力 |
 | --- | --- |
 | 记录导入 | JSON / Markdown 上传、裸文本粘贴、三步导入向导（上传/粘贴 → 预览勾选 → 结果摘要）、解析校验、持久化预览、查重、课程映射、单事务入库、失败回滚 |
-| 快速采集 | PWA Share Target：手机从任意 App 分享文本/链接进来；粘贴后直接保存到未归类收件箱或指定课程 |
+| 快速采集 | PWA Share Target、裸文本粘贴、ChatGPT `conversations.json` / Qoder 会话 / DeepSeek Markdown 原生导出适配；采集令牌 + Bearer `POST /api/ingest`；MV3 扩展仅在点击发送时读取当前会话 |
 | 收件箱 | 未归类会话队列、批量归类到课程、分享落地页与高亮定位 |
 | 课程与标签 | 课程 CRUD、成员共享（owner / editor / viewer）、标签 CRUD、会话归类与打标签 |
-| 检索阅读 | 课程 / 标签 / 日期 / 关键词筛选、分页、消息上下文、关键词高亮、命中片段 |
-| 批注与复习 | 笔记 / 疑问 / 纠错 / 总结四类批注、解决状态、加入复习队列、间隔 1→2→4→8… 天、逾期提示、掌握/重置 |
+| 检索阅读 | 全局搜索（`/` 或 `Ctrl/Cmd+K`）、课程 / 标签 / 日期 / 关键词筛选、分页、消息上下文、关键词高亮、命中片段 |
+| 批注与复习 | 笔记 / 疑问 / 纠错 / 总结四类批注、解决状态、加入复习队列、间隔 1→2→4→8… 天、逾期提示、掌握/重置、近 5 周复习热力图 |
 | 统计与导出 | 概览、课程排名、月度活跃补零、标签 TopN、批注解决率、复习状态、重复内容检测；统计 CSV、单会话 Markdown |
 | 用户与权限 | Session 登录、PBKDF2 密码哈希、CSRF、系统角色 + 课程角色、应用层与数据库层双重防护 |
 | Text2SQL | 自然语言→SQL→校验→只读执行→表格展示、解释、审计历史；无 API Key 时使用本地规则 mock |
 | 管理 | 用户启停、系统聚合统计（不读正文） |
 | 移动端与安装 | 390px 优先的底部标签栏 / 抽屉导航、列表卡片化、专注阅读模式；PWA manifest + Service Worker 应用壳缓存、离线页、桌面安装、分享快捷方式 |
+| 离线学习 | 会话快照、离线阅读与搜索、离线批注草稿、复习打卡 outbox，恢复联网后按事件 ID 幂等同步 |
 | 体验与可访问性 | 演示账号一键登录、空账号三步引导、删除类操作 5 秒撤销、可关闭且可播报的提示、错误页原因与恢复路径、键盘焦点可见、`prefers-reduced-motion` |
 | 性能 | GZip 压缩、静态资源版本化与长缓存、首屏 JS < 10KB、移动端 LCP < 0.5s（本地实测） |
 
@@ -33,7 +34,8 @@
 - psycopg 3 + psycopg_pool，手写参数化 SQL，不使用 ORM
 - `pg_trgm` GIN 索引支持中文子串检索
 - GZip 中间件 + 带版本参数的静态资源长缓存
-- Playwright（可选）用于页面截图与演示录屏
+- Chrome MV3 浏览器扩展（原生 JS，点击发送、按需站点权限）
+- Playwright（可选）用于页面截图、扩展冒烟与演示录屏
 
 ## 快速开始
 
@@ -76,10 +78,10 @@ py -3.13 -m venv .venv
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（78 单元 + 68 集成，共 146 项）；集成测试需先初始化测试库
+# 全量测试（101 单元 + 83 集成，共 184 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest -q
 
-# 端到端验收：29 项 PASS/FAIL，写入 data/verification/report.json
+# 端到端验收：33 项 PASS/FAIL，写入 data/verification/report.json
 .venv/Scripts/python.exe scripts/verify.py --json data/verification/report.json
 
 # 重新生成导入样例（正常 / 重复 / 损坏）
@@ -88,10 +90,15 @@ py -3.13 -m venv .venv
 # 生成 Chen 记法 E-R 图（SVG）与 Mermaid ER
 .venv/Scripts/python.exe scripts/render_er.py
 
-# 页面截图（需要先启动网站；可选 --record 录制 docs/demo.webm）
+# 安装 Playwright（截图与扩展冒烟共用）
 npm install
 npx playwright install chromium
+
+# 页面截图（需要先启动网站；可选 --record 录制 docs/demo.webm）
 node scripts/screenshots.mjs
+
+# 浏览器扩展冒烟：内容提取、预览、Bearer 发送（无需启动网站）
+node scripts/extension_smoke.mjs
 ```
 
 ## 目录结构
@@ -111,22 +118,28 @@ learning-space/
 │   ├── templates/           # Jinja2 页面
 │   └── static/              # CSS / JS / PWA manifest、Service Worker、离线页与图标
 ├── sql/
-│   ├── schema.sql           # 12 张表、约束、索引、触发器
+│   ├── schema.sql           # 12 张基线表、约束、索引、触发器
 │   ├── views.sql            # 13 个 t2s 只读权限视图
 │   ├── roles.sql            # ls_app / t2s_reader 最小权限
-│   ├── migrations/          # v2 增量迁移（编号 SQL，记录到 meta.schema_migrations）
+│   ├── migrations/          # 增量迁移（review_logs、api_tokens 等，记录到 meta.schema_migrations）
 │   └── showcase.sql         # 报告用关键 SQL（带注释）
-├── scripts/                 # 初始化、迁移、种子、样例、验收、E-R、截图
-├── data/samples/            # 模拟导入样例
+├── extension/               # Chrome MV3 扩展：内容脚本、弹窗、隐私与回退说明
+├── scripts/                 # 初始化、迁移、种子、样例、验收、E-R、截图、扩展冒烟
+├── data/samples/            # 模拟导入样例（含三种平台原生导出）
 ├── tests/unit|integration/  # 单元与集成测试
 └── docs/                    # 报告、设计、需求、SQL 展示、桌面与移动端截图
 ```
 
+> 数据库共 14 张表：`schema.sql` 的 12 张基线表 + 迁移新增的 `review_logs`（复习事件流水）与 `api_tokens`（采集令牌，仅存 SHA-256）。
+
 ## 数据与安全说明
 
 - **模拟数据**：`data/samples/*.json|md` 与 `scripts/seed_demo.py` 生成的内容均为模拟问答，不含真实个人信息。每个导出的 Markdown 和页面页脚都带有“演示数据不含真实个人信息”声明。
-- **导入格式**：JSON 为主（`platform`、`account_label`、`conversations[]`），Markdown 与裸文本为辅（`# 会话标题` + `- 课程:` / `- 标签:` + `## 用户/助手 [时间]`，或直接粘贴 `我：… / 助手：…` 对话）。详见导入页的“导入格式说明”。
+- **导入格式**：JSON 为主（`platform`、`account_label`、`conversations[]`），Markdown 与裸文本为辅（`# 会话标题` + `- 课程:` / `- 标签:` + `## 用户/助手 [时间]`，或直接粘贴 `我：… / 助手：…` 对话）。平台原生导出由 `app/importers/adapters.py` 归一：ChatGPT `conversations.json` 沿 `current_node` 取主线，Qoder 会话导出做字段别名映射，DeepSeek Markdown 识别 `### User/Assistant` 与英文元信息。
+- **采集令牌**：`/tokens` 创建的令牌形如 `ls_…`，明文只显示一次，服务端仅存 SHA-256 与可读前缀；每令牌每分钟最多 60 次请求，可随时撤销。管理员无法读取令牌，令牌也应只放在本机脚本或扩展中，不要提交到仓库。
+- **浏览器扩展**：`extension/` 使用 MV3，固定权限只有 `activeTab` 与 `storage`；仅当用户在弹窗点击「发送到学习空间」时读取当前标签页并调用 `/api/ingest`，令牌保存在 `chrome.storage.local`。平台 DOM 改版时回退到平台导出文件。
 - **分享采集**：`POST /share` 复用 `import_batches` 暂存解析结果（30 分钟有效），不把长文本写入 Cookie；最终保存仍需登录会话与 CSRF Token，并校验批次所有权。
+- **离线同步**：会话快照、批注草稿与复习打卡保存在浏览器 IndexedDB；联网后按客户端事件 ID 幂等提交，避免重复写入。
 - **权限三层**：页面/服务层角色检查 → SQL 作用域过滤 → 数据库约束与触发器；Text2SQL 额外使用只读角色与 `security_barrier` 视图。
 - **数据库角色**：`ls_app` 只有 `app` schema 的 DML 权限，无 DDL；`t2s_reader` 只能 `SELECT` `t2s` 视图，默认只读事务、3 秒语句超时。
 - **管理边界**：管理员看不到课程 / 会话页面，也不能读取他人消息正文、批注或复习内容。

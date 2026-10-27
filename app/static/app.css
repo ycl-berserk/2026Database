@@ -400,12 +400,27 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 /* ---------- flashes ---------- */
 .flashes { display: grid; gap: 8px; margin-bottom: 16px; }
 .flash {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   padding: 10px 14px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--line-strong);
   background: var(--white);
   font-size: 13.5px;
 }
+.flash > span { flex: 1; }
+.flash-close {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 17px;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+  opacity: .6;
+}
+.flash-close:hover { opacity: 1; }
 .flash-success { background: var(--jade-soft); border-color: #bdd3c5; color: #24493d; }
 .flash-error { background: var(--seal-soft); border-color: #e2c4b8; color: #7d2f1f; }
 .flash-warning { background: var(--amber-soft); border-color: #e4d3ab; color: #6f4f12; }
@@ -925,6 +940,22 @@ input[type="file"] { padding: 7px 9px; background: var(--paper); }
 }
 .demo-row span { font-family: var(--mono); color: var(--ink-3); }
 .demo-row small { color: var(--ink-3); }
+.demo-login {
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.demo-login:hover, .demo-login:focus-visible {
+  background: var(--paper-2);
+  border-color: var(--line);
+}
+.demo-login span { font-family: inherit; }
 
 /* ---------- error ---------- */
 .error-code {
@@ -943,6 +974,10 @@ mark { background: #f7e3a8; color: inherit; padding: 0 1px; border-radius: 2px; 
   right: 22px;
   bottom: 22px;
   z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: min(420px, calc(100vw - 32px));
   padding: 10px 16px;
   border-radius: var(--radius-sm);
   background: var(--ink);
@@ -955,6 +990,60 @@ mark { background: #f7e3a8; color: inherit; padding: 0 1px; border-radius: 2px; 
   pointer-events: none;
 }
 .toast.show { opacity: 1; transform: translateY(0); }
+.toast-action {
+  pointer-events: auto;
+  border: 1px solid rgba(255, 255, 255, .35);
+  border-radius: 4px;
+  background: transparent;
+  color: #f7e3a8;
+  font: inherit;
+  font-weight: 600;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.toast-action:hover, .toast-action:focus-visible { background: rgba(255, 255, 255, .12); }
+
+.is-removing {
+  opacity: .32;
+  filter: grayscale(.5);
+  pointer-events: none;
+  transition: opacity .2s, filter .2s;
+}
+
+/* ---------- onboarding ---------- */
+.onboarding-steps {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.onboarding-steps li {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper-2);
+}
+.onboarding-steps strong { font-size: 14px; }
+.onboarding-steps p { margin: 2px 0 0; font-size: 12.5px; }
+.onboarding-steps li > :last-child { margin-left: auto; }
+.step-no {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--seal);
+  color: var(--paper);
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.onboarding-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 
 /* ---------- annotations / reviews / stats ---------- */
 .stat-grid-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
@@ -1269,7 +1358,15 @@ mark { background: #f7e3a8; color: inherit; padding: 0 1px; border-radius: 2px; 
     left: 14px;
     right: 14px;
     bottom: calc(70px + env(safe-area-inset-bottom));
-    text-align: center;
+    justify-content: center;
+  }
+  .onboarding-steps li { flex-wrap: wrap; align-items: flex-start; }
+  .onboarding-copy { flex: 1 1 0; min-width: 0; }
+  .onboarding-actions { justify-content: flex-start; }
+  .onboarding-steps li > :last-child {
+    flex: 0 0 auto;
+    margin-left: 40px;
+    width: calc(100% - 40px);
   }
 
   .two-col, .form-grid { grid-template-columns: minmax(0, 1fr); }

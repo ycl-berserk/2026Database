@@ -16,4 +16,8 @@ def dashboard(request: Request, user=Depends(require_user), conn=Depends(get_con
         data = admin_dashboard(conn)
     else:
         data = student_dashboard(conn, user["id"])
+        data["is_new_user"] = (
+            data["stats"]["course_count"] == 0
+            and data["stats"]["conversation_count"] == 0
+        )
     return render(request, "dashboard.html", **data)

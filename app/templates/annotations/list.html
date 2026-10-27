@@ -39,7 +39,7 @@
 {% if rows %}
   <div class="annotation-list">
     {% for row in rows %}
-      <article class="card annotation-card">
+      <article class="card annotation-card" data-undo-item>
         <header class="annotation-card-head">
           <span class="chip chip-seal">{{ kind_label(row.kind) }}</span>
           <span class="badge {% if row.status == 'resolved' %}badge-ok{% endif %}">{{ status_label(row.status) }}</span>
@@ -91,7 +91,7 @@
           </details>
 
           <form method="post" action="/annotations/{{ row.id }}/delete" class="inline-form"
-                data-confirm="删除这条批注？对应的复习项也会一并移除。">
+                data-undo-submit="批注已删除">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" name="back" value="/annotations?page={{ page }}">
             <button class="btn btn-danger btn-sm" type="submit">删除</button>

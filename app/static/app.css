@@ -1080,6 +1080,20 @@ mark { background: #f7e3a8; color: inherit; padding: 0 1px; border-radius: 2px; 
 }
 .annotation-card-foot .btn, .review-foot .btn { font-size: 12.5px; }
 .review-card.review-due { border-left: 3px solid var(--amber); }
+.review-heatmap { margin-bottom: 14px; }
+.heatmap {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(7, 16px);
+  gap: 4px;
+  width: max-content;
+}
+.heat-cell { width: 16px; height: 16px; border-radius: 3px; background: var(--paper-2); border: 1px solid var(--line); }
+.heat-1 { background: #dbe7dd; border-color: #c9dbcc; }
+.heat-2 { background: #a9c7b3; border-color: #96bba2; }
+.heat-3 { background: #6e9d82; border-color: #5f8f73; }
+.heat-4 { background: var(--jade); border-color: var(--jade); }
+.heatmap-axis { display: flex; justify-content: space-between; width: 154px; margin-top: 6px; color: var(--ink-3); font-size: 11.5px; }
 .review-body { font-size: 14.5px; color: var(--ink); white-space: pre-wrap; }
 .quote {
   margin: 0;

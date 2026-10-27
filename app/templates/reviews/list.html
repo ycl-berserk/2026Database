@@ -28,6 +28,20 @@
   </div>
 </section>
 
+<section class="panel review-heatmap" aria-labelledby="review-heatmap-title">
+  <div class="panel-head">
+    <h2 id="review-heatmap-title">近 5 周复习</h2>
+    <span class="muted">共 {{ activity_total }} 次</span>
+  </div>
+  <div class="heatmap" role="img" aria-label="近 5 周共复习 {{ activity_total }} 次">
+    {% for day in activity %}
+      <span class="heat-cell heat-{{ day.level }}"
+            title="{{ day.day }} · {{ day.count }} 次复习"></span>
+    {% endfor %}
+  </div>
+  <div class="heatmap-axis"><span>5 周前</span><span>今天</span></div>
+</section>
+
 <div class="sender-tabs">
   <a class="sender-tab {% if scope == 'active' %}active{% endif %}" href="/reviews?scope=active">待复习</a>
   <a class="sender-tab {% if scope == 'mastered' %}active{% endif %}" href="/reviews?scope=mastered">已掌握</a>
@@ -68,12 +82,14 @@
           <span class="muted">批注作者 {{ row.author_name }}</span>
 
           {% if row.status != 'mastered' %}
-            <form method="post" action="/reviews/{{ row.id }}/done" class="inline-form">
+            <form method="post" action="/reviews/{{ row.id }}/done" class="inline-form"
+                  data-review-id="{{ row.id }}" data-review-action="done">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <input type="hidden" name="scope" value="{{ scope }}">
               <button class="btn btn-primary btn-sm" type="submit">复习一次</button>
             </form>
-            <form method="post" action="/reviews/{{ row.id }}/mastered" class="inline-form">
+            <form method="post" action="/reviews/{{ row.id }}/mastered" class="inline-form"
+                  data-review-id="{{ row.id }}" data-review-action="mastered">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <input type="hidden" name="scope" value="{{ scope }}">
               <button class="btn btn-sm" type="submit">标记掌握</button>

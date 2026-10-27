@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from uuid import uuid4
 
 import pytest
 
@@ -140,6 +141,70 @@ def test_review_schedule_doubles_and_resets(conn, base):
 
     review_service.delete_review(conn, review_id, alice_id)
     assert review_service.summary(conn, alice_id)["total"] == 0
+
+
+def test_review_event_is_idempotent_and_logged(conn, base):
+    alice_id = base["users"]["alice"]
+    review_id = conn.execute(
+        "SELECT id FROM app.review_items WHERE user_id = %s", (alice_id,)
+    ).fetchone()["id"]
+    event_id = str(uuid4())
+
+    first = review_service.review_once(conn, review_id, alice_id, event_id=event_id)
+    assert first["duplicate"] is False
+    assert first["review_count"] == 1
+
+    replay = review_service.review_once(conn, review_id, alice_id, event_id=event_id)
+    assert replay["duplicate"] is True
+    assert replay["review_count"] == 1
+    assert replay["due_date"] == date.today() + timedelta(days=2)
+
+    logs = conn.execute(
+        "SELECT action, event_id, interval_days, review_count "
+        "FROM app.review_logs WHERE user_id = %s ORDER BY id",
+        (alice_id,),
+    ).fetchall()
+    assert len(logs) == 1
+    assert logs[0]["action"] == "review"
+    assert str(logs[0]["event_id"]) == event_id
+
+    review_service.review_once(conn, review_id, alice_id, event_id=str(uuid4()))
+    assert conn.execute(
+        "SELECT count(*) AS n FROM app.review_logs WHERE user_id = %s", (alice_id,)
+    ).fetchone()["n"] == 2
+
+    with pytest.raises(ValidationError):
+        review_service.review_once(conn, review_id, alice_id, event_id="not-a-uuid")
+
+
+def test_review_logs_survive_item_delete_and_feed_heatmap(conn, base):
+    alice_id = base["users"]["alice"]
+    review_id = conn.execute(
+        "SELECT id FROM app.review_items WHERE user_id = %s", (alice_id,)
+    ).fetchone()["id"]
+    review_service.review_once(conn, review_id, alice_id)
+    review_service.mark_mastered(conn, review_id, alice_id)
+
+    actions = [
+        row["action"]
+        for row in conn.execute(
+            "SELECT action FROM app.review_logs WHERE user_id = %s ORDER BY id",
+            (alice_id,),
+        )
+    ]
+    assert actions == ["review", "mastered"]
+
+    activity = review_service.activity(conn, alice_id, days=7)
+    assert len(activity) == 7
+    assert sum(row["count"] for row in activity) == 1
+    assert activity[-1]["day"] == date.today()
+
+    review_service.delete_review(conn, review_id, alice_id)
+    survivor = conn.execute(
+        "SELECT review_item_id FROM app.review_logs WHERE user_id = %s ORDER BY id LIMIT 1",
+        (alice_id,),
+    ).fetchone()
+    assert survivor["review_item_id"] is None
 
 
 def test_review_list_marks_overdue(conn, base):

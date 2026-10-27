@@ -8,6 +8,7 @@
 {% endblock %}
 
 {% block topbar_actions %}
+  <button class="btn btn-ghost" type="button" data-offline-save="{{ conversation.id }}">保存到离线</button>
   <a class="btn" href="/exports/conversations/{{ conversation.id }}.md">导出 Markdown</a>
   {% if conversation.course_id %}
     <a class="btn btn-ghost" href="/courses/{{ conversation.course_id }}">所属课程</a>

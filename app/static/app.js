@@ -228,8 +228,20 @@
   }
 
   const OFFLINE_DB = "ls-offline";
-  const OFFLINE_DB_VERSION = 1;
+  const OFFLINE_DB_VERSION = 2;
+  const OFFLINE_STORES = ["conversations", "drafts", "outbox", "queue"];
   let offlineDbPromise = null;
+
+  function newEventId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return window.crypto.randomUUID();
+    }
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (ch) {
+      const r = (Math.random() * 16) | 0;
+      const v = ch === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
 
   function openOfflineDb() {
     if (!("indexedDB" in window)) {
@@ -240,9 +252,11 @@
         const req = indexedDB.open(OFFLINE_DB, OFFLINE_DB_VERSION);
         req.onupgradeneeded = function () {
           const db = req.result;
-          if (!db.objectStoreNames.contains("conversations")) {
-            db.createObjectStore("conversations", { keyPath: "id" });
-          }
+          OFFLINE_STORES.forEach(function (name) {
+            if (!db.objectStoreNames.contains(name)) {
+              db.createObjectStore(name, { keyPath: "id" });
+            }
+          });
         };
         req.onsuccess = function () { resolve(req.result); };
         req.onerror = function () { reject(req.error); };
@@ -320,8 +334,16 @@
     },
     listConversations: function () { return idbGetAll("conversations"); },
     removeConversation: function (id) { return idbDelete("conversations", Number(id)); },
+    queueDraft: function (draft) { return idbPut("drafts", draft); },
+    queueReview: function (action) { return idbPut("outbox", action); },
+    pendingCount: async function () {
+      const drafts = await idbCount("drafts");
+      const actions = await idbCount("outbox");
+      return { drafts: drafts, reviews: actions, total: drafts + actions };
+    },
+    flush: flushOfflineWork,
     clear: async function () {
-      await idbClear("conversations");
+      await Promise.all(OFFLINE_STORES.map(function (name) { return idbClear(name); }));
       updateOfflineCount();
     }
   };
@@ -330,12 +352,153 @@
     const links = document.querySelectorAll("[data-offline-count-link]");
     if (!links.length || !offline.supported) return;
     try {
-      const count = await idbCount("conversations");
+      const conversations = await idbCount("conversations");
+      const pending = await offline.pendingCount();
       links.forEach(function (el) {
-        el.textContent = count ? "离线资料 " + count : "离线资料";
+        let label = conversations ? "离线资料 " + conversations : "离线资料";
+        if (pending.total) label += " · 待同步 " + pending.total;
+        el.textContent = label;
       });
     } catch (_) { /* 隐私模式下 IndexedDB 不可用，不影响页面 */ }
   }
+
+  async function flushOfflineWork(quiet) {
+    if (!navigator.onLine || !offline.supported) return;
+    let sent = 0;
+    let dropped = 0;
+    text: {
+      try {
+        const drafts = await idbGetAll("drafts");
+        for (const draft of drafts) {
+          try {
+            await api("/api/annotations", {
+              method: "POST",
+              body: {
+                message_id: draft.message_id,
+                kind: draft.kind,
+                content: draft.content,
+                event_id: draft.id
+              }
+            });
+            sent += 1;
+          } catch (err) {
+            if (err.status >= 400 && err.status < 500) dropped += 1;
+            else break text;
+          }
+          await idbDelete("drafts", draft.id);
+        }
+        const actions = await idbGetAll("outbox");
+        actions.sort(function (a, b) {
+          return String(a.created_at || "").localeCompare(String(b.created_at || ""));
+        });
+        for (const action of actions) {
+          try {
+            await api("/api/reviews/" + action.review_id + "/" + action.action, {
+              method: "POST",
+              body: { event_id: action.id }
+            });
+            sent += 1;
+          } catch (err) {
+            if (err.status >= 400 && err.status < 500) dropped += 1;
+            else break text;
+          }
+          await idbDelete("outbox", action.id);
+        }
+      } finally {
+        updateOfflineCount();
+      }
+    }
+    if (sent && !quiet) {
+      toast("已同步 " + sent + " 条离线操作");
+    }
+    if (dropped) {
+      toast(dropped + " 条离线操作已失效，未再重试");
+    }
+  }
+
+  async function cacheReviewQueue() {
+    if (!navigator.onLine || !offline.supported) return;
+    try {
+      const data = await api("/api/reviews/offline");
+      await idbPut("queue", {
+        id: "active",
+        generated_at: data.generated_at,
+        csrf_token: data.csrf_token,
+        items: data.items || []
+      });
+    } catch (_) { /* 队列缓存失败不影响在线复习 */ }
+  }
+
+  document.addEventListener("submit", function (event) {
+    const form = event.target.closest(".annotate-form");
+    if (!form || navigator.onLine || !offline.supported) return;
+    event.preventDefault();
+    if (form.checkValidity && !form.checkValidity()) {
+      form.reportValidity();
+      return;
+    }
+    const data = new FormData(form);
+    const draft = {
+      id: newEventId(),
+      message_id: Number(data.get("message_id") || 0),
+      kind: data.get("kind") || "note",
+      content: String(data.get("content") || "").trim(),
+      back: data.get("back") || "",
+      csrf_token: csrf,
+      created_at: new Date().toISOString()
+    };
+    offline.queueDraft(draft).then(function () {
+      form.reset();
+      const details = form.closest("details");
+      if (details) details.open = false;
+      updateOfflineCount();
+      toast("已暂存批注，联网后自动提交");
+    }).catch(function () {
+      toast("离线暂存失败，请检查浏览器存储权限");
+    });
+  });
+
+  document.addEventListener("submit", function (event) {
+    const form = event.target.closest("form[data-review-action]");
+    if (!form) return;
+    let input = form.querySelector('input[name="event_id"]');
+    if (!input) {
+      input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "event_id";
+      input.value = newEventId();
+      form.appendChild(input);
+    }
+    if (navigator.onLine || !offline.supported) return;
+    event.preventDefault();
+    const action = {
+      id: input.value,
+      review_id: Number(form.getAttribute("data-review-id") || 0),
+      action: form.getAttribute("data-review-action") || "done",
+      scope: (new FormData(form)).get("scope") || "active",
+      csrf_token: csrf,
+      created_at: new Date().toISOString()
+    };
+    offline.queueReview(action).then(function () {
+      const card = form.closest("[data-undo-item]");
+      if (card) {
+        card.classList.add("review-pending");
+        const badge = document.createElement("span");
+        badge.className = "badge badge-warn";
+        badge.textContent = "离线打卡 · 待同步";
+        const head = card.querySelector(".review-head");
+        if (head) head.appendChild(badge);
+      }
+      form.querySelectorAll("button").forEach(function (btn) { btn.disabled = true; });
+      updateOfflineCount();
+      toast("当前离线，打卡已排队，联网后自动提交");
+    }).catch(function () {
+      toast("离线打卡暂存失败，请检查浏览器存储权限");
+    });
+  });
+
+  if (location.pathname === "/reviews") cacheReviewQueue();
+  flushOfflineWork(true);
 
   document.addEventListener("click", async function (event) {
     const btn = event.target.closest("[data-offline-save]");
@@ -374,6 +537,8 @@
   window.addEventListener("online", function () {
     updateConnectionBanner();
     toast("网络已恢复");
+    flushOfflineWork(false);
+    if (location.pathname === "/reviews") cacheReviewQueue();
   });
   window.addEventListener("offline", function () {
     updateConnectionBanner();

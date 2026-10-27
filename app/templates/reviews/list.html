@@ -95,7 +95,8 @@
               <button class="btn btn-sm" type="submit">标记掌握</button>
             </form>
           {% else %}
-            <form method="post" action="/reviews/{{ row.id }}/reset" class="inline-form">
+            <form method="post" action="/reviews/{{ row.id }}/reset" class="inline-form"
+                  data-review-id="{{ row.id }}" data-review-action="reset">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <input type="hidden" name="scope" value="{{ scope }}">
               <button class="btn btn-ghost btn-sm" type="submit">重新开始</button>

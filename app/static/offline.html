@@ -74,9 +74,33 @@
       text-decoration: none;
     }
     .btn:hover { border-color: var(--jade); text-decoration: none; }
+    .btn:disabled { opacity: .55; cursor: default; }
+    .btn-sm { min-height: 34px; padding: 5px 11px; font-size: 13px; }
+    .btn-primary { background: var(--jade); border-color: var(--jade); color: #f7fbf7; }
     .btn-danger { color: var(--seal); border-color: #d9b3a6; background: transparent; }
     main { width: min(860px, 100%); margin: 0 auto; padding: 22px 18px 60px; }
     h2 { margin: 0; font-size: 17px; }
+    .tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 16px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--white);
+      width: fit-content;
+    }
+    .tab {
+      padding: 7px 15px;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--ink-2);
+      font: inherit;
+      font-size: 13.5px;
+      cursor: pointer;
+    }
+    .tab.active { background: var(--jade); color: #f7fbf7; }
     .toolbar {
       display: flex;
       align-items: baseline;
@@ -110,6 +134,15 @@
       color: var(--ink-2);
       font-size: 12px;
     }
+    .badge {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 999px;
+      background: #f1ece0;
+      color: var(--ink-2);
+      font-size: 12px;
+    }
+    .badge-warn { background: #f6e7cf; color: #8a5b12; }
     .empty {
       padding: 38px 18px;
       border: 1px dashed var(--line);
@@ -145,6 +178,36 @@
       white-space: pre-wrap;
     }
     .note b { color: var(--seal); margin-right: 6px; }
+    .review-card {
+      padding: 15px 17px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--white);
+    }
+    .review-card + .review-card { margin-top: 10px; }
+    .review-card.is-pending { opacity: .82; }
+    .review-head { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin-bottom: 8px; font-size: 12.5px; }
+    .review-body { margin-bottom: 9px; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .quote {
+      margin: 0 0 11px;
+      padding: 9px 12px;
+      border-left: 2px solid var(--line);
+      background: #faf7ef;
+      color: var(--ink-2);
+      font-size: 13px;
+      white-space: pre-wrap;
+    }
+    .review-foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .sync-note {
+      margin: 14px 0 0;
+      padding: 9px 12px;
+      border: 1px solid #e4d3b4;
+      border-radius: 8px;
+      background: #fbf3e4;
+      color: #7a5312;
+      font-size: 12.5px;
+    }
+    .sync-note[hidden] { display: none; }
     .toast {
       position: fixed;
       left: 50%;
@@ -166,6 +229,8 @@
       .top { padding: 14px 16px; }
       main { padding: 18px 14px 48px; }
       .brand .mark { width: 38px; height: 38px; }
+      .tabs { width: 100%; }
+      .tab { flex: 1; }
     }
     @media (prefers-reduced-motion: reduce) {
       * { transition: none !important; }
@@ -184,7 +249,16 @@
     <a class="btn" href="/dashboard">返回学习空间</a>
   </header>
 
-  <main id="content">
+  <main>
+    <div class="tabs" role="tablist" aria-label="离线内容">
+      <button class="tab active" id="tab-conversations" type="button" role="tab" aria-selected="true">
+        已保存会话 <span id="conv-count"></span>
+      </button>
+      <button class="tab" id="tab-reviews" type="button" role="tab" aria-selected="false">
+        离线复习 <span id="review-count"></span>
+      </button>
+    </div>
+
     <section id="list-view">
       <div class="toolbar">
         <h2>已保存的会话</h2>
@@ -195,8 +269,21 @@
         <p>还没有保存离线内容。</p>
         <p class="muted">联网时打开一个会话，点「保存到离线」即可在这里阅读。</p>
       </div>
+      <p class="sync-note" id="sync-note" hidden></p>
       <div class="actions">
         <button class="btn btn-danger" id="clear" type="button" hidden>清除本机离线数据</button>
+      </div>
+    </section>
+
+    <section id="review-view" hidden>
+      <div class="toolbar">
+        <h2>今日复习</h2>
+        <span class="muted" id="queue-time">读取中…</span>
+      </div>
+      <div id="review-list"></div>
+      <div class="empty" id="review-empty" hidden>
+        <p>本机还没有复习队列缓存。</p>
+        <p class="muted">联网时打开「复习队列」页，队列会自动缓存到这里。</p>
       </div>
     </section>
 
@@ -218,9 +305,13 @@
     (function () {
       "use strict";
       var DB_NAME = "ls-offline";
-      var DB_VERSION = 1;
+      var DB_VERSION = 2;
+      var STORES = ["conversations", "drafts", "outbox", "queue"];
       var dbPromise = null;
       var records = [];
+      var queue = null;
+      var drafts = [];
+      var outbox = [];
       var roleLabels = { user: "我", assistant: "助手", system: "系统" };
       var kindLabels = { note: "笔记", question: "疑问", correction: "纠错", summary: "总结" };
 
@@ -230,9 +321,11 @@
             var req = indexedDB.open(DB_NAME, DB_VERSION);
             req.onupgradeneeded = function () {
               var db = req.result;
-              if (!db.objectStoreNames.contains("conversations")) {
-                db.createObjectStore("conversations", { keyPath: "id" });
-              }
+              STORES.forEach(function (name) {
+                if (!db.objectStoreNames.contains(name)) {
+                  db.createObjectStore(name, { keyPath: "id" });
+                }
+              });
             };
             req.onsuccess = function () { resolve(req.result); };
             req.onerror = function () { reject(req.error); };
@@ -241,25 +334,60 @@
         return dbPromise;
       }
 
-      function allConversations() {
+      function requestResult(req) {
+        return new Promise(function (resolve, reject) {
+          req.onsuccess = function () { resolve(req.result); };
+          req.onerror = function () { reject(req.error); };
+        });
+      }
+
+      function getAll(store) {
+        return openDb().then(function (db) {
+          return requestResult(db.transaction(store, "readonly").objectStore(store).getAll());
+        }).then(function (rows) { return rows || []; });
+      }
+
+      function put(store, value) {
         return openDb().then(function (db) {
           return new Promise(function (resolve, reject) {
-            var req = db.transaction("conversations", "readonly")
-              .objectStore("conversations").getAll();
-            req.onsuccess = function () { resolve(req.result || []); };
-            req.onerror = function () { reject(req.error); };
+            var tx = db.transaction(store, "readwrite");
+            tx.objectStore(store).put(value);
+            tx.oncomplete = function () { resolve(value); };
+            tx.onerror = function () { reject(tx.error); };
           });
         });
       }
 
-      function clearConversations() {
+      function del(store, key) {
         return openDb().then(function (db) {
           return new Promise(function (resolve, reject) {
-            var tx = db.transaction("conversations", "readwrite");
-            tx.objectStore("conversations").clear();
+            var tx = db.transaction(store, "readwrite");
+            tx.objectStore(store).delete(key);
             tx.oncomplete = resolve;
             tx.onerror = function () { reject(tx.error); };
           });
+        });
+      }
+
+      function clearAll() {
+        return openDb().then(function (db) {
+          return new Promise(function (resolve, reject) {
+            var tx = db.transaction(STORES, "readwrite");
+            STORES.forEach(function (name) { tx.objectStore(name).clear(); });
+            tx.oncomplete = resolve;
+            tx.onerror = function () { reject(tx.error); };
+          });
+        });
+      }
+
+      function newEventId() {
+        if (window.crypto && typeof window.crypto.randomUUID === "function") {
+          return window.crypto.randomUUID();
+        }
+        return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (ch) {
+          var r = (Math.random() * 16) | 0;
+          var v = ch === "x" ? r : (r & 0x3) | 0x8;
+          return v.toString(16);
         });
       }
 
@@ -284,16 +412,41 @@
         node.textContent = message;
         node.classList.add("show");
         clearTimeout(node._timer);
-        node._timer = setTimeout(function () { node.classList.remove("show"); }, 2600);
+        node._timer = setTimeout(function () { node.classList.remove("show"); }, 2800);
       }
 
       function updateStatus() {
         var status = document.getElementById("status");
         var online = navigator.onLine;
+        var pending = drafts.length + outbox.length;
         status.textContent = online
           ? "网络已连接 · 离线资料只保存在本设备"
           : "当前离线 · 只显示已保存内容";
+        if (pending) status.textContent += " · " + pending + " 项待同步";
         status.classList.toggle("offline", !online);
+        updateSyncNote();
+      }
+
+      function updateSyncNote() {
+        var note = document.getElementById("sync-note");
+        var pending = drafts.length + outbox.length;
+        note.hidden = !pending;
+        if (pending) {
+          note.textContent = "有 " + pending + " 项离线操作待同步" +
+            (navigator.onLine ? "，正在自动提交…" : "，联网后会自动提交。");
+        }
+      }
+
+      function showTab(name) {
+        var conversations = name === "conversations";
+        document.getElementById("list-view").hidden = !conversations;
+        document.getElementById("review-view").hidden = conversations;
+        document.getElementById("reader").hidden = true;
+        document.getElementById("tab-conversations").classList.toggle("active", conversations);
+        document.getElementById("tab-conversations").setAttribute("aria-selected", String(conversations));
+        document.getElementById("tab-reviews").classList.toggle("active", !conversations);
+        document.getElementById("tab-reviews").setAttribute("aria-selected", String(!conversations));
+        window.scrollTo(0, 0);
       }
 
       function renderList() {
@@ -321,14 +474,16 @@
           list.appendChild(item);
         });
         empty.hidden = records.length > 0;
-        clear.hidden = records.length === 0;
+        clear.hidden = records.length === 0 && !drafts.length && !outbox.length && !queue;
         count.textContent = records.length ? "共 " + records.length + " 个会话" : "暂无内容";
+        document.getElementById("conv-count").textContent = records.length ? "(" + records.length + ")" : "";
       }
 
       function renderReader(record) {
         var data = record.data || {};
         var conv = data.conversation || {};
         document.getElementById("list-view").hidden = true;
+        document.getElementById("review-view").hidden = true;
         document.getElementById("reader").hidden = false;
         document.getElementById("reader-title").textContent = conv.title || "未命名会话";
         var meta = [];
@@ -358,35 +513,252 @@
         window.scrollTo(0, 0);
       }
 
-      function showList() {
-        document.getElementById("reader").hidden = true;
-        document.getElementById("list-view").hidden = false;
-        window.scrollTo(0, 0);
+      function pendingFor(reviewId) {
+        for (var i = 0; i < outbox.length; i += 1) {
+          if (Number(outbox[i].review_id) === Number(reviewId)) return outbox[i];
+        }
+        return null;
       }
 
-      document.getElementById("back").addEventListener("click", showList);
-      document.getElementById("clear").addEventListener("click", function () {
-        if (!window.confirm("清除后本机将不再保留任何离线会话，确定继续？")) return;
-        clearConversations().then(function () {
-          records = [];
+      function renderReviews() {
+        var box = document.getElementById("review-list");
+        var empty = document.getElementById("review-empty");
+        var items = queue && queue.items ? queue.items : [];
+        box.textContent = "";
+        document.getElementById("review-count").textContent = items.length ? "(" + items.length + ")" : "";
+        document.getElementById("queue-time").textContent = queue && queue.generated_at
+          ? "缓存于 " + formatDate(queue.generated_at)
+          : "未缓存";
+        empty.hidden = items.length > 0;
+
+        items.forEach(function (item) {
+          var pending = pendingFor(item.id);
+          var card = el("article", "review-card" + (pending ? " is-pending" : ""));
+          var head = el("div", "review-head");
+          head.appendChild(el("span", "chip", kindLabels[item.kind] || item.kind || "批注"));
+          if (item.course_code) head.appendChild(el("span", "chip", item.course_code));
+          if (item.due_date) head.appendChild(el("span", "badge badge-warn", "截止 " + item.due_date));
+          head.appendChild(el("span", "muted", "间隔 " + item.interval_days + " 天 · 已复习 " + item.review_count + " 次"));
+          if (pending) {
+            head.appendChild(el("span", "badge badge-warn", "待同步"));
+          }
+          card.appendChild(head);
+          card.appendChild(el("div", "review-body", item.annotation_content || ""));
+          var quote = el("blockquote", "quote");
+          quote.textContent = item.snippet || "";
+          card.appendChild(quote);
+
+          var foot = el("div", "review-foot");
+          if (!pending) {
+            var done = el("button", "btn btn-primary btn-sm", "复习一次");
+            done.type = "button";
+            done.addEventListener("click", function () { queueAction(item, "done"); });
+            foot.appendChild(done);
+            var mastered = el("button", "btn btn-sm", "标记掌握");
+            mastered.type = "button";
+            mastered.addEventListener("click", function () { queueAction(item, "mastered"); });
+            foot.appendChild(mastered);
+          } else {
+            foot.appendChild(el("span", "muted", "联网后自动同步，无需重复提交"));
+          }
+          card.appendChild(foot);
+          box.appendChild(card);
+        });
+      }
+
+      function saveQueue() {
+        if (!queue) return Promise.resolve();
+        return put("queue", queue);
+      }
+
+      function applyLocalAction(item, action) {
+        if (!queue || !queue.items) return;
+        var today = new Date();
+        if (action === "mastered") {
+          queue.items = queue.items.filter(function (row) { return row.id !== item.id; });
+          return;
+        }
+        var next = Math.min((item.interval_days || 1) * 2, 60);
+        item.interval_days = next;
+        item.review_count = (item.review_count || 0) + 1;
+        var due = new Date(today.getTime() + next * 86400000);
+        item.due_date = due.toISOString().slice(0, 10);
+      }
+
+      function queueAction(item, action) {
+        var record = {
+          id: newEventId(),
+          review_id: item.id,
+          action: action,
+          scope: "active",
+          csrf_token: (queue && queue.csrf_token) || "",
+          created_at: new Date().toISOString()
+        };
+        outbox.push(record);
+        applyLocalAction(item, action);
+        Promise.all([put("outbox", record), saveQueue()]).then(function () {
+          renderReviews();
+          updateStatus();
+          toast("已离线打卡，联网后自动提交");
+          flushOutbox(true);
+        }).catch(function () {
+          toast("离线打卡暂存失败，请检查浏览器存储权限");
+        });
+      }
+
+      function postJson(url, body, token) {
+        return fetch(url, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "X-CSRF-Token": token || ""
+          },
+          body: JSON.stringify(body)
+        }).then(function (res) {
+          if (!res.ok) {
+            var err = new Error("HTTP " + res.status);
+            err.status = res.status;
+            throw err;
+          }
+          return res.json().catch(function () { return null; });
+        });
+      }
+
+      async function flushDrafts() {
+        var sent = 0;
+        for (var i = 0; i < drafts.length; i += 1) {
+          var draft = drafts[i];
+          try {
+            await postJson("/api/annotations", {
+              message_id: draft.message_id,
+              kind: draft.kind,
+              content: draft.content,
+              event_id: draft.id
+            }, draft.csrf_token);
+            sent += 1;
+            drafts.splice(i, 1);
+            i -= 1;
+            await del("drafts", draft.id);
+          } catch (err) {
+            if (err.status >= 400 && err.status < 500) {
+              drafts.splice(i, 1);
+              i -= 1;
+              await del("drafts", draft.id);
+            } else {
+              break;
+            }
+          }
+        }
+        return sent;
+      }
+
+      async function flushOutbox(silent) {
+        if (!navigator.onLine) return 0;
+        var sent = 0;
+        for (var i = 0; i < outbox.length; i += 1) {
+          var action = outbox[i];
+          try {
+            await postJson("/api/reviews/" + action.review_id + "/" + action.action, {
+              event_id: action.id
+            }, action.csrf_token || (queue && queue.csrf_token));
+            sent += 1;
+            outbox.splice(i, 1);
+            i -= 1;
+            await del("outbox", action.id);
+          } catch (err) {
+            if (err.status >= 400 && err.status < 500) {
+              outbox.splice(i, 1);
+              i -= 1;
+              await del("outbox", action.id);
+            } else {
+              break;
+            }
+          }
+        }
+        if (sent) {
+          renderReviews();
+          updateStatus();
+          if (!silent) toast("已同步 " + sent + " 项离线操作");
+          refreshQueue();
+        }
+        return sent;
+      }
+
+      function refreshQueue() {
+        if (!navigator.onLine) return Promise.resolve();
+        return fetch("/api/reviews/offline", {
+          credentials: "same-origin",
+          headers: { "Accept": "application/json" }
+        }).then(function (res) {
+          if (!res.ok) return null;
+          return res.json();
+        }).then(function (data) {
+          if (!data) return;
+          queue = {
+            id: "active",
+            generated_at: data.generated_at,
+            csrf_token: data.csrf_token,
+            items: data.items || []
+          };
+          return saveQueue().then(function () {
+            renderReviews();
+            document.getElementById("queue-time").textContent =
+              "缓存于 " + formatDate(queue.generated_at);
+          });
+        }).catch(function () {});
+      }
+
+      function loadAll() {
+        return Promise.all([
+          getAll("conversations"),
+          getAll("drafts"),
+          getAll("outbox"),
+          getAll("queue")
+        ]).then(function (rows) {
+          records = rows[0] || [];
+          drafts = rows[1] || [];
+          outbox = rows[2] || [];
+          queue = (rows[3] || [])[0] || null;
           renderList();
+          renderReviews();
+          updateStatus();
+          if (navigator.onLine) {
+            flushDrafts().then(function () { return flushOutbox(true); }).then(refreshQueue);
+          }
+        }).catch(function () {
+          document.getElementById("count").textContent = "离线存储不可用";
+          document.getElementById("empty").hidden = false;
+        });
+      }
+
+      document.getElementById("tab-conversations").addEventListener("click", function () { showTab("conversations"); });
+      document.getElementById("tab-reviews").addEventListener("click", function () { showTab("reviews"); });
+      document.getElementById("back").addEventListener("click", function () { showTab("conversations"); });
+      document.getElementById("clear").addEventListener("click", function () {
+        if (!window.confirm("清除后本机将不再保留离线会话和待同步操作，确定继续？")) return;
+        clearAll().then(function () {
+          records = [];
+          drafts = [];
+          outbox = [];
+          queue = null;
+          renderList();
+          renderReviews();
+          updateStatus();
           toast("已清除本机离线数据");
         }).catch(function () {
           toast("清除失败，请稍后重试");
         });
       });
 
-      window.addEventListener("online", updateStatus);
+      window.addEventListener("online", function () {
+        updateStatus();
+        flushDrafts().then(function () { return flushOutbox(false); }).then(refreshQueue);
+      });
       window.addEventListener("offline", updateStatus);
       updateStatus();
-
-      allConversations().then(function (rows) {
-        records = rows || [];
-        renderList();
-      }).catch(function () {
-        document.getElementById("count").textContent = "离线存储不可用";
-        document.getElementById("empty").hidden = false;
-      });
+      loadAll();
     })();
   </script>
 </body>

@@ -144,7 +144,7 @@ def review_once(
                    status = CASE WHEN status = 'pending' THEN 'reviewing' ELSE status END,
                    last_reviewed_at = now()
              WHERE id = %s AND user_id = %s
-             RETURNING interval_days, due_date, review_count
+             RETURNING status, interval_days, due_date, review_count
             """,
             (review_id, user_id),
         ).fetchone()
@@ -161,15 +161,26 @@ def review_once(
     return {**row, "duplicate": False}
 
 
-def mark_mastered(conn, review_id: int, user_id: int) -> None:
-    _own(conn, review_id, user_id)
+def mark_mastered(
+    conn, review_id: int, user_id: int, event_id: str | None = None
+) -> dict:
+    event = _parse_event_id(event_id)
     with conn.transaction():
+        current = conn.execute(
+            "SELECT id, status, interval_days, due_date, review_count "
+            "FROM app.review_items WHERE id = %s AND user_id = %s FOR UPDATE",
+            (review_id, user_id),
+        ).fetchone()
+        if current is None:
+            raise NotFoundError("复习项不存在")
+        if _existing_event(conn, user_id, event) is not None:
+            return {**current, "duplicate": True}
         row = conn.execute(
             """
             UPDATE app.review_items
                SET status = 'mastered', last_reviewed_at = now()
              WHERE id = %s AND user_id = %s
-             RETURNING interval_days, due_date, review_count
+             RETURNING status, interval_days, due_date, review_count
             """,
             (review_id, user_id),
         ).fetchone()
@@ -178,23 +189,35 @@ def mark_mastered(conn, review_id: int, user_id: int) -> None:
             user_id=user_id,
             review_id=review_id,
             action="mastered",
-            event_id=None,
+            event_id=event,
             interval_days=row["interval_days"],
             due_date=row["due_date"],
             review_count=row["review_count"],
         )
+    return {**row, "duplicate": False}
 
 
-def reset_review(conn, review_id: int, user_id: int) -> None:
-    _own(conn, review_id, user_id)
+def reset_review(
+    conn, review_id: int, user_id: int, event_id: str | None = None
+) -> dict:
+    event = _parse_event_id(event_id)
     with conn.transaction():
+        current = conn.execute(
+            "SELECT id, status, interval_days, due_date, review_count "
+            "FROM app.review_items WHERE id = %s AND user_id = %s FOR UPDATE",
+            (review_id, user_id),
+        ).fetchone()
+        if current is None:
+            raise NotFoundError("复习项不存在")
+        if _existing_event(conn, user_id, event) is not None:
+            return {**current, "duplicate": True}
         row = conn.execute(
             """
             UPDATE app.review_items
                SET status = 'pending', interval_days = 1, review_count = 0,
                    due_date = current_date, last_reviewed_at = NULL
              WHERE id = %s AND user_id = %s
-             RETURNING interval_days, due_date, review_count
+             RETURNING status, interval_days, due_date, review_count
             """,
             (review_id, user_id),
         ).fetchone()
@@ -203,11 +226,12 @@ def reset_review(conn, review_id: int, user_id: int) -> None:
             user_id=user_id,
             review_id=review_id,
             action="reset",
-            event_id=None,
+            event_id=event,
             interval_days=row["interval_days"],
             due_date=row["due_date"],
             review_count=row["review_count"],
         )
+    return {**row, "duplicate": False}
 
 
 def activity(conn, user_id: int, days: int = 35) -> list[dict]:

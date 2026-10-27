@@ -62,6 +62,7 @@
         <a class="nav-link {% if active_path.startswith('/conversations') %}active{% endif %}" href="/conversations" {% if active_path.startswith('/conversations') %}aria-current="page"{% endif %}>会话</a>
         <a class="nav-link {% if active_path.startswith('/tags') %}active{% endif %}" href="/tags" {% if active_path.startswith('/tags') %}aria-current="page"{% endif %}>标签</a>
         <a class="nav-link {% if active_path.startswith('/imports') %}active{% endif %}" href="/imports" {% if active_path.startswith('/imports') %}aria-current="page"{% endif %}>导入记录</a>
+        <a class="nav-link {% if active_path.startswith('/tokens') %}active{% endif %}" href="/tokens" {% if active_path.startswith('/tokens') %}aria-current="page"{% endif %}>采集令牌</a>
         <span class="nav-label">复习</span>
         <a class="nav-link {% if active_path.startswith('/annotations') %}active{% endif %}" href="/annotations" {% if active_path.startswith('/annotations') %}aria-current="page"{% endif %}>批注</a>
         <a class="nav-link {% if active_path.startswith('/reviews') %}active{% endif %}" href="/reviews" {% if active_path.startswith('/reviews') %}aria-current="page"{% endif %}>复习队列</a>

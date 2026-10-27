@@ -7,6 +7,7 @@ node_modules/
 .env
 data/uploads/*
 !data/uploads/.gitkeep
+data/*.log
 data/verification/*
 !data/verification/.gitkeep
 !data/verification/report.json

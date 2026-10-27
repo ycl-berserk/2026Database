@@ -35,3 +35,8 @@ class NotFoundError(AppError):
 class ConflictError(AppError):
     status_code = 409
     title = "数据冲突"
+
+
+class RateLimited(AppError):
+    status_code = 429
+    title = "请求过于频繁"

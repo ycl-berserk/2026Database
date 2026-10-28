@@ -197,6 +197,19 @@
 - `tools/list` 在首次请求时读取令牌作用域；默认只暴露三个只读工具，避免模型误以为可以写库。
 - JSON-RPC 与 HTTP 错误分层：参数/方法错误使用 `-32602` / `-32601`，工具调用失败以 `isError` 文本返回，模型可以读取原因后修正。
 
+## R15 RLS 隔离对比实验
+
+| ID | 功能 | 输入 | 输出 / 行为 | 异常与边界 | 实现位置 | 验收 |
+| --- | --- | --- | --- | --- | --- | --- |
+| R15-F01 | 三种隔离方式对比 | 演示库用户（默认 alice、bob） | 在随机 schema 中克隆最小表集，分别用 `security_barrier` 视图、应用层 WHERE、RLS 读取可见会话；输出行集合、执行计划摘要与耗时 | 未设置 `app.user_id` 时视图与 RLS 均返回 0 行；无用户时拒绝运行 | `app/services/rls_experiment.py`、`scripts/rls_experiment.py` | `tests/unit/test_rls_plan_summary.py`、`tests/integration/test_rls_experiment.py` |
+| R15-F02 | 隔离与清理 | 管理员连接、演示库名 | 所有 DDL/角色/克隆表位于 `force_rollback` 事务；探针角色 NOLOGIN，策略表启用 `FORCE ROW LEVEL SECURITY`；结束后 schema 与角色均不存在 | 事务异常时整体回滚；清理结果写入 JSON | 同上 | `test_rls_experiment.py`、`verify.db.rls` |
+
+**设计要点**
+
+- 对比实验不修改 `app` 基表，也不在演示库启用 RLS；它是只读演示库上的临时 object，适合答辩时现场复现。
+- 现有 `security_barrier` 视图继续作为生产方案：规则集中、无需逐表维护策略，且 Text2SQL 只暴露视图；RLS 的代价与注意事项写入报告第 6.15、9.3 节。
+- 计划摘要只保留节点类型、Filter 数量、Subquery Scan/SubPlan 标志与执行时间，避免把易变的完整计划写进文档。
+
 ## 非功能需求
 
 | 类别 | 要求 | 实现 |
@@ -206,12 +219,12 @@
 | 性能 | 列表分页、关键查询有索引、统计实时但规模可控 | 索引设计、`LIMIT/OFFSET`、部分索引、trgm、HNSW |
 | 可维护性 | 关键 SQL 可定位、无 ORM 黑盒 | `sql/` + `services/` + 本文件映射 |
 | 可演示性 | 离线可演示、模拟数据可复现 | mock Text2SQL、`make_samples.py`、`seed_demo.py` |
-| 可验收 | 自动化测试与端到端报告 | 264 个 pytest 用例 + 39 项 `verify.py` 检查 |
+| 可验收 | 自动化测试与端到端报告 | 268 个 pytest 用例 + 40 项 `verify.py` 检查 |
 
 ## 需求到验收命令的映射
 
 ```bash
-# R01–R14 的主要回归
+# R01–R15 的主要回归
 .venv/Scripts/python.exe -m pytest -q
 
 # 端到端 PASS/FAIL（含权限、导入、检索、统计、导出、Text2SQL、事务）
@@ -221,4 +234,4 @@
 .venv/Scripts/python.exe scripts/eval_text2sql.py
 ```
 
-验收输出示例见 `data/verification/report.json`：39/39 PASS，0 FAIL。
+验收输出示例见 `data/verification/report.json`：40/40 PASS，0 FAIL。

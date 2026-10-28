@@ -20,6 +20,7 @@
 | 批注与复习 | 笔记 / 疑问 / 纠错 / 总结四类批注、解决状态、加入复习队列、间隔 1→2→4→8… 天、逾期提示、掌握/重置、近 5 周复习热力图 |
 | 统计与导出 | 概览、课程排名、月度活跃补零、标签 TopN、批注解决率、复习状态、重复内容检测；统计 CSV、单会话 Markdown |
 | 用户与权限 | Session 登录、PBKDF2 密码哈希、CSRF、系统角色 + 课程角色、应用层与数据库层双重防护 |
+| 数据库隔离实验 | 在只读演示库的临时事务中对比 `security_barrier` 视图、应用层 WHERE 与 RLS；结果与实验对象全部回滚 |
 | Text2SQL | 自然语言→SQL→AST 守卫→EXPLAIN 预检→只读执行→表格展示、解释、审计历史；无 API Key 时使用本地规则 mock |
 | 命令行 | `ls search` / `ls import`：用采集令牌调用 `/api/search` 与 `/api/ingest`，支持环境变量、课程覆盖与 `--json` 输出 |
 | MCP 接口 | stdio JSON-RPC 服务：`search`、`get_conversation`、`list_due_reviews` 只读；令牌显式授予 `annotate` 后才开放 `add_annotation` |
@@ -131,11 +132,14 @@ ls import data/samples/qoder_db.json --course-code DB --json
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（153 单元 + 111 集成，共 264 项）；集成测试需先初始化测试库
+# 全量测试（155 单元 + 113 集成，共 268 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest
 
-# 端到端验收：39 项 PASS/FAIL，写入 data/verification/report.json
+# 端到端验收：40 项 PASS/FAIL，写入 data/verification/report.json
 .venv/Scripts/python.exe scripts/verify.py --json data/verification/report.json
+
+# RLS / 视图 / 应用层 WHERE 隔离对比实验（全部回滚，输出 JSON）
+.venv/Scripts/python.exe scripts/rls_experiment.py
 
 # 为已配置向量模型的用户补齐消息向量（未配置时命令会提示并退出）
 .venv/Scripts/python.exe scripts/embed_messages.py --user alice --limit 512

@@ -12,7 +12,7 @@
 
 本项目实现了一个以“聊天记录”为核心的关系数据库应用系统。系统把 Qoder、ChatGPT、DeepSeek 等平台的问答导出文件解析为统一格式，按课程、来源、标签组织；支持中文检索、会话上下文、批注、间隔复习、统计导出，并额外实现了受数据库只读权限视图保护的 Text2SQL 页面。
 
-数据库包含 15 张业务表、15 个权限视图、6 个触发器、多组唯一/检查/外键约束；应用层使用参数化 SQL 与显式事务，不依赖 ORM。导入流水线采用“解析 → 校验 → 持久化预览 → 单事务确认 → 查重”的结构，并在文件导入之外提供平台原生导出适配、采集令牌 + Bearer 接口与 MV3 浏览器扩展。标签之间还维护一张有向无环的先修关系图，用递归 CTE 做环检测、闭包与最短路径查询。系统通过 264 个自动化测试与 39 项端到端验收检查，覆盖 schema、权限、导入幂等、中文检索、全局搜索、统计、批注复习、整理建议、知识先修图、离线同步、导出、Text2SQL 安全、命令行与 MCP 接口、令牌作用域与事务回滚。
+数据库包含 15 张业务表、15 个权限视图、6 个触发器、多组唯一/检查/外键约束；应用层使用参数化 SQL 与显式事务，不依赖 ORM。导入流水线采用“解析 → 校验 → 持久化预览 → 单事务确认 → 查重”的结构，并在文件导入之外提供平台原生导出适配、采集令牌 + Bearer 接口与 MV3 浏览器扩展。标签之间还维护一张有向无环的先修关系图，用递归 CTE 做环检测、闭包与最短路径查询；另在隔离事务中用 RLS 与应用层 WHERE、`security_barrier` 视图做同规则对比实验。系统通过 268 个自动化测试与 40 项端到端验收检查，覆盖 schema、权限、导入幂等、中文检索、全局搜索、统计、批注复习、整理建议、知识先修图、离线同步、导出、Text2SQL 安全、命令行与 MCP 接口、令牌作用域、RLS 隔离一致性与事务回滚。
 
 ---
 
@@ -54,6 +54,7 @@
 | R12 | 知识先修图 | 标签间 DAG、触发器防环、递归闭包与最短路径、按课程分组的 SVG 图、Text2SQL 可查 |
 | R13 | 命令行客户端 | `ls search` / `ls import`，采集令牌认证、课程/平台覆盖、人类可读与 JSON 输出 |
 | R14 | MCP 只读工具 | stdio JSON-RPC、search / get_conversation / list_due_reviews / add_annotation、令牌作用域 |
+| R15 | RLS 隔离对比 | 临时 schema/角色内对比 `security_barrier` 视图、应用层 WHERE 与 RLS，验证行集合一致并全部回滚 |
 
 更细的输入/输出/异常/代码位置/验收映射见 [requirements.md](requirements.md)。
 
@@ -394,6 +395,22 @@ Markdown 导入仍需走网站上传页，因为 CLI 只发送统一 JSON，避�
 
 `tests/unit/test_mcp_server.py` 覆盖工具过滤、输入校验、结果格式、JSON-RPC 错误与批量请求；`tests/integration/test_mcp_api.py` 覆盖作用域拒绝、会话/批注可见范围、到期复习与幂等写入。
 
+### 6.15 RLS 与 security_barrier 视图对比实验
+
+`app/services/rls_experiment.py` 在 `force_rollback` 事务内创建随机 schema 与 NOLOGIN 探针角色，克隆 `sources`、`course_members` 和两张 `conversations`（一张普通表、一张启用 `FORCE ROW LEVEL SECURITY` 的策略表），用三种方式读取“当前用户可见的会话”：现有 `t2s.v_my_conversations`、应用层显式 WHERE、基表 RLS；三者都从 `app.user_id` GUC 取当前用户。事务结束时 schema、角色与克隆表全部回滚。
+
+在演示库上（alice 30 个可见会话、bob 12 个）结果为：
+
+| 方式 | alice | bob | 计划形状 | 未设置 GUC |
+| --- | --- | --- | --- | --- |
+| `t2s.v_my_conversations` | 30 | 12 | 每次出现 `Subquery Scan`，过滤器被 barrier 包裹 | 0 行 |
+| 应用层 WHERE | 30 | 12 | 直接出现 GUC 比较与 hashed SubPlan | — |
+| RLS 策略 | 30 | 12 | 与 WHERE 计划相同，策略谓词被内联到基表扫描 | 0 行 |
+
+三种方式行集合完全一致。视图方案的 `security_barrier` 阻止谓词下推到基表，便于把权限规则封装在一个对象里；RLS 方案的计划与应用层 WHERE 基本相同，说明它不会额外引入一层执行节点，但需要为每张表维护策略，且表属主与超级用户默认绕过，必须配合 `FORCE ROW LEVEL SECURITY` 与独立运行角色。演示数据量小，执行时间均在 1 ms 以下、噪声较大，因此报告以计划形状而非耗时作为主要证据。现有个人场景继续使用“只读角色 + `security_barrier` 视图”；RLS 实验用于答辩时展示另一种数据库层隔离方案的代价与收益。
+
+运行 `scripts/rls_experiment.py` 会输出摘要并写入 `data/verification/rls-experiment.json`；`verify.py` 的 `db.rls` 检查确认两种用户的行集合一致、GUC 未设置时返回 0 行，且实验对象全部回滚。
+
 ## 7. 关键 SQL
 
 完整 21 条关键 SQL 及真实结果见 [sql-showcase.md](sql-showcase.md)，可执行脚本见 [../sql/showcase.sql](../sql/showcase.sql)。覆盖：
@@ -465,27 +482,31 @@ mock 只覆盖固定问法，Q18–Q30 的换问法、聚合与排名问题会�
 - SQL 注入：全部参数化查询；`LIKE` 模式对通配符转义。
 - 文件：限制扩展名、大小、消息条数；文件名只取 basename。
 
+### 9.3 隔离方案的取舍
+
+数据库层目前采用“只读角色 + `security_barrier` 视图”，而不是在 `app` 基表上启用 RLS。对比实验表明两者能返回同一行集合，计划形状也符合预期；但 RLS 需要为每张表维护策略、处理表属主绕过，并让所有查询路径都承担策略子查询。视图方案把可见性规则集中在一处，Text2SQL 只需暴露视图，个人单机场景的可维护性更高。RLS 的实现与实验保留在 `rls_experiment` 服务中，作为答辩材料和未来多租户部署的参考，不在演示库启用。
+
 ## 10. 测试与验收
 
 ### 10.1 自动化测试
 
 ```text
-153 unit tests
-111 integration tests
-264 total, all passed
+155 unit tests
+113 integration tests
+268 total, all passed
 ```
 
-- 单元：密码哈希/校验、CSRF、JSON/Markdown/裸文本与三种平台原生导出解析、字段校验、去重分类、Text2SQL AST 守卫（嵌套 DML、表函数、锁、字面量误伤）、EXPLAIN 预检、评测集加载/结果规范化/指标计算、RRF 融合、向量字面量/维度校验、整理建议的模式切换/标签清洗/摘要截断/Prompt 结构、mock 规则、MCP JSON-RPC 协议/工具过滤/输出格式、CLI 文档改写与输出、PWA 资产、MV3 扩展契约、引导/撤销/错误页/静态缓存与性能预算。
-- 集成：schema 约束与删除行为、权限边界、导入预览/确认/幂等/损坏文件、收件箱批量归类、检索与全局搜索、令牌搜索 API 的可见范围与管理边界、令牌作用域与 MCP 端点（会话详情、到期复习、批注写入及 viewer 越权）、pgvector 可见范围与混合排名、批注复习间隔与事件流水、新标签与摘要的创建/更新/清空及 viewer 越权、知识先修图的防环/闭包/级联与视图过滤、统计、管理员、采集令牌与 Bearer 入库、Text2SQL 只读/越权/审计与评测编排。
+- 单元：密码哈希/校验、CSRF、JSON/Markdown/裸文本与三种平台原生导出解析、字段校验、去重分类、Text2SQL AST 守卫（嵌套 DML、表函数、锁、字面量误伤）、EXPLAIN 预检、评测集加载/结果规范化/指标计算、RRF 融合、向量字面量/维度校验、整理建议的模式切换/标签清洗/摘要截断/Prompt 结构、mock 规则、MCP JSON-RPC 协议/工具过滤/输出格式、CLI 文档改写与输出、RLS 执行计划摘要、PWA 资产、MV3 扩展契约、引导/撤销/错误页/静态缓存与性能预算。
+- 集成：schema 约束与删除行为、权限边界、导入预览/确认/幂等/损坏文件、收件箱批量归类、检索与全局搜索、令牌搜索 API 的可见范围与管理边界、令牌作用域与 MCP 端点（会话详情、到期复习、批注写入及 viewer 越权）、pgvector 可见范围与混合排名、批注复习间隔与事件流水、新标签与摘要的创建/更新/清空及 viewer 越权、知识先修图的防环/闭包/级联与视图过滤、RLS 三方式行集合一致与实验对象回滚、统计、管理员、采集令牌与 Bearer 入库、Text2SQL 只读/越权/审计与评测编排。
 
 集成测试只连接以 `_test` 结尾的数据库，每个用例前 `TRUNCATE app.users RESTART IDENTITY CASCADE`。测试脚手架使用管理员连接执行 TRUNCATE，因为应用角色 `ls_app` 被刻意设计为没有 TRUNCATE 权限。
 
 ### 10.2 端到端验收
 
-`scripts/verify.py` 在演示库上执行 39 项检查，所有写操作放在外层事务中，最后主动回滚：
+`scripts/verify.py` 在演示库上执行 40 项检查，所有写操作放在外层事务中，最后主动回滚：
 
 ```text
-结果：39/39 PASS，0 FAIL，耗时约 2–4 秒
+结果：40/40 PASS，0 FAIL，耗时约 2–4 秒
 报告：data/verification/report.json
 ```
 
@@ -501,6 +522,7 @@ mock 只覆盖固定问法，Q18–Q30 的换问法、聚合与排名问题会�
 - 整理建议：新标签幂等写入、摘要唯一更新、viewer 越权拦截
 - 知识先修图：32 条边/6 组图、最短路径闭包、成环拒绝、增删后闭包一致
 - 采集令牌哈希存储、作用域、Bearer 认证、限流与幂等入库
+- RLS / 视图 / 应用层 WHERE 行集合一致、GUC 未设置返回 0 行、实验对象回滚
 - Text2SQL mock 查询、用户过滤、AST 守卫、EXPLAIN 预检拒绝高成本查询、30 题金标准评测（准确率 / 合法率 / 越权拦截）、恶意 SQL 审计、只读角色
 - 事务回滚后计数不变、`ls_app` 无 DDL 权限
 
@@ -562,7 +584,7 @@ node scripts/screenshots.mjs
 
 ## 14. 结论
 
-本项目完成了一个从导入、组织、检索、批注、复习到统计导出的完整学习数据闭环，并用 Text2SQL 展示了自然语言查询关系数据的一种可控实现方式。数据库设计覆盖了 E-R 建模、范式分析、完整性约束、索引、触发器、递归查询、事务与最小权限；应用层保持了 SQL 可见、权限可验证、流程可回滚。采集侧的令牌与作用域、Bearer 接口、平台适配与 MV3 扩展，离线阅读/复习能力，把标签连成有向无环先修图的探索，以及可供脚本与 MCP 客户端调用的接口，让系统在真实使用中更顺手。自动化测试与端到端验收为演示和答辩提供了可重复的证据。
+本项目完成了一个从导入、组织、检索、批注、复习到统计导出的完整学习数据闭环，并用 Text2SQL 展示了自然语言查询关系数据的一种可控实现方式。数据库设计覆盖了 E-R 建模、范式分析、完整性约束、索引、触发器、递归查询、事务与最小权限；应用层保持了 SQL 可见、权限可验证、流程可回滚。采集侧的令牌与作用域、Bearer 接口、平台适配与 MV3 扩展，离线阅读/复习能力，把标签连成有向无环先修图的探索，以及可供脚本与 MCP 客户端调用的接口，让系统在真实使用中更顺手。数据库层另用一个全部回滚的 RLS 对比实验验证了三种隔离方式的等价性，并说明了继续使用权限视图的理由。自动化测试与端到端验收为演示和答辩提供了可重复的证据。
 
 ---
 
@@ -590,10 +612,12 @@ node scripts/screenshots.mjs
 | `app/cli.py` | `ls search` / `ls import` 命令行客户端 |
 | `app/mcp_server.py` | MCP stdio JSON-RPC 服务与四个工具 |
 | `app/routers/mcp.py` | 令牌作用域保护的 MCP 查询与批注端点 |
+| `app/services/rls_experiment.py` | RLS / 视图 / 应用层 WHERE 隔离对比实验 |
 | `app/services/text2sql_service.py` | 生成、守卫、只读执行、审计 |
 | `app/permissions.py` | 课程角色与会话可见性 |
 | `extension/` | Chrome MV3 扩展、隐私说明与回退指引 |
-| `scripts/verify.py` | 39 项端到端验收 |
+| `scripts/verify.py` | 40 项端到端验收 |
+| `scripts/rls_experiment.py` | 隔离对比实验 CLI 与 JSON 报告 |
 | `scripts/extension_smoke.mjs` | 扩展提取与发送契约冒烟 |
 | `docs/design.md` | 数据库设计详解 |
 | `docs/requirements.md` | R01-F01 需求拆解 |

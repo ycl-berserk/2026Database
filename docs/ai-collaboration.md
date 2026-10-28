@@ -9,7 +9,7 @@
 | 选题与范围 | 选定选题 2；确定同时做动态网站与 Text2SQL；确定 PostgreSQL | 整理需求、给出技术方案与取舍 |
 | 数据设计 | 确认以“来源—会话—消息—批注—复习”为核心；确认模拟数据 | 给出 E-R、14 张表关系模式、约束与索引草案 |
 | 实现 | 确认关键方案；运行与验收；提出修改 | 编写 schema、服务层、页面、测试、脚本、文档草稿 |
-| 验收 | 运行测试与页面；判断是否符合作业要求 | 生成 264 个测试、39 项验收检查、截图与扩展冒烟脚本 |
+| 验收 | 运行测试与页面；判断是否符合作业要求 | 生成 268 个测试、40 项验收检查、截图与扩展冒烟脚本 |
 | 文档 | 确认结构、口径与最终表述 | 生成报告、设计、需求、SQL 展示、演示脚本草稿 |
 
 AI 的输出不作为“正确性证明”。所有结论以测试、验收报告、数据库查询和浏览器实际页面为准。
@@ -166,6 +166,14 @@ AI 的输出不作为“正确性证明”。所有结论以测试、验收报�
 
 **最终**：迁移 006 给令牌增加 `scopes`，默认 `{read,ingest}`；`require_scope` 在服务端逐端点校验；MCP 启动时读取 `/api/mcp/me`，没有 `annotate` 时 `tools/list` 根本不返回写工具。写工具也只允许新增批注，不提供修改/删除，且沿用批注表原有的事件 ID 幂等约束。这样“默认不授予写权限”由数据库字段、服务端校验和客户端工具列表三层同时成立。
 
+### 2.20 用 RLS 替换权限视图
+
+讨论数据库隔离时，曾考虑直接在 `app` 基表启用 RLS、删掉 15 个 `t2s` 视图，认为“策略写在表上更彻底”。
+
+**否决原因**：RLS 策略要逐表维护，表属主与超级用户默认绕过，必须额外启用 `FORCE ROW LEVEL SECURITY` 并拆分运行角色；而 Text2SQL 仍需要一组稳定的只读对象作为 schema 提示与授权边界。对一个单机课程项目，这会增加策略维护成本和排错路径，收益主要是“更彻底”的叙事。
+
+**最终**：保留 `security_barrier` 视图作为生产方案，另写一个只在 `force_rollback` 事务内运行的 RLS 对比实验。实验证明三种方式行集合一致，并暴露了“未限定外层的 `course_id` 被内层子查询解析”的真实 bug；修复后 RLS 计划与应用层 WHERE 完全相同，视图则因 barrier 出现 `Subquery Scan`。这样既能在答辩中讲清两种方案的代价，又不把未经验证的全表策略带进演示库。
+
 ## 3. 实现过程中发现并修复的问题
 
 以下问题不是“设计分歧”，而是实际运行测试/截图时暴露的缺陷，记录了发现方式与修复：
@@ -174,6 +182,7 @@ AI 的输出不作为“正确性证明”。所有结论以测试、验收报�
 | --- | --- | --- | --- |
 | 集成测试 `permission denied for table users` | pytest | `ls_app` 无 TRUNCATE 权限 | 测试脚手架改用管理员连接，并断言 `_test` 后缀 |
 | `course 1 must have exactly one owner, found 0` | pytest | 课程与 owner 成员分两条 autocommit 语句插入，延迟触发器提前触发 | fixture 用 `with conn.transaction():` 包住两条插入 |
+| RLS 实验里 bob 多看到 15 个会话 | 运行 `scripts/rls_experiment.py` | 策略子查询中未限定的 `course_id` 被解析为内层 `cm.course_id`，谓词恒真 | 用 `conversations_rls.course_id` 显式限定外层列，并加行集合一致性断言 |
 | 唯一用户名测试抛 CheckViolation 而非 UniqueViolation | pytest | 测试密码 `'x'` 先触发哈希长度 CHECK | 改用 40 字符哈希 |
 | 导入测试期望 2 个新标签，实际 1 个 | pytest | base fixture 已创建“事务”标签 | 调整期望为 1 |
 | 过期预览更新违反 `import_batches_expiry_check` | pytest | 只改 `expires_at` 使其早于 `created_at` | 同时把 `created_at` 回拨 1 小时 |
@@ -243,7 +252,7 @@ AI 的输出不作为“正确性证明”。所有结论以测试、验收报�
 # 1. 全量测试
 .venv/Scripts/python.exe -m pytest -q
 
-# 2. 端到端验收（39 项，写入 report.json）
+# 2. 端到端验收（40 项，写入 report.json）
 .venv/Scripts/python.exe scripts/verify.py --json data/verification/report.json
 
 # 3. 关键 SQL（含真实输出）

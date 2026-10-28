@@ -471,6 +471,12 @@ ALTER ROLE t2s_reader SET lock_timeout = '2s';
 
 安全边界之外，Text2SQL 的效果由固定金标准数据集度量：30 题覆盖课程统计、关键词检索、排行、复习与批注；每题给出金标准 SQL 与用户。评测器分别执行金标准与生成 SQL，按“列集合 + 行多重集”比较结果，避免 SQL 文本不同造成误判；10 条恶意 SQL 与 2 条跨用户用例单独统计拦截率。离线 mock 基线为 17/30，金标准与生成 SQL 合法率均为 100%，越权拦截 12/12；真实模型通过 `--provider llm` 复测。
 
+### 8.2 RLS 对比实验
+
+`app/services/rls_experiment.py` 只在 `force_rollback` 事务内建对象：随机 schema、NOLOGIN 探针角色、`sources` / `course_members` 与两张 `conversations` 克隆表。一张克隆表不启用策略，用显式 WHERE 过滤；另一张启用 `FORCE ROW LEVEL SECURITY`，策略与视图相同的“来源所有者或课程成员”谓词。三种方式都通过事务内 `set_config('app.user_id', <id>, true)` 识别当前用户，事务结束全部回滚。
+
+结果为三种方式行集合一致；`security_barrier` 视图出现 `Subquery Scan`，应用层 WHERE 与 RLS 的执行计划相同（GUC 比较 + hashed SubPlan），GUC 未设置时视图与 RLS 均返回 0 行。RLS 的注意点：表属主和超级用户默认绕过策略，必须 `FORCE ROW LEVEL SECURITY` 并用独立运行角色；策略需要逐表维护。因此个人场景保留视图方案，实验用于答辩与多租户演进的参考。
+
 ## 9. 事务与并发
 
 ### 9.1 导入确认事务

@@ -1,0 +1,422 @@
+{
+  "generated_at": "2026-10-28T06:39:46+00:00",
+  "database": "learning_space",
+  "experiment_objects": {
+    "schema": "rls_experiment_03ba8c78",
+    "role": "rls_probe_03ba8c78"
+  },
+  "users": {
+    "alice": {
+      "user_id": 1,
+      "expected_ids": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30
+      ],
+      "modes": {
+        "view": {
+          "ids": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30
+          ],
+          "row_count": 30,
+          "plan": {
+            "planning_ms": 0.164,
+            "execution_ms": 0.067,
+            "node_count": 8,
+            "node_types": [
+              "Bitmap Heap Scan",
+              "Bitmap Index Scan",
+              "Hash",
+              "Hash Join",
+              "Seq Scan",
+              "Sort",
+              "Subquery Scan"
+            ],
+            "filter_count": 0,
+            "filters": [],
+            "has_subquery_scan": true,
+            "has_subplan": false,
+            "actual_rows": 30,
+            "shared_hit_blocks": 2,
+            "shared_read_blocks": 0
+          }
+        },
+        "where": {
+          "ids": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30
+          ],
+          "row_count": 30,
+          "plan": {
+            "planning_ms": 0.063,
+            "execution_ms": 0.032,
+            "node_count": 4,
+            "node_types": [
+              "Seq Scan",
+              "Sort"
+            ],
+            "filter_count": 3,
+            "filters": [
+              "((hashed SubPlan 2) OR ((course_id IS NOT NULL) AND (hashed SubPlan 4)))",
+              "(owner_id = (NULLIF(current_setting('app.user_id'::text, true), ''::text))::bigint)",
+              "(user_id = (NULLIF(current_setting('app.user_id'::text, true), ''::text))::bigint)"
+            ],
+            "has_subquery_scan": false,
+            "has_subplan": false,
+            "actual_rows": 30,
+            "shared_hit_blocks": 2,
+            "shared_read_blocks": 0
+          }
+        },
+        "rls": {
+          "ids": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30
+          ],
+          "row_count": 30,
+          "plan": {
+            "planning_ms": 0.06,
+            "execution_ms": 0.03,
+            "node_count": 4,
+            "node_types": [
+              "Seq Scan",
+              "Sort"
+            ],
+            "filter_count": 3,
+            "filters": [
+              "((hashed SubPlan 2) OR ((course_id IS NOT NULL) AND (hashed SubPlan 4)))",
+              "(owner_id = (NULLIF(current_setting('app.user_id'::text, true), ''::text))::bigint)",
+              "(user_id = (NULLIF(current_setting('app.user_id'::text, true), ''::text))::bigint)"
+            ],
+            "has_subquery_scan": false,
+            "has_subplan": false,
+            "actual_rows": 30,
+            "shared_hit_blocks": 2,
+            "shared_read_blocks": 0
+          }
+        }
+      },
+      "consistent": true
+    },
+    "bob": {
+      "user_id": 2,
+      "expected_ids": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ],
+      "modes": {
+        "view": {
+          "ids": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "row_count": 12,
+          "plan": {
+            "planning_ms": 0.145,
+            "execution_ms": 0.06,
+            "node_count": 8,
+            "node_types": [
+              "Bitmap Heap Scan",
+              "Bitmap Index Scan",
+              "Hash",
+              "Hash Join",
+              "Seq Scan",
+              "Sort",
+              "Subquery Scan"
+            ],
+            "filter_count": 0,
+            "filters": [],
+            "has_subquery_scan": true,
+            "has_subplan": false,
+            "actual_rows": 12,
+            "shared_hit_blocks": 4,
+            "shared_read_blocks": 0
+          }
+        },
+        "where": {
+          "ids": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "row_count": 12,
+          "plan": {
+            "planning_ms": 0.053,
+            "execution_ms": 0.024,
+            "node_count": 4,
+            "node_types": [
+              "Seq Scan",
+              "Sort"
+            ],
+            "filter_count": 3,
+            "filters": [
+              "((hashed SubPlan 2) OR ((course_id IS NOT NULL) AND (hashed SubPlan 4)))",
+              "(owner_id = (NULLIF(current_setting('app.user_id'::text, true), ''::text))::bigint)",
+              "(user_id = (NULLIF(current_setting('app.user_id'::text, true), ''::text))::bigint)"
+            ],
+            "has_subquery_scan": false,
+            "has_subplan": false,
+            "actual_rows": 12,
+            "shared_hit_blocks": 3,
+            "shared_read_blocks": 0
+          }
+        },
+        "rls": {
+          "ids": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "row_count": 12,
+          "plan": {
+            "planning_ms": 0.063,
+            "execution_ms": 0.042,
+            "node_count": 4,
+            "node_types": [
+              "Seq Scan",
+              "Sort"
+            ],
+            "filter_count": 3,
+            "filters": [
+              "((hashed SubPlan 2) OR ((course_id IS NOT NULL) AND (hashed SubPlan 4)))",
+              "(owner_id = (NULLIF(current_setting('app.user_id'::text, true), ''::text))::bigint)",
+              "(user_id = (NULLIF(current_setting('app.user_id'::text, true), ''::text))::bigint)"
+            ],
+            "has_subquery_scan": false,
+            "has_subplan": false,
+            "actual_rows": 12,
+            "shared_hit_blocks": 3,
+            "shared_read_blocks": 0
+          }
+        }
+      },
+      "consistent": true
+    }
+  },
+  "unset_guc": {
+    "view_rows": 0,
+    "rls_rows": 0
+  },
+  "summary": {
+    "consistent": true,
+    "users": 2,
+    "modes": {
+      "view": {
+        "users": 2,
+        "execution_ms_total": 0.127,
+        "planning_ms_total": 0.309,
+        "subquery_scan_users": 2,
+        "subplan_users": 0,
+        "filter_count_total": 0,
+        "node_types": [
+          "Bitmap Heap Scan",
+          "Bitmap Index Scan",
+          "Hash",
+          "Hash Join",
+          "Seq Scan",
+          "Sort",
+          "Subquery Scan"
+        ]
+      },
+      "where": {
+        "users": 2,
+        "execution_ms_total": 0.056,
+        "planning_ms_total": 0.116,
+        "subquery_scan_users": 0,
+        "subplan_users": 0,
+        "filter_count_total": 6,
+        "node_types": [
+          "Seq Scan",
+          "Sort"
+        ]
+      },
+      "rls": {
+        "users": 2,
+        "execution_ms_total": 0.072,
+        "planning_ms_total": 0.123,
+        "subquery_scan_users": 0,
+        "subplan_users": 0,
+        "filter_count_total": 6,
+        "node_types": [
+          "Seq Scan",
+          "Sort"
+        ]
+      }
+    },
+    "row_counts": {
+      "alice": {
+        "expected": 30,
+        "view": 30,
+        "where": 30,
+        "rls": 30
+      },
+      "bob": {
+        "expected": 12,
+        "view": 12,
+        "where": 12,
+        "rls": 12
+      }
+    }
+  },
+  "cleanup": {
+    "schema_dropped": true,
+    "role_dropped": true,
+    "session_user_restored": true
+  },
+  "notes": [
+    "实验对象（schema、角色、克隆表）全部位于 force_rollback 事务内，结束后自动回滚。",
+    "探针角色为 NOLOGIN，且表启用了 FORCE ROW LEVEL SECURITY，避免表属主绕过策略。",
+    "演示数据规模小，执行时间受噪声影响；以计划形状（Subquery Scan / Filter / SubPlan）为主要信号。",
+    "现有 security_barrier 视图无需改表即可上线；RLS 方案把规则下推到基表，但策略子查询会出现在每个访问路径中。"
+  ]
+}

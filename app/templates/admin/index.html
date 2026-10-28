@@ -4,6 +4,10 @@
 {% block page_title %}用户与系统{% endblock %}
 {% block page_subtitle %}仅展示账号状态与聚合统计，不读取他人消息正文或批注内容{% endblock %}
 
+{% block topbar_actions %}
+  <a class="btn btn-ghost btn-sm" href="/admin/observability">数据库观测</a>
+{% endblock %}
+
 {% block content %}
 <section class="stat-grid">
   <div class="stat-card">

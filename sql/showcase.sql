@@ -368,3 +368,63 @@ SELECT rt.name AS tag, pt.name AS prerequisite, b.depth
   JOIN app.tags rt ON rt.id = b.tag_id
   JOIN app.tags pt ON pt.id = b.prereq_id
  ORDER BY rt.name, b.depth;
+
+-- ---------------------------------------------------------------------------
+-- 22. 审计元数据：谁、何时、对哪张表的哪条记录、改了哪些列
+--     只记录列名，不记录列值；password_hash 被触发器显式排除。
+-- ---------------------------------------------------------------------------
+SELECT occurred_at::date AS day,
+       coalesce(u.username, 'system') AS actor,
+       a.table_name, a.action, a.row_pk, a.changed_columns
+  FROM app.audit_log a
+  LEFT JOIN app.users u ON u.id = a.actor_user_id
+ ORDER BY a.id
+ LIMIT 6;
+
+-- 应用角色只能读，不能改；清理函数最少保留 90 天
+SELECT has_table_privilege('ls_app', 'app.audit_log', 'SELECT') AS can_read,
+       has_table_privilege('ls_app', 'app.audit_log', 'INSERT') AS can_insert;
+
+-- ---------------------------------------------------------------------------
+-- 23. 数据库观测：统计视图与白名单执行计划
+--     观测页只读这些视图，不读取消息/批注正文，也不接受任意 SQL。
+-- ---------------------------------------------------------------------------
+SELECT pg_size_pretty(pg_database_size(current_database())) AS size,
+       round(100.0 * blks_hit / nullif(blks_hit + blks_read, 0), 2) AS hit_pct,
+       numbackends, xact_commit, xact_rollback
+  FROM pg_stat_database
+ WHERE datname = current_database();
+
+SELECT relname, seq_scan, idx_scan, n_live_tup, n_dead_tup,
+       pg_size_pretty(pg_total_relation_size(relid)) AS size
+  FROM pg_stat_user_tables
+ WHERE schemaname = 'app'
+ ORDER BY pg_total_relation_size(relid) DESC
+ LIMIT 5;
+
+SELECT relname, indexrelname, idx_scan,
+       pg_size_pretty(pg_relation_size(indexrelid)) AS size
+  FROM pg_stat_user_indexes
+ WHERE schemaname = 'app'
+ ORDER BY idx_scan, pg_relation_size(indexrelid) DESC
+ LIMIT 5;
+
+-- 扩展未预加载时可跳过；页面会显示降级提示
+SELECT left(regexp_replace(query, '\s+', ' ', 'g'), 120) AS query,
+       calls, round(mean_exec_time::numeric, 2) AS mean_ms
+  FROM pg_stat_statements
+ WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
+   AND query NOT ILIKE '%pg_stat_statements%'
+   AND query NOT ILIKE '%EXPLAIN%'
+   AND query ~* '^\s*(select|with|insert|update|delete)(\s|$)'
+ ORDER BY mean_exec_time DESC NULLS LAST, calls DESC
+ LIMIT 5;
+
+EXPLAIN (FORMAT JSON)
+SELECT r.id, r.due_date, r.interval_days
+  FROM app.review_items r
+ WHERE r.user_id = (SELECT id FROM app.users WHERE username = 'alice')
+   AND r.status <> 'mastered'
+   AND r.due_date <= current_date
+ ORDER BY r.due_date, r.id
+ LIMIT 20;

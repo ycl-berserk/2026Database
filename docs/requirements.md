@@ -223,6 +223,20 @@
 - 触发器用 `to_jsonb(OLD/NEW)` 做键级比较，变更列由差集生成；`SECURITY DEFINER` 让应用角色无需持有 `audit_log` 的写权限。
 - 管理员页面只展示元数据，配合“消息/批注表不审计”的边界，避免审计功能变成内容读取后门。
 
+## R17 数据库观测
+
+| ID | 功能 | 输入 | 输出 / 行为 | 异常与边界 | 实现位置 | 验收 |
+| --- | --- | --- | --- | --- | --- | --- |
+| R17-F01 | 实例与 I/O 指标 | 当前管理员 | 库大小、缓存命中率、连接/事务、`pg_stat_io` 按后端类型聚合 | 非管理员 403；无 `pg_read_all_stats` 时只显示当前库可用指标 | `observability_service.overview/io_stats`、`routers/admin.py` | `test_observability.py`、`verify.db.observability` |
+| R17-F02 | 表与索引健康 | 当前管理员 | `pg_stat_user_tables` 的顺扫/索引扫描/死元组/大小；`pg_stat_user_indexes` 的扫描次数与大小 | 只显示 `app` schema；最多 12 行；统计口径与重置时间在页面说明 | `table_activity/index_usage`、`templates/admin/observability.html` | `test_observability.py` |
+| R17-F03 | 慢查询与执行计划 | 4 个白名单计划键 | 归一化慢 SQL、调用次数/平均耗时/命中率；`EXPLAIN (FORMAT JSON)` 计划树 | 不接受任意 SQL；扩展未预加载时降级提示；慢查询过滤工具语句并排除自身；未知计划键回退默认项 | `slow_queries/explain_plan`、迁移 `008_add_observability.sql` | `test_observability.py`、`verify.db.observability` |
+
+**设计要点**
+
+- 观测页不是数据库客户端：没有 SQL 输入框，管理员不能借它读取他人消息或批注。
+- `pg_stat_statements` 是可选扩展，迁移条件创建；`docker-compose.yml` 负责预加载，未加载时页面仍可用其余指标。
+- 慢查询只保留 SELECT/WITH/INSERT/UPDATE/DELETE，且排除 `pg_stat_statements` 与 `EXPLAIN` 自身，避免工具语句占据榜单。
+
 ## 非功能需求
 
 | 类别 | 要求 | 实现 |
@@ -232,7 +246,7 @@
 | 性能 | 列表分页、关键查询有索引、统计实时但规模可控 | 索引设计、`LIMIT/OFFSET`、部分索引、trgm、HNSW |
 | 可维护性 | 关键 SQL 可定位、无 ORM 黑盒 | `sql/` + `services/` + 本文件映射 |
 | 可演示性 | 离线可演示、模拟数据可复现 | mock Text2SQL、`make_samples.py`、`seed_demo.py` |
-| 可验收 | 自动化测试与端到端报告 | 274 个 pytest 用例 + 41 项 `verify.py` 检查 |
+| 可验收 | 自动化测试与端到端报告 | 279 个 pytest 用例 + 42 项 `verify.py` 检查 |
 
 ## 需求到验收命令的映射
 
@@ -247,4 +261,4 @@
 .venv/Scripts/python.exe scripts/eval_text2sql.py
 ```
 
-验收输出示例见 `data/verification/report.json`：41/41 PASS，0 FAIL。
+验收输出示例见 `data/verification/report.json`：42/42 PASS，0 FAIL。

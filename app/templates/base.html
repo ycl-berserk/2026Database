@@ -52,7 +52,8 @@
       {% if current_user and current_user.system_role == 'admin' %}
         <span class="nav-label">管理</span>
         <a class="nav-link {% if active_path == '/dashboard' %}active{% endif %}" href="/dashboard" {% if active_path == '/dashboard' %}aria-current="page"{% endif %}>概览</a>
-        <a class="nav-link {% if active_path.startswith('/admin') %}active{% endif %}" href="/admin" {% if active_path.startswith('/admin') %}aria-current="page"{% endif %}>用户与系统</a>
+        <a class="nav-link {% if active_path == '/admin' %}active{% endif %}" href="/admin" {% if active_path == '/admin' %}aria-current="page"{% endif %}>用户与系统</a>
+        <a class="nav-link {% if active_path.startswith('/admin/observability') %}active{% endif %}" href="/admin/observability" {% if active_path.startswith('/admin/observability') %}aria-current="page"{% endif %}>数据库观测</a>
       {% else %}
         <span class="nav-label">学习</span>
         <a class="nav-link {% if active_path == '/dashboard' %}active{% endif %}" href="/dashboard" {% if active_path == '/dashboard' %}aria-current="page"{% endif %}>概览</a>
@@ -137,12 +138,19 @@
         <span>概览</span>
       </a>
       {% if current_user.system_role == 'admin' %}
-        <a class="tab {% if active_path.startswith('/admin') %}active{% endif %}" href="/admin"
-           {% if active_path.startswith('/admin') %}aria-current="page"{% endif %}>
+        <a class="tab {% if active_path == '/admin' %}active{% endif %}" href="/admin"
+           {% if active_path == '/admin' %}aria-current="page"{% endif %}>
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="9" cy="8" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 5.5a3 3 0 0 1 0 5.8M17.5 14.2A5 5 0 0 1 21 19"/>
           </svg>
           <span>用户</span>
+        </a>
+        <a class="tab {% if active_path.startswith('/admin/observability') %}active{% endif %}" href="/admin/observability"
+           {% if active_path.startswith('/admin/observability') %}aria-current="page"{% endif %}>
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19h16M6 16v-5M11 16V7M16 16v-3M21 16V5"/>
+          </svg>
+          <span>观测</span>
         </a>
       {% else %}
         <a class="tab {% if active_path.startswith('/inbox') %}active{% endif %}" href="/inbox"

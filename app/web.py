@@ -98,6 +98,20 @@ def format_number(value: Any) -> str:
         return str(value)
 
 
+def format_bytes(value: Any) -> str:
+    if value is None:
+        return "—"
+    try:
+        size = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if size < 1024 or unit == "TB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
+
+
 def highlight(text: str, keyword: str | None) -> Markup:
     escaped = str(escape(text or ""))
     if not keyword:
@@ -149,6 +163,7 @@ def render(
 templates.env.filters["dt"] = format_dt
 templates.env.filters["date"] = format_date
 templates.env.filters["num"] = format_number
+templates.env.filters["bytes"] = format_bytes
 templates.env.filters["highlight"] = highlight
 templates.env.globals["app_name"] = "学习空间"
 templates.env.globals["app_tagline"] = "把散落的问答，变成能复习的课程资料"

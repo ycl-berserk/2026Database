@@ -6,7 +6,7 @@ from fastapi.responses import RedirectResponse
 from ..auth import require_user, verify_csrf
 from ..db import get_conn
 from ..permissions import require_system_admin
-from ..services import admin_service
+from ..services import admin_service, observability_service
 from ..web import add_flash, render
 
 router = APIRouter(prefix="/admin")
@@ -31,6 +31,30 @@ def admin_page(request: Request, user=Depends(require_user), conn=Depends(get_co
         audit_table=audit_table,
         audit_action=audit_action,
         q=keyword,
+    )
+
+
+@router.get("/observability")
+def observability_page(
+    request: Request,
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    require_system_admin(user)
+    plan_key = request.query_params.get("plan") or ""
+    return render(
+        request,
+        "admin/observability.html",
+        overview=observability_service.overview(conn),
+        io=observability_service.io_stats(conn),
+        tables=observability_service.table_activity(conn),
+        indexes=observability_service.index_usage(conn),
+        slow=observability_service.slow_queries(conn),
+        plan=observability_service.explain_plan(conn, plan_key),
+        plan_choices=[
+            (key, choice["label"])
+            for key, choice in observability_service.PLAN_CHOICES.items()
+        ],
     )
 
 

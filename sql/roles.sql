@@ -41,6 +41,9 @@ BEGIN
 END;
 $$;
 
+-- 观测页读取 pg_stat_statements 的归一化语句；不会暴露参数值。
+GRANT pg_read_all_stats TO ls_app;
+
 -- t2s schema：只读角色只能 SELECT 视图
 GRANT USAGE ON SCHEMA t2s TO t2s_reader;
 GRANT SELECT ON ALL TABLES IN SCHEMA t2s TO t2s_reader;

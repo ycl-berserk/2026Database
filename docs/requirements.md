@@ -245,9 +245,9 @@
 | 数据完整性 | 主外键、唯一、CHECK、事务 | `schema.sql`、导入确认事务、复习单语句更新 |
 | 性能 | 列表分页、关键查询有索引、统计实时但规模可控 | 索引设计、`LIMIT/OFFSET`、部分索引、trgm、HNSW |
 | 可维护性 | 关键 SQL 可定位、无 ORM 黑盒 | `sql/` + `services/` + 本文件映射 |
-| 工程质量 | 依赖可复现、静态检查与提交钩子 | `uv.lock`、Ruff、pyright、pre-commit；CI 同步执行 |
+| 工程质量 | 依赖可复现、静态检查、提交钩子与随机化测试 | `uv.lock`、Ruff、pyright、pre-commit、Hypothesis；CI 同步执行 |
 | 可演示性 | 离线可演示、模拟数据可复现 | mock Text2SQL、`make_samples.py`、`seed_demo.py` |
-| 可验收 | 自动化测试与端到端报告 | 279 个 pytest 用例 + 42 项 `verify.py` 检查 |
+| 可验收 | 自动化测试与端到端报告 | 307 个 pytest 用例 + 42 项 `verify.py` 检查 |
 
 ## 需求到验收命令的映射
 

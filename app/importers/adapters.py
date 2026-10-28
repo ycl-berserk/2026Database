@@ -198,14 +198,24 @@ def _chatgpt_document(items: list, wrapper: dict | None = None) -> dict:
     }
 
 
+def _sort_timestamp(value: Any) -> tuple[int, float | str]:
+    if isinstance(value, (int, float)):
+        return (0, value)
+    return (1, str(value or ""))
+
+
 def _chatgpt_thread(item: dict) -> dict | None:
-    mapping = item.get("mapping") or {}
+    mapping = item.get("mapping")
+    if not isinstance(mapping, dict):
+        mapping = {}
     path: list[dict] = []
     current = item.get("current_node")
     seen: set[str] = set()
-    while current and current in mapping and current not in seen:
+    while isinstance(current, str) and current in mapping and current not in seen:
         seen.add(current)
         node = mapping[current]
+        if not isinstance(node, dict):
+            break
         message = node.get("message")
         if isinstance(message, dict):
             path.append(message)
@@ -219,11 +229,16 @@ def _chatgpt_thread(item: dict) -> dict | None:
     ]
     nodes = [node for node in nodes if isinstance(node, dict)]
     if not path:
-        nodes.sort(key=lambda message: message.get("create_time") or 0)
+        nodes.sort(key=lambda message: _sort_timestamp(message.get("create_time")))
 
     messages: list[dict] = []
     for node in nodes:
-        role = str((node.get("author") or {}).get("role") or "").lower()
+        author = node.get("author")
+        role = (
+            str(author.get("role") or "").lower()
+            if isinstance(author, dict)
+            else str(author or "").lower()
+        )
         if role not in CHATGPT_ROLES:
             continue
         content = _content_text(node.get("content"))

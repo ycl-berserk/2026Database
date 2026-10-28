@@ -40,7 +40,7 @@
 - Python 3.12+ / FastAPI / Jinja2 服务端渲染
 - PostgreSQL 16 + pgvector（Docker Compose，`pgvector/pgvector:pg16`，宿主端口 5433）
 - psycopg 3 + psycopg_pool，手写参数化 SQL，不使用 ORM
-- uv + `uv.lock` 锁定依赖；Ruff、pyright、pre-commit 作为本地与 CI 静态检查
+- uv + `uv.lock` 锁定依赖；Ruff、pyright、pre-commit 与 Hypothesis 属性测试覆盖静态检查与随机化边界
 - `pg_trgm` GIN 索引支持中文子串检索；`vector(1536)` + HNSW 支持可选的语义召回，RRF 融合两路排名
 - GZip 中间件 + 带版本参数的静态资源长缓存
 - Chrome MV3 浏览器扩展（原生 JS，点击发送、按需站点权限）
@@ -155,7 +155,7 @@ ls import data/samples/qoder_db.json --course-code DB --json
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（155 单元 + 124 集成，共 279 项）；集成测试需先初始化测试库
+# 全量测试（183 单元 + 124 集成，共 307 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest
 
 # 静态检查与提交钩子（uv sync 已安装 Ruff / pyright / pre-commit）
@@ -193,7 +193,7 @@ node scripts/screenshots.mjs
 node scripts/extension_smoke.mjs
 ```
 
-> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、279 项测试与 42 项验收，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
+> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、307 项测试与 42 项验收，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
 
 ## 目录结构
 

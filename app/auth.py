@@ -4,11 +4,14 @@ import base64
 import hashlib
 import hmac
 import secrets
+import time
 
 from fastapi import Depends, Request
 
+from .config import settings
 from .db import get_conn
 from .errors import AuthRequired, PermissionDenied
+from .security import session_expired
 
 PBKDF2_ITERATIONS = 210_000
 PBKDF2_ALGO = "pbkdf2_sha256"
@@ -56,9 +59,19 @@ def verify_csrf(request: Request, token: str | None) -> None:
         raise PermissionDenied("CSRF 校验失败，请刷新页面后重试")
 
 
+def start_session(request: Request, user_id: int) -> None:
+    request.session.clear()
+    request.session["user_id"] = user_id
+    request.session["issued_at"] = int(time.time())
+    request.session["nonce"] = secrets.token_urlsafe(16)
+
+
 def load_user(request: Request, conn) -> dict | None:
     user_id = request.session.get("user_id")
     if not user_id:
+        return None
+    if session_expired(request.session, settings.session_max_age):
+        request.session.clear()
         return None
     from .services.auth_service import get_user
 

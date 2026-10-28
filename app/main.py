@@ -14,6 +14,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from .config import settings
 from .db import check_main_db, check_t2s_db, main_pool, t2s_pool
 from .errors import AppError, AuthRequired
+from .security import ensure_production_settings
 from .web import render
 
 logger = logging.getLogger("learning_space")
@@ -44,6 +45,7 @@ def _render_error(request: Request, status: int, title: str, message: str):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    ensure_production_settings(settings)
     main_pool.open()
     t2s_pool.open()
     try:
@@ -59,8 +61,8 @@ app.add_middleware(
     secret_key=settings.session_secret,
     session_cookie="ls_session",
     same_site="lax",
-    https_only=not settings.is_dev,
-    max_age=60 * 60 * 24 * 7,
+    https_only=settings.cookie_secure,
+    max_age=settings.session_max_age,
 )
 app.add_middleware(GZipMiddleware, minimum_size=600)
 
@@ -68,6 +70,16 @@ app.add_middleware(GZipMiddleware, minimum_size=600)
 @app.middleware("http")
 async def response_headers(request: Request, call_next):
     response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
+    )
+    if settings.cookie_secure:
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
     if request.url.path.startswith("/static/"):
         if request.query_params.get("v"):
             response.headers.setdefault(
@@ -95,9 +107,16 @@ async def handle_auth_required(request: Request, exc: AuthRequired):
 
 @app.exception_handler(AppError)
 async def handle_app_error(request: Request, exc: AppError):
+    retry_after = getattr(exc, "retry_after", None)
+    headers = {"Retry-After": str(retry_after)} if retry_after else None
     if request.url.path.startswith("/api/"):
-        return JSONResponse({"detail": exc.message}, status_code=exc.status_code)
-    return _render_error(request, exc.status_code, exc.title, exc.message)
+        return JSONResponse(
+            {"detail": exc.message}, status_code=exc.status_code, headers=headers
+        )
+    response = _render_error(request, exc.status_code, exc.title, exc.message)
+    if headers:
+        response.headers.update(headers)
+    return response
 
 
 @app.exception_handler(StarletteHTTPException)

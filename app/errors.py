@@ -41,6 +41,10 @@ class RateLimited(AppError):
     status_code = 429
     title = "请求过于频繁"
 
+    def __init__(self, message: str, *, retry_after: int | None = None):
+        super().__init__(message)
+        self.retry_after = retry_after
+
 
 class SuggestError(AppError):
     status_code = 502

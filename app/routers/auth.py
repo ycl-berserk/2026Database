@@ -3,8 +3,10 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 
-from ..auth import ensure_csrf, require_user, verify_csrf
+from ..auth import ensure_csrf, require_user, start_session, verify_csrf
 from ..db import get_conn
+from ..errors import RateLimited
+from ..security import login_throttle
 from ..services.auth_service import authenticate
 from ..web import add_flash, form_text, render
 
@@ -36,8 +38,16 @@ async def login_submit(request: Request, conn=Depends(get_conn)):
     password = form_text(form, "password") or ""
     next_url = safe_next(form_text(form, "next"))
 
+    ip = request.client.host if request.client else "unknown"
+    wait = login_throttle.retry_after(ip, username)
+    if wait:
+        raise RateLimited(
+            f"登录尝试过于频繁，请在 {wait} 秒后重试。", retry_after=wait
+        )
+
     user = authenticate(conn, username, password)
     if user is None:
+        login_throttle.record_failure(ip, username)
         ensure_csrf(request)
         return render(
             request,
@@ -48,8 +58,8 @@ async def login_submit(request: Request, conn=Depends(get_conn)):
             next_url=next_url,
         )
 
-    request.session.clear()
-    request.session["user_id"] = user["id"]
+    login_throttle.reset_user(ip, username)
+    start_session(request, user["id"])
     ensure_csrf(request)
     add_flash(request, f"欢迎回来，{user['display_name']}", "success")
     return RedirectResponse(next_url, status_code=303)

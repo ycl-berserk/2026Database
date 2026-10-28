@@ -43,6 +43,22 @@ class Settings:
         )
     )
     app_env: str = field(default_factory=lambda: os.getenv("APP_ENV", "dev"))
+    session_max_age: int = field(
+        default_factory=lambda: int(os.getenv("SESSION_MAX_AGE", str(60 * 60 * 24 * 7)))
+    )
+    session_cookie_secure: bool = field(
+        default_factory=lambda: os.getenv("SESSION_COOKIE_SECURE", "").lower()
+        in ("1", "true", "yes", "on")
+    )
+    login_max_attempts: int = field(
+        default_factory=lambda: int(os.getenv("LOGIN_MAX_ATTEMPTS", "5"))
+    )
+    login_ip_max_attempts: int = field(
+        default_factory=lambda: int(os.getenv("LOGIN_IP_MAX_ATTEMPTS", "20"))
+    )
+    login_window_seconds: int = field(
+        default_factory=lambda: int(os.getenv("LOGIN_WINDOW_SECONDS", "900"))
+    )
 
     text2sql_mode: str = field(default_factory=lambda: os.getenv("TEXT2SQL_MODE", "auto"))
     llm_base_url: str = field(
@@ -99,6 +115,10 @@ class Settings:
     @property
     def is_dev(self) -> bool:
         return self.app_env != "production"
+
+    @property
+    def cookie_secure(self) -> bool:
+        return self.session_cookie_secure or not self.is_dev
 
     @property
     def static_dir(self) -> Path:

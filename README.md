@@ -155,7 +155,7 @@ ls import data/samples/qoder_db.json --course-code DB --json
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（185 单元 + 126 集成，共 311 项）；集成测试需先初始化测试库
+# 全量测试（191 单元 + 127 集成，共 318 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest
 
 # 静态检查与提交钩子（uv sync 已安装 Ruff / pyright / pre-commit）
@@ -200,7 +200,7 @@ node scripts/screenshots.mjs
 node scripts/extension_smoke.mjs
 ```
 
-> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、311 项测试、42 项验收与 10 项 Playwright E2E，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
+> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、318 项测试、42 项验收与 10 项 Playwright E2E，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
 
 ## 目录结构
 
@@ -251,6 +251,7 @@ learning-space/
 - **浏览器扩展**：`extension/` 使用 MV3，固定权限只有 `activeTab` 与 `storage`；仅当用户在弹窗点击「发送到学习空间」时读取当前标签页并调用 `/api/ingest`，令牌保存在 `chrome.storage.local`。平台 DOM 改版时回退到平台导出文件。
 - **分享采集**：`POST /share` 复用 `import_batches` 暂存解析结果（30 分钟有效），不把长文本写入 Cookie；最终保存仍需登录会话与 CSRF Token，并校验批次所有权。
 - **离线同步**：会话快照、批注草稿与复习打卡保存在浏览器 IndexedDB；联网后按客户端事件 ID 幂等提交，避免重复写入。
+- **登录防护**：同一 IP + 账号 15 分钟内连续失败 5 次即暂时锁定，单 IP 另有 20 次上限，返回 429 与 `Retry-After`；登录成功会清空该账号计数。Session 登录时重建并写入签发时间，超过 7 天自动失效；生产环境 Cookie 强制 `Secure`，并发送 HSTS、`nosniff`、`DENY` 与 Referrer/Permissions 限制；若 `APP_ENV=production` 仍使用仓库默认 `SESSION_SECRET`，应用拒绝启动。
 - **权限三层**：页面/服务层角色检查 → SQL 作用域过滤 → 数据库约束与触发器；Text2SQL 额外使用只读角色与 `security_barrier` 视图。
 - **数据库角色**：`ls_app` 只有 `app` schema 的 DML 权限，无 DDL；`t2s_reader` 只能 `SELECT` `t2s` 视图，默认只读事务、3 秒语句超时。
 - **管理边界**：管理员看不到课程 / 会话页面，也不能读取他人消息正文、批注或复习内容。审计面板只展示课程、课程成员与账号的结构变更元数据（谁、何时、对哪条记录、改了哪些列名），不保存任何列值；密码列即使变更也不出现在审计里。

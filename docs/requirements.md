@@ -87,8 +87,8 @@
 
 | ID | 功能 | 输入 | 输出 / 行为 | 异常与边界 | 实现位置 | 验收 |
 | --- | --- | --- | --- | --- | --- | --- |
-| R06-F01 | 登录与会话 | 用户名、密码、next | 建立 `ls_session`；登录后跳转 next 或概览 | next 只允许站内单斜杠路径；错误 401 | `routers/auth.py`、`auth.py` | `tests/unit/test_auth.py`、手工登录 |
-| R06-F02 | 密码与 CSRF | 密码、表单 token | PBKDF2-HMAC-SHA256 210k 哈希；所有 POST 校验 CSRF | 哈希格式错误、token 缺失/不匹配 | `auth.py` | `test_auth.py`、安全审查 |
+| R06-F01 | 登录与会话 | 用户名、密码、next | 建立 `ls_session` 并写入签发时间/nonce；登录后跳转 next 或概览；连续失败 5 次返回 429 + `Retry-After` | next 只允许站内单斜杠路径；错误 401；锁定后正确密码也拒绝 | `routers/auth.py`、`auth.py` | `tests/unit/test_auth.py`、手工登录 |
+| R06-F02 | 密码与 CSRF | 密码、表单 token | PBKDF2-HMAC-SHA256 210k 哈希；所有 POST 校验 CSRF；生产环境强制 Secure Cookie、HSTS 与安全响应头 | 哈希格式错误、token 缺失/不匹配 | `auth.py` | `test_auth.py`、安全审查 |
 | R06-F03 | 课程级权限 | 当前用户、课程/会话 ID | owner/editor/viewer 分级；越权 403 | 管理员访问课程页面被拒 | `permissions.py`、触发器 | `test_permissions.py`、`verify.scope` |
 | R06-F04 | 登出与停用 | 当前会话 / 用户 ID | 清空 session；`is_active=false` 后不能登录 | 已停用账号登录失败 | `routers/auth.py`、`admin_service.py` | `test_admin.py` |
 
@@ -247,7 +247,7 @@
 | 可维护性 | 关键 SQL 可定位、无 ORM 黑盒 | `sql/` + `services/` + 本文件映射 |
 | 工程质量 | 依赖可复现、静态检查、提交钩子、随机化与浏览器测试 | `uv.lock`、Ruff、pyright、pre-commit、Hypothesis、Playwright；CI 同步执行 |
 | 可演示性 | 离线可演示、模拟数据可复现 | mock Text2SQL、`make_samples.py`、`seed_demo.py` |
-| 可验收 | 自动化测试与端到端报告 | 311 个 pytest 用例 + 10 项 Playwright E2E + 42 项 `verify.py` 检查 |
+| 可验收 | 自动化测试与端到端报告 | 318 个 pytest 用例 + 10 项 Playwright E2E + 42 项 `verify.py` 检查 |
 
 ## 需求到验收命令的映射
 

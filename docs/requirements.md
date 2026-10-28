@@ -75,6 +75,8 @@
 | R05-F03 | 批注 / 复习 / 重复检测 | 当前用户 | 批注解决率、复习状态、重复内容 Top5 | 重复检测使用 `md5(content)` | `stats_service` | `test_stats.py` |
 | R05-F04 | 统计 CSV 导出 | 当前用户 | UTF-8 BOM CSV，含 section/item/metric/value | 未登录重定向登录 | `stats_csv`、`/exports/stats.csv` | `verify.stats.csv` |
 | R05-F05 | 单会话 Markdown 导出 | 会话 ID | 标题、课程、来源、标签、消息、批注、模拟数据声明 | 无权限 403；文件名安全清洗 | `export_service.conversation_markdown` | `verify.export.markdown` |
+| R05-F06 | 个人全量导出 zip | 当前用户 | 本人来源的会话 Markdown、批注/复习 CSV 与 manifest 计数 | 只含本人来源；管理员不进入个人导出 | `backup_service.export_user_archive`、`/exports/all.zip` | `test_backup_export.py`、E2E |
+| R05-F07 | 数据库备份 / 恢复 | 管理连接 | `pg_dump` 自定义格式、默认保留 10 份、`pg_restore --clean` | 恢复目标非 `*_test` 时拒绝，`--force` 才覆盖 | `scripts/backup.py` | `test_backup.py` |
 
 **设计要点**
 
@@ -82,6 +84,7 @@
 - 月度活跃用 `generate_series` 生成月份骨架，再 `LEFT JOIN` 实际消息。
 - 批注解决率用 `COUNT(*) FILTER (WHERE status = 'resolved')`。
 - 导出文件名去除 Windows 非法字符并限制 60 字符。
+- 全量导出按“本人来源”查询会话、批注与复习项，共享课程中他人的内容不进入压缩包。
 
 ## R06 用户、认证与权限
 
@@ -247,7 +250,7 @@
 | 可维护性 | 关键 SQL 可定位、无 ORM 黑盒 | `sql/` + `services/` + 本文件映射 |
 | 工程质量 | 依赖可复现、静态检查、提交钩子、随机化与浏览器测试 | `uv.lock`、Ruff、pyright、pre-commit、Hypothesis、Playwright；CI 同步执行 |
 | 可演示性 | 离线可演示、模拟数据可复现 | mock Text2SQL、`make_samples.py`、`seed_demo.py` |
-| 可验收 | 自动化测试与端到端报告 | 318 个 pytest 用例 + 10 项 Playwright E2E + 42 项 `verify.py` 检查 |
+| 可验收 | 自动化测试与端到端报告 | 325 个 pytest 用例 + 11 项 Playwright E2E + 42 项 `verify.py` 检查 |
 
 ## 需求到验收命令的映射
 

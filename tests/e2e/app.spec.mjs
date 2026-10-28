@@ -164,6 +164,21 @@ test("管理员查看数据库观测并切换执行计划", async ({ page }) => 
   expect(errors).toEqual([]);
 });
 
+test("统计页可下载全量数据 zip", async ({ page }) => {
+  const errors = trackErrors(page);
+  await login(page, "alice");
+  await page.goto("/stats");
+  await expect(page.getByRole("heading", { name: "学习统计" })).toBeVisible();
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("link", { name: "导出全部数据（zip）" }).click(),
+  ]);
+  expect(download.suggestedFilename()).toMatch(
+    /^learning-space-all-alice-\d{8}\.zip$/,
+  );
+  expect(errors).toEqual([]);
+});
+
 test("手机端布局无横向溢出且注册 manifest", async ({ browser }) => {
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },

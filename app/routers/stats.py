@@ -9,7 +9,7 @@ from fastapi.responses import Response
 from ..auth import require_user
 from ..db import get_conn
 from ..errors import PermissionDenied
-from ..services import export_service, stats_service
+from ..services import backup_service, export_service, stats_service
 from ..web import render
 
 router = APIRouter()
@@ -40,6 +40,17 @@ def stats_csv(user=Depends(require_user), conn=Depends(get_conn)):
     return Response(
         body.encode("utf-8"),
         media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": _attachment(filename)},
+    )
+
+
+@router.get("/exports/all.zip")
+def export_all(user=Depends(require_user), conn=Depends(get_conn)):
+    _require_student(user)
+    filename, body = backup_service.export_user_archive(conn, user)
+    return Response(
+        body,
+        media_type="application/zip",
         headers={"Content-Disposition": _attachment(filename)},
     )
 

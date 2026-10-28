@@ -155,7 +155,7 @@ ls import data/samples/qoder_db.json --course-code DB --json
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（191 单元 + 127 集成，共 318 项）；集成测试需先初始化测试库
+# 全量测试（196 单元 + 129 集成，共 325 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest
 
 # 静态检查与提交钩子（uv sync 已安装 Ruff / pyright / pre-commit）
@@ -173,6 +173,10 @@ uv run pre-commit run --all-files
 # 物化视图统计实验：实时聚合 vs 物化视图耗时、陈旧与刷新（全部回滚）
 .venv/Scripts/python.exe scripts/stats_experiment.py
 
+# 数据库备份（pg_dump 自定义格式，默认保留最近 10 份）与恢复（仅允许 *_test 库，--force 可覆盖）
+.venv/Scripts/python.exe scripts/backup.py
+.venv/Scripts/python.exe scripts/backup.py --restore data/backups/learning-space-YYYYmmdd-HHMMSS.dump
+
 # 为已配置向量模型的用户补齐消息向量（未配置时命令会提示并退出）
 .venv/Scripts/python.exe scripts/embed_messages.py --user alice --limit 512
 
@@ -189,7 +193,7 @@ uv run pre-commit run --all-files
 npm install
 npx playwright install chromium
 
-# 页面 E2E（9 项断言用例，需要先启动网站；默认 http://127.0.0.1:8000）
+# 页面 E2E（11 项断言用例，需要先启动网站；默认 http://127.0.0.1:8000）
 npm run e2e
 # 或指定地址：BASE_URL=http://127.0.0.1:8000 npm run e2e
 
@@ -200,7 +204,7 @@ node scripts/screenshots.mjs
 node scripts/extension_smoke.mjs
 ```
 
-> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、318 项测试、42 项验收与 10 项 Playwright E2E，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
+> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、325 项测试、42 项验收与 11 项 Playwright E2E，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
 
 ## 目录结构
 

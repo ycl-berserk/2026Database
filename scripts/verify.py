@@ -21,6 +21,7 @@ for stream in (sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8")
 
 import psycopg
+from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from psycopg.rows import dict_row
 
 from app.auth import verify_password
@@ -41,6 +42,7 @@ from app.services import (
     text2sql_service,
     token_service,
 )
+from app.services.rls_experiment import run_experiment as run_rls_experiment
 
 ALICE = {"username": "alice", "password": "Alice123!"}
 BOB = {"username": "bob", "password": "Bob123!"}
@@ -979,6 +981,38 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
         _ok(blocked, "ls_app 不应拥有 DDL 权限")
         return "应用角色 ls_app 无 DDL 权限"
     report.run("db.app_role", "数据库：应用角色最小权限（无 DDL）", app_role_ddl)
+
+    def rls_comparison():
+        info = conninfo_to_dict(settings.admin_database_url)
+        info["dbname"] = settings.database_url.rsplit("/", 1)[-1]
+        with psycopg.connect(
+            make_conninfo(**info), autocommit=True, row_factory=dict_row
+        ) as admin_conn:
+            result = run_rls_experiment(
+                admin_conn, {"alice": alice["id"], "bob": bob["id"]}
+            )
+        _ok(result["summary"]["consistent"], "三种隔离方式的可见行不一致")
+        _ok(all(result["cleanup"].values()), f"实验对象未清理：{result['cleanup']}")
+        _ok(
+            result["unset_guc"] == {"view_rows": 0, "rls_rows": 0},
+            f"未设置用户 GUC 时仍返回行：{result['unset_guc']}",
+        )
+        counts = result["summary"]["row_counts"]
+        for label, values in counts.items():
+            _ok(
+                values["view"] == values["where"] == values["rls"] == values["expected"],
+                f"{label} 行数不一致：{values}",
+            )
+        view_barrier = result["summary"]["modes"]["view"]["subquery_scan_users"]
+        rls_barrier = result["summary"]["modes"]["rls"]["subquery_scan_users"]
+        _ok(view_barrier == 2, "security_barrier 视图未产生 Subquery Scan")
+        _ok(rls_barrier == 0, "RLS 计划不应出现 Subquery Scan")
+        return (
+            f"alice/bob 在视图、应用层 WHERE、RLS 下均得到 "
+            f"{counts['alice']['expected']}/{counts['bob']['expected']} 行，"
+            "实验对象已回滚"
+        )
+    report.run("db.rls", "数据库：RLS 与 security_barrier 视图对比", rls_comparison)
 
     return state
 

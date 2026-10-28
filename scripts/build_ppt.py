@@ -625,9 +625,9 @@ def slide_permissions(prs):
 
 def slide_tests(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "14 / 测试与验收", "264 项测试与 39 项端到端验收全部通过", 15)
+    header(slide, "14 / 测试与验收", "268 项测试与 40 项端到端验收全部通过", 15)
 
-    stats = [("264", "自动化测试"), ("39", "端到端检查"), ("0", "失败项")]
+    stats = [("268", "自动化测试"), ("40", "端到端检查"), ("0", "失败项")]
     for index, (value, label) in enumerate(stats):
         x = 0.72 + index * 2.15
         rect(slide, x, 1.62, 1.95, 1.35, WHITE, radius=True, line=LINE, width=0.7)
@@ -636,11 +636,11 @@ def slide_tests(prs):
 
     code_block(slide, 0.72, 3.3, 6.0, 2.4,
                ".venv/Scripts/python.exe -m pytest -q\n"
-               "# 153 unit + 111 integration\n\n"
+               "# 155 unit + 113 integration\n\n"
                ".venv/Scripts/python.exe scripts/verify.py \\\n"
                "  --json data/verification/report.json", size=10.5)
     text(slide, 0.9, 5.78, 5.6, 0.75,
-         "输出：39/39 PASS，0 FAIL，约 2–4 秒\n所有写入检查在结束时整体回滚。", size=11.5, color=GREEN)
+         "输出：40/40 PASS，0 FAIL，约 2–4 秒\n所有写入检查在结束时整体回滚。", size=11.5, color=GREEN)
 
     right = [
         "Schema：表、FK、UNIQUE、CHECK、索引、触发器",
@@ -650,6 +650,7 @@ def slide_tests(prs):
         "知识结构：先修边防环、递归闭包、Text2SQL 可查",
         "统计：种子数据下的计数与排名",
         "采集：令牌作用域、限流、Bearer 与 MCP 工具",
+        "数据库：RLS 与 security_barrier 视图对比",
         "Text2SQL：AST / 预检 / 金标准评测",
     ]
     for index, item in enumerate(right):
@@ -674,6 +675,7 @@ def slide_ai(prs):
         ["AI 建议直接入库", "人工确认 + 复用总结批注", "避免污染与重复表"],
         ["中文全文检索", "pg_trgm + ILIKE", "中文分词不可靠"],
         ["先修图只在应用层防环", "触发器递归 CTE", "所有写入入口共享约束"],
+        ["直接用 RLS 替换权限视图", "视图为主 + RLS 对比实验", "策略维护与属主绕过成本"],
     ]
     table(slide, 0.72, 1.62, 8.1, 3.7, rows, [3.25, 2.65, 2.2], font_size=10, header_size=10)
 
@@ -700,7 +702,7 @@ def slide_end(prs):
         "令牌 + 扩展 + 平台导出，离线也可读可复习",
         "标签先修图：触发器防环 + 递归闭包",
         "Text2SQL 由只读视图与角色做最终兜底",
-        "264 项测试 + 39 项验收，全部通过",
+        "268 项测试 + 40 项验收，全部通过",
         "README 五条命令从零复现",
     ]
     bullets(slide, 0.85, 3.15, 6.4, 2.4, left, size=14, color=RGBColor(0xE8, 0xE3, 0xD3), gap=8,

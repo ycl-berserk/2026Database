@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-10-28T06:28:38+00:00",
+  "generated_at": "2026-10-28T06:39:52+00:00",
   "database": "learning_space",
   "summary": {
-    "total": 39,
-    "passed": 39,
+    "total": 40,
+    "passed": 40,
     "failed": 0,
-    "duration_ms": 930
+    "duration_ms": 966
   },
   "counts": {
     "users": 3,
@@ -44,14 +44,14 @@
       "label": "Schema：索引与数据一致性（排序规则变更防护）",
       "status": "PASS",
       "detail": "59 个标签均可通过 tags_owner_name_unique 命中",
-      "elapsed_ms": 16
+      "elapsed_ms": 17
     },
     {
       "key": "data.counts",
       "label": "演示数据规模与来源标注",
       "status": "PASS",
       "detail": "3 用户 / 5 课程 / 30 会话 / 420 消息 / 66 批注 / 39 复习项 / 32 先修关系",
-      "elapsed_ms": 2
+      "elapsed_ms": 3
     },
     {
       "key": "data.import_batches",
@@ -65,14 +65,14 @@
       "label": "演示数据：收件箱未归类会话",
       "status": "PASS",
       "detail": "收件箱保留 3 个未归类会话，供批量整理演示",
-      "elapsed_ms": 15
+      "elapsed_ms": 17
     },
     {
       "key": "auth.passwords",
       "label": "认证：演示账号密码哈希与校验",
       "status": "PASS",
       "detail": "PBKDF2 哈希校验通过，错误密码被拒绝",
-      "elapsed_ms": 358
+      "elapsed_ms": 360
     },
     {
       "key": "auth.roles",
@@ -107,21 +107,21 @@
       "label": "导入：确认入库幂等（ON CONFLICT 去重）",
       "status": "PASS",
       "detail": "重复确认新增 0 会话 / 0 消息，跳过 84 条",
-      "elapsed_ms": 18
+      "elapsed_ms": 19
     },
     {
       "key": "import.broken",
       "label": "导入：损坏文件校验拦截",
       "status": "PASS",
       "detail": "解析被拒绝，共 8 条错误",
-      "elapsed_ms": 1
+      "elapsed_ms": 0
     },
     {
       "key": "import.adapters",
       "label": "导入：平台导出适配器（ChatGPT / Qoder / DeepSeek）",
       "status": "PASS",
       "detail": "ChatGPT mapping、Qoder sessions、DeepSeek Markdown 均映射为统一格式",
-      "elapsed_ms": 1
+      "elapsed_ms": 2
     },
     {
       "key": "search.keyword",
@@ -156,14 +156,14 @@
       "label": "统计：概览、课程、月度与复习聚合",
       "status": "PASS",
       "detail": "概览、5 门课程、8 个月活跃与复习摘要一致",
-      "elapsed_ms": 6
+      "elapsed_ms": 7
     },
     {
       "key": "stats.csv",
       "label": "导出：统计 CSV（UTF-8 BOM）",
       "status": "PASS",
       "detail": "CSV 导出 72 行",
-      "elapsed_ms": 8
+      "elapsed_ms": 9
     },
     {
       "key": "export.markdown",
@@ -212,14 +212,14 @@
       "label": "Text2SQL：EXPLAIN 预检拦截高成本查询",
       "status": "PASS",
       "detail": "正常查询代价 24.31，高成本笛卡尔积被拒绝",
-      "elapsed_ms": 3
+      "elapsed_ms": 4
     },
     {
       "key": "t2s.eval",
       "label": "Text2SQL：金标准评测集与越权拦截",
       "status": "PASS",
       "detail": "30 题金标准全部合法，mock 准确率 56.7%，越权拦截 12/12",
-      "elapsed_ms": 308
+      "elapsed_ms": 274
     },
     {
       "key": "t2s.audit",
@@ -240,21 +240,21 @@
       "label": "采集：粘贴解析、收录与幂等",
       "status": "PASS",
       "detail": "粘贴识别 2 条角色消息，重复收录幂等",
-      "elapsed_ms": 12
+      "elapsed_ms": 11
     },
     {
       "key": "token.ingest",
       "label": "采集令牌：哈希存储、作用域、Bearer 认证、限流与幂等入库",
       "status": "PASS",
       "detail": "哈希存储、作用域、课程映射、重复幂等、60 次/分钟限流与撤销均生效",
-      "elapsed_ms": 19
+      "elapsed_ms": 20
     },
     {
       "key": "search.global",
       "label": "搜索：全局检索与课程范围隔离",
       "status": "PASS",
       "detail": "全局搜索命中本人会话，未泄露他人数据",
-      "elapsed_ms": 9
+      "elapsed_ms": 10
     },
     {
       "key": "inbox.organize",
@@ -268,14 +268,14 @@
       "label": "整理建议：标签幂等写入、摘要更新与越权拦截",
       "status": "PASS",
       "detail": "新标签幂等创建、摘要唯一更新、viewer 越权被拒",
-      "elapsed_ms": 10
+      "elapsed_ms": 12
     },
     {
       "key": "graph.prerequisites",
       "label": "知识先修图：递归闭包、分组与环检测",
       "status": "PASS",
       "detail": "6 个课程分组、32 条边；递归闭包距离正确，环被拒绝",
-      "elapsed_ms": 9
+      "elapsed_ms": 12
     },
     {
       "key": "tx.rollback",
@@ -290,6 +290,13 @@
       "status": "PASS",
       "detail": "应用角色 ls_app 无 DDL 权限",
       "elapsed_ms": 0
+    },
+    {
+      "key": "db.rls",
+      "label": "数据库：RLS 与 security_barrier 视图对比",
+      "status": "PASS",
+      "detail": "alice/bob 在视图、应用层 WHERE、RLS 下均得到 30/12 行，实验对象已回滚",
+      "elapsed_ms": 39
     },
     {
       "key": "tx.outer_rollback",

@@ -42,8 +42,8 @@ curl -s http://127.0.0.1:8000/healthz
 | 4:35–5:05 | 知识先修图 | `/tags/graph` | DAG、触发器递归防环、递归闭包、SVG 布局 |
 | 5:05–5:45 | 统计与导出 | `/stats`、CSV / Markdown | JOIN、GROUP BY、FILTER、窗口函数、CTE |
 | 5:45–6:45 | Text2SQL | `/text2sql` | 权限视图、只读角色、SQL 守卫、审计 |
-| 6:45–7:20 | 权限边界 | bob 403、admin | 应用层 + SQL 作用域 + 数据库权限 |
-| 7:20–7:50 | 设计与验收 | E-R 图、`verify.py` | 8 实体、12 联系、15 张表、40 项验收 |
+| 6:45–7:20 | 权限边界 | bob 403、admin | 应用层 + SQL 作用域 + 数据库权限 + 审计元数据 |
+| 7:20–7:50 | 设计与验收 | E-R 图、`verify.py` | 8 实体、12 联系、16 张表、41 项验收 |
 | 7:50–8:00 | 收尾 | 报告 / README | 可复现命令与限制 |
 
 如果时间紧，优先保留：**检索 → 导入查重 → 批注复习 → 知识先修图 → Text2SQL → 权限 403**；统计和 E-R 可各用 20 秒带过。
@@ -273,16 +273,19 @@ curl -s http://127.0.0.1:8000/healthz
 1. 退出 alice，登录 `bob` / `Bob123!`。
 2. 打开「数据库系统概论」课程详情，指出 bob 是 viewer，没有编辑入口。
 3. 地址栏直接访问 `/courses/1/edit`，展示 403 页面（`docs/screenshots/15-permission-denied.png`）。
-4. 可选：退出 bob，登录 `admin` / `Admin123!`，进入 `/admin`，指出只有用户状态和聚合计数，没有会话正文。
-5. 可选：admin 直接访问 `/conversations`，同样 403。
+4. 可选：退出 bob，登录 `admin` / `Admin123!`，进入 `/admin`，指出只有用户状态、聚合计数与审计时间线，没有会话正文。
+5. 可选：向下滚动到「审计历史」，按对象筛选“课程”，指出版本记录只含操作者、记录主键和变更列名（如 `description`），没有列值；说明消息/批注/复习表不在审计范围。
+6. 可选：admin 直接访问 `/conversations`，同样 403。
 
 **口播**：
 
 > 权限做了三层：页面和服务层先判角色；SQL 查询再按 `course_members` 和 `sources.owner_id` 限制作用域；数据库层还有外键、CHECK、触发器和只读角色兜底。viewer 直接改 URL 也会被服务层拦截。
 >
-> 管理员只做账号启停和系统聚合统计，不读取他人消息正文、批注或复习内容；管理员访问个人会话页会得到 403。停用账号也不会删除历史数据。
+> 管理员只做账号启停、系统聚合统计和结构变更审计，不读取他人消息正文、批注或复习内容；管理员访问个人会话页会得到 403。停用账号也不会删除历史数据。
+>
+> 审计只覆盖课程、课程成员和账号三张表：谁在什么时候改了哪条记录、改了哪些列；不记录列值，密码列被显式排除，学习内容表根本不建触发器。审计行由 `SECURITY DEFINER` 触发器写入，应用角色只能读；清理函数最少保留 90 天。
 
-**备用画面**：`docs/screenshots/14-admin.png`、`15-permission-denied.png`。
+**备用画面**：`docs/screenshots/14-admin.png`、`14b-admin-audit.png`、`15-permission-denied.png`。
 
 ---
 
@@ -291,23 +294,23 @@ curl -s http://127.0.0.1:8000/healthz
 **操作**：
 
 1. 打开 `docs/er-chen.svg` 或 `docs/screenshots/16-er-chen.png`，指出 8 个核心实体和 12 组联系。
-2. 打开 `docs/design.md`，快速展示 15 张表、范式分析和删除策略。
+2. 打开 `docs/design.md`，快速展示 16 张表、范式分析、删除策略与审计边界。
 3. 在终端执行验收脚本：
 
 ```bash
 .venv/Scripts/python.exe scripts/verify.py --json data/verification/report.json
 ```
 
-4. 指出输出 `40/40 PASS` 与报告路径。
+4. 指出输出 `41/41 PASS` 与报告路径。
 5. 可选：讲解 Text2SQL 金标准评测，指出 30 题中 mock 准确率 56.7%，但合法率与越权拦截率均为 100%。
 
 **口播**：
 
-> 概念设计有 8 个核心实体：用户、课程、来源、会话、消息、标签、批注、复习项；另外还有课程成员、导入批次、Text2SQL 日志、复习事件和采集令牌这些操作型实体。批注和复习项按弱实体处理。
+> 概念设计有 8 个核心实体：用户、课程、来源、会话、消息、标签、批注、复习项；另外还有课程成员、导入批次、Text2SQL 日志、复习事件、采集令牌和审计日志这些操作型实体。批注和复习项按弱实体处理。
 >
-> 逻辑设计上，标签、课程成员、会话标签都拆成关联表，满足 1NF；核心表用单列代理键，关联表的非键属性依赖整个复合键；会话不冗余 owner，消息不冗余课程和来源，避免传递依赖。`import_batches.payload` 是预览期的受控冗余，导入完成后清理。标签之间的先修关系单独建边表，闭包实时递归，不存冗余路径。
+> 逻辑设计上，标签、课程成员、会话标签都拆成关联表，满足 1NF；核心表用单列代理键，关联表的非键属性依赖整个复合键；会话不冗余 owner，消息不冗余课程和来源，避免传递依赖。`import_batches.payload` 是预览期的受控冗余，导入完成后清理。标签之间的先修关系单独建边表，闭包实时递归，不存冗余路径。审计表只记录结构变更的元数据，不复制业务内容。
 >
-> 验收脚本覆盖表与约束、演示数据、登录权限、导入幂等、平台适配、检索、批注复习、整理建议、知识先修图、统计、采集令牌与作用域、Text2SQL 守卫/预检/金标准评测/拒绝与跨用户隔离、导出、混合检索、RLS 视图对比和数据一致性，共 40 项。
+> 验收脚本覆盖表与约束、演示数据、登录权限、导入幂等、平台适配、检索、批注复习、整理建议、知识先修图、统计、采集令牌与作用域、Text2SQL 守卫/预检/金标准评测/拒绝与跨用户隔离、导出、混合检索、RLS 视图对比、审计元数据与角色边界和数据一致性，共 41 项。
 
 **备用画面**：`docs/screenshots/16-er-chen.png`、`docs/verification/report.json`（实际路径 `data/verification/report.json`）。
 
@@ -386,5 +389,5 @@ node scripts/screenshots.mjs --record
 | 知识先修图 | `/tags/graph` | `27-tag-graph.png`、`27b-tag-graph-detail.png` |
 | 统计 | `/stats` | `11-stats.png` |
 | Text2SQL | `/text2sql` | `12-text2sql.png`、`13-text2sql-result.png`、`13b-text2sql-history.png` |
-| 管理 / 越权 | `/admin`、403 页 | `14-admin.png`、`15-permission-denied.png` |
+| 管理 / 越权 | `/admin`、403 页 | `14-admin.png`、`14b-admin-audit.png`、`15-permission-denied.png` |
 | 概念设计 | E-R 图 | `16-er-chen.png` |

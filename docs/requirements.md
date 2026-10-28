@@ -210,6 +210,19 @@
 - 现有 `security_barrier` 视图继续作为生产方案：规则集中、无需逐表维护策略，且 Text2SQL 只暴露视图；RLS 的代价与注意事项写入报告第 6.15、9.3 节。
 - 计划摘要只保留节点类型、Filter 数量、Subquery Scan/SubPlan 标志与执行时间，避免把易变的完整计划写进文档。
 
+## R16 审计历史
+
+| ID | 功能 | 输入 | 输出 / 行为 | 异常与边界 | 实现位置 | 验收 |
+| --- | --- | --- | --- | --- | --- | --- |
+| R16-F01 | 管理型表审计 | 课程、课程成员、用户的增删改 | 通用触发器写入操作者、对象、动作、主键与变更列名；操作者来自事务内 `app.actor_user_id`，未设置记为系统 | 只记录列名不记录值；`password_hash` 不进入变更列；消息/批注/复习表不开启审计 | `sql/migrations/007_add_audit_log.sql`、`app/audit.py` | `tests/integration/test_audit_log.py` |
+| R16-F02 | 管理页时间线与保留 | `/admin` 的对象/动作筛选、清理按钮 | 按时间倒序展示 30 条，显示操作者、对象、主键与变更列；手动清理只允许至少 90 天前的记录 | 应用角色对 `audit_log` 只有 SELECT；清理函数 `SECURITY DEFINER` 且 `PUBLIC` 无执行权限；筛选值非法时忽略 | `app/services/admin_service.py`、`app/routers/admin.py`、`templates/admin/index.html` | `test_audit_log.py`、`verify.db.audit` |
+
+**设计要点**
+
+- 审计表与业务表同库但不同职责：`audit_log` 不参与 E-R 核心实体，不被 `t2s` 视图暴露给 Text2SQL。
+- 触发器用 `to_jsonb(OLD/NEW)` 做键级比较，变更列由差集生成；`SECURITY DEFINER` 让应用角色无需持有 `audit_log` 的写权限。
+- 管理员页面只展示元数据，配合“消息/批注表不审计”的边界，避免审计功能变成内容读取后门。
+
 ## 非功能需求
 
 | 类别 | 要求 | 实现 |
@@ -219,12 +232,12 @@
 | 性能 | 列表分页、关键查询有索引、统计实时但规模可控 | 索引设计、`LIMIT/OFFSET`、部分索引、trgm、HNSW |
 | 可维护性 | 关键 SQL 可定位、无 ORM 黑盒 | `sql/` + `services/` + 本文件映射 |
 | 可演示性 | 离线可演示、模拟数据可复现 | mock Text2SQL、`make_samples.py`、`seed_demo.py` |
-| 可验收 | 自动化测试与端到端报告 | 268 个 pytest 用例 + 40 项 `verify.py` 检查 |
+| 可验收 | 自动化测试与端到端报告 | 274 个 pytest 用例 + 41 项 `verify.py` 检查 |
 
 ## 需求到验收命令的映射
 
 ```bash
-# R01–R15 的主要回归
+# R01–R16 的主要回归
 .venv/Scripts/python.exe -m pytest -q
 
 # 端到端 PASS/FAIL（含权限、导入、检索、统计、导出、Text2SQL、事务）
@@ -234,4 +247,4 @@
 .venv/Scripts/python.exe scripts/eval_text2sql.py
 ```
 
-验收输出示例见 `data/verification/report.json`：40/40 PASS，0 FAIL。
+验收输出示例见 `data/verification/report.json`：41/41 PASS，0 FAIL。

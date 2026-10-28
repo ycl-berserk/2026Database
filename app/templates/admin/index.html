@@ -119,4 +119,88 @@
     <p class="empty">还没有导入记录。</p>
   {% endif %}
 </section>
+
+<section class="panel" id="audit">
+  <div class="panel-head">
+    <div>
+      <h2>审计历史</h2>
+      <span class="muted">
+        共 {{ audit_summary.event_count | num }} 条 · 近 7 天 {{ audit_summary.recent_count | num }} 条
+        {% if audit_summary.oldest_at %} · 最早 {{ audit_summary.oldest_at | dt }}{% endif %}
+      </span>
+    </div>
+    <form method="get" action="/admin" class="inline-form">
+      {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+      <select name="audit_table" aria-label="按对象筛选">
+        <option value="">全部对象</option>
+        {% for value, label in [('courses', '课程'), ('course_members', '课程成员'), ('users', '用户账号')] %}
+          <option value="{{ value }}" {% if audit_table == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <select name="audit_action" aria-label="按动作筛选">
+        <option value="">全部动作</option>
+        {% for value, label in [('insert', '新增'), ('update', '修改'), ('delete', '删除')] %}
+          <option value="{{ value }}" {% if audit_action == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-sm" type="submit">筛选</button>
+      {% if audit_table or audit_action %}
+        <a class="btn btn-ghost btn-sm" href="/admin{% if q %}?q={{ q }}{% endif %}">重置</a>
+      {% endif %}
+    </form>
+  </div>
+  {% if audit %}
+    <div class="table-wrap">
+      <table class="table table-stack">
+        <thead>
+          <tr><th>时间</th><th>操作者</th><th>对象</th><th>动作</th><th>记录</th><th>变更列</th></tr>
+        </thead>
+        <tbody>
+          {% for row in audit %}
+            <tr>
+              <td data-label="时间" class="muted">{{ row.occurred_at | dt }}</td>
+              <td data-label="操作者">
+                {% if row.actor_name %}
+                  <strong>{{ row.actor_name }}</strong>
+                  <div class="mono muted">@{{ row.actor_username }}</div>
+                {% else %}
+                  <span class="muted">系统</span>
+                {% endif %}
+              </td>
+              <td data-label="对象"><span class="chip">{{ audit_table_label(row.table_name) }}</span></td>
+              <td data-label="动作">
+                <span class="badge {% if row.action == 'insert' %}badge-ok{% elif row.action == 'delete' %}badge-bad{% endif %}">
+                  {{ audit_action_label(row.action) }}
+                </span>
+              </td>
+              <td data-label="记录" class="mono">
+                {% for key, value in row.row_pk.items() %}{{ key }}={{ value }}{% if not loop.last %}, {% endif %}{% endfor %}
+              </td>
+              <td data-label="变更列">
+                {% if row.changed_columns %}
+                  {% for column in row.changed_columns %}<span class="chip mono">{{ column }}</span>{% endfor %}
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">还没有匹配的审计事件。</p>
+  {% endif %}
+  <div class="panel-foot">
+    <p class="muted hint">
+      仅记录对象、主键与变更列名，不保存字段值；消息与批注表未开启审计，管理员无法借此读取学习内容。
+      默认保留 90 天，可手动清理更早记录。
+    </p>
+    <form method="post" action="/admin/audit/prune" class="inline-form"
+          data-confirm="清理 90 天前的审计记录？此操作不可撤销。">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn btn-danger btn-sm" type="submit">清理 90 天前记录</button>
+    </form>
+  </div>
+</section>
 {% endblock %}

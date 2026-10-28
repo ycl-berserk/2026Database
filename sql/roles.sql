@@ -29,6 +29,18 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA app TO ls_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA app TO ls_app;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA app TO ls_app;
 
+-- 审计表对应用角色只读：写入由 SECURITY DEFINER 触发器完成，清理走受控函数。
+DO $$
+BEGIN
+    IF to_regclass('app.audit_log') IS NOT NULL THEN
+        REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON app.audit_log FROM ls_app;
+        GRANT SELECT ON app.audit_log TO ls_app;
+        REVOKE ALL ON FUNCTION app.prune_audit_log(integer) FROM PUBLIC;
+        GRANT EXECUTE ON FUNCTION app.prune_audit_log(integer) TO ls_app;
+    END IF;
+END;
+$$;
+
 -- t2s schema：只读角色只能 SELECT 视图
 GRANT USAGE ON SCHEMA t2s TO t2s_reader;
 GRANT SELECT ON ALL TABLES IN SCHEMA t2s TO t2s_reader;

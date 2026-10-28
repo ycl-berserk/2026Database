@@ -49,6 +49,12 @@ STATUS_LABELS = {
     "error": "失败",
 }
 SENDER_LABELS = {"user": "我", "assistant": "助手", "system": "系统"}
+AUDIT_TABLE_LABELS = {
+    "courses": "课程",
+    "course_members": "课程成员",
+    "users": "用户账号",
+}
+AUDIT_ACTION_LABELS = {"insert": "新增", "update": "修改", "delete": "删除"}
 PLATFORM_LABELS = {
     "qoder": "Qoder",
     "chatgpt": "ChatGPT",
@@ -152,3 +158,5 @@ templates.env.globals["kind_label"] = lambda v: KIND_LABELS.get(v or "", v or "�
 templates.env.globals["status_label"] = lambda v: STATUS_LABELS.get(v or "", v or "—")
 templates.env.globals["sender_label"] = lambda v: SENDER_LABELS.get(v or "", v or "—")
 templates.env.globals["platform_label"] = lambda v: PLATFORM_LABELS.get(v or "", v or "—")
+templates.env.globals["audit_table_label"] = lambda v: AUDIT_TABLE_LABELS.get(v or "", v or "—")
+templates.env.globals["audit_action_label"] = lambda v: AUDIT_ACTION_LABELS.get(v or "", v or "—")

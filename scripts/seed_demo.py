@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
 import psycopg
 from psycopg.rows import dict_row
 
+from app.audit import set_actor
 from app.auth import hash_password
 from app.config import settings
 from app.services import import_service
@@ -280,6 +281,7 @@ def main() -> int:
             ).fetchone()
             user_ids[username] = row["id"]
 
+        set_actor(conn, user_ids["alice"])
         course_ids: dict[str, int] = {}
         for code, name, semester, instructor, description in DEMO_COURSES:
             row = conn.execute(

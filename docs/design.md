@@ -47,7 +47,7 @@ Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查�
 
 ## 3. 关系模式
 
-15 张表全部位于 `app` schema（12 张基线表 + 迁移新增的 `review_logs`、`api_tokens`、`tag_edges`）。
+16 张表全部位于 `app` schema（12 张基线表 + 迁移新增的 `review_logs`、`api_tokens`、`tag_edges`、`audit_log`）。
 
 ### 3.1 用户 `users`
 
@@ -264,6 +264,23 @@ Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查�
 - 表不冗余 `owner_id`：标签已带属主，边的属主由端点决定。触发器 `check_tag_edge_access` 要求两端标签属于同一用户，并用递归 CTE 检查 `to_tag_id` 是否已经可达 `from_tag_id`，是则拒绝插入，从而在数据库层保证有向无环图。
 - 先修链查询使用递归 CTE；标签删除时边随外键级联删除。
 
+### 3.16 审计历史 `audit_log`（迁移 007）
+
+| 列 | 类型 | 约束 |
+| --- | --- | --- |
+| id | bigint identity | PK |
+| occurred_at | timestamptz | 默认 now() |
+| actor_user_id | bigint | FK → users(id) ON DELETE SET NULL；NULL 表示系统操作 |
+| table_name | text | `courses` / `course_members` / `users` |
+| action | text | `insert` / `update` / `delete` |
+| row_pk | jsonb | 非空；课程/用户为 `{id}`，成员为 `{course_id, user_id}` |
+| changed_columns | text[] | 变更列名，不含值；排除 `password_hash` |
+
+- 通用触发器 `audit_row_change()` 通过 `TG_TABLE_NAME`、`TG_OP`、`TG_ARGV` 识别对象与主键列，用 `to_jsonb(OLD/NEW)` 的键级差集生成 `changed_columns`。
+- 操作者从事务内 GUC `app.actor_user_id` 读取；课程服务与管理员的启停操作用 `set_actor()` 在同一事务内设置，业务回滚则审计一并回滚。
+- 触发器函数 `SECURITY DEFINER`，应用角色不需要 `audit_log` 的写权限；`ls_app` 仅被授予 `SELECT`。清理函数 `prune_audit_log(retain_days)` 同样以属主身份执行，至少保留 90 天。
+- `messages`、`annotations`、`review_items` 等学习内容表不建审计触发器，避免管理员通过审计时间线推断或读取正文/批注内容。
+
 ## 4. 范式分析
 
 ### 4.1 第一范式（1NF）
@@ -430,6 +447,10 @@ AI 建议本身不建表：它是用户点击保存前的草稿，只存在于�
 - 浏览器扩展只申请 `activeTab` / `storage`，学习空间地址的访问权限在首次发送时按需请求；内容脚本不自行上传、不轮询。
 - Bearer 接口复用导入事务，并按 `course_code` 只映射到当前用户可编辑的课程；管理员被拒绝参与采集。
 
+### 7.4 审计与只读边界
+
+`audit_log` 对 `ls_app` 只授予 `SELECT`；写入由 `SECURITY DEFINER` 触发器完成，清理走至少保留 90 天的 `app.prune_audit_log(integer)`，且 `PUBLIC` 无执行权限。审计只记录对象、主键与变更列名，不记录字段值；`password_hash` 不进入列名；消息、批注、复习内容表不开启审计。管理员页面因此只能回答“谁改了哪条课程/成员/账号”，不能回答“他写了什么”。
+
 ## 8. Text2SQL 权限视图
 
 `sql/views.sql` 定义了 15 个 `t2s` 视图，全部使用 `WITH (security_barrier = true)`，以视图属主（postgres）权限读取 `app` 基表，`t2s_reader` 只被授予这些视图的 `SELECT`。
@@ -543,5 +564,5 @@ v1 的基线结构保存在 `sql/schema.sql`。v2 起所有结构变更以编号
 - `000_baseline` 表示 `schema.sql` 已应用，它不对应迁移文件；旧库首次执行迁移时自动补记。
 - 每个迁移在单独事务中执行，失败整体回滚且不写版本记录。
 - 初始化顺序为 `schema.sql → migrations → views.sql → roles.sql`，保证 `t2s` 视图始终基于最新结构创建。
-- 业务表仍集中在 `app` schema（15 张），迁移登记表放在独立的 `meta` schema，不参与业务计数与权限视图。
-- 当前迁移：`001_add_review_logs`（复习事件流水）、`002_add_annotation_event_id`（批注客户端事件 ID）、`003_add_api_tokens`（采集令牌）、`004_add_message_embeddings`（可选向量）、`005_add_tag_edges`（知识先修关系）、`006_add_token_scopes`（令牌作用域）。
+- 业务表仍集中在 `app` schema（16 张，含审计表），迁移登记表放在独立的 `meta` schema，不参与业务计数与权限视图。
+- 当前迁移：`001_add_review_logs`（复习事件流水）、`002_add_annotation_event_id`（批注客户端事件 ID）、`003_add_api_tokens`（采集令牌）、`004_add_message_embeddings`（可选向量）、`005_add_tag_edges`（知识先修关系）、`006_add_token_scopes`（令牌作用域）、`007_add_audit_log`（审计历史与通用触发器）。

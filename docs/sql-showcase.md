@@ -526,8 +526,49 @@ SELECT rt.name AS tag, pt.name AS prerequisite, b.depth
 
 直接先修的深度是 1（如 `索引 → SQL`、`最短路径 → 图`），这里过滤 `depth >= 2` 以展示递归展开的间接依赖。`path` 数组既用于防止环路重复展开，也保证闭包不会无限递归；`DISTINCT ON` 让同一对“标签—先修”只保留最短路径。生产查询 `t2s.v_my_tag_prerequisites` 就是这一结构，并额外用 `me.uid` 限定当前用户。
 
+## 22. 审计元数据与只读边界
+
+通用触发器只记录“谁、何时、对哪张表的哪条记录、改了哪些列”，不保存列值，也不审计消息、批注与复习内容。操作者通过事务内 GUC 传入：
+
+```sql
+SELECT set_config('app.actor_user_id', %(user_id)s, true);
+
+CREATE TRIGGER trg_courses_audit
+  AFTER INSERT OR UPDATE OR DELETE ON app.courses
+  FOR EACH ROW EXECUTE FUNCTION app.audit_row_change('id');
+```
+
+种子数据中的审计行（`audit_row_change` 用 `to_jsonb(NEW)` 与 `to_jsonb(OLD)` 的键差异计算变更列，并显式排除 `password_hash`）：
+
+```sql
+SELECT occurred_at::date AS day, coalesce(u.username, 'system') AS actor,
+       a.table_name, a.action, a.row_pk, a.changed_columns
+  FROM app.audit_log a
+  LEFT JOIN app.users u ON u.id = a.actor_user_id
+ ORDER BY a.id
+ LIMIT 6;
+```
+
+| day | actor | table_name | action | row_pk | changed_columns |
+| --- | --- | --- | --- | --- | --- |
+| 2026-10-28 | system | users | insert | `{"id": 1}` | created_at, display_name, id, is_active, system_role, username |
+| 2026-10-28 | alice | courses | insert | `{"id": 1}` | code, created_at, created_by, description, id, instructor, name, semester |
+| 2026-10-28 | alice | course_members | insert | `{"user_id": 1, "course_id": 1}` | course_id, joined_at, role, user_id |
+
+应用角色只能读、不能改；清理函数最少保留 90 天：
+
+```sql
+SELECT has_table_privilege('ls_app', 'app.audit_log', 'SELECT') AS can_read,
+       has_table_privilege('ls_app', 'app.audit_log', 'INSERT') AS can_insert;
+-- t | f
+
+SELECT app.prune_audit_log(90);  -- 删除 90 天前的记录，返回删除行数
+```
+
+管理员页面通过 `table_name` / `action` 两个可选条件筛选，并用 `count(*) FILTER` 汇总总量与近 7 天数量；审计表本身不在 `t2s` 视图中暴露，Text2SQL 无法查询。
+
 ---
 
 ### 覆盖的 SQL 知识点
 
-`WHERE` / `ORDER BY` / `LIMIT`、多表 `JOIN`、`LEFT JOIN`、`LATERAL`、`DISTINCT ON`、`GROUP BY` + `HAVING`、`COUNT(DISTINCT)`、`FILTER`、`CASE`、`COALESCE`、`generate_series`、`date_trunc`、窗口函数 `RANK()` 与 `count(*) OVER()`、CTE、`WITH RECURSIVE`、数组包含、JSONB 取值、`ON CONFLICT`、表达式索引、部分索引、GIN 索引、`EXPLAIN (ANALYZE, BUFFERS)`。
+`WHERE` / `ORDER BY` / `LIMIT`、多表 `JOIN`、`LEFT JOIN`、`LATERAL`、`DISTINCT ON`、`GROUP BY` + `HAVING`、`COUNT(DISTINCT)`、`FILTER`、`CASE`、`COALESCE`、`generate_series`、`date_trunc`、窗口函数 `RANK()` 与 `count(*) OVER()`、CTE、`WITH RECURSIVE`、数组包含、JSONB 取值与键差异、`ON CONFLICT`、表达式索引、部分索引、GIN 索引、`EXPLAIN (ANALYZE, BUFFERS)`、事务级 GUC（`set_config`）与 `SECURITY DEFINER` 触发器。

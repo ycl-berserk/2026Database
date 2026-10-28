@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from ..audit import set_actor
 from ..errors import NotFoundError, ValidationError
+
+AUDIT_ACTIONS = ("insert", "update", "delete")
+AUDIT_TABLES = ("courses", "course_members", "users")
 
 
 def system_stats(conn) -> dict:
@@ -68,7 +72,55 @@ def set_active(conn, user_id: int, active: bool, *, acting_user_id: int) -> dict
     if row is None:
         raise NotFoundError("用户不存在")
     with conn.transaction():
+        set_actor(conn, acting_user_id)
         conn.execute(
             "UPDATE app.users SET is_active = %s WHERE id = %s", (active, user_id)
         )
     return row
+
+
+def audit_events(
+    conn,
+    *,
+    table: str | None = None,
+    action: str | None = None,
+    limit: int = 30,
+) -> list[dict]:
+    table = table if table in AUDIT_TABLES else None
+    action = action if action in AUDIT_ACTIONS else None
+    limit = max(1, min(int(limit or 30), 100))
+    return conn.execute(
+        """
+        SELECT a.id, a.occurred_at, a.table_name, a.action, a.row_pk,
+               a.changed_columns, a.actor_user_id,
+               u.display_name AS actor_name, u.username AS actor_username
+          FROM app.audit_log a
+          LEFT JOIN app.users u ON u.id = a.actor_user_id
+         WHERE (%(table)s::text IS NULL OR a.table_name = %(table)s)
+           AND (%(action)s::text IS NULL OR a.action = %(action)s)
+         ORDER BY a.occurred_at DESC, a.id DESC
+         LIMIT %(limit)s
+        """,
+        {"table": table, "action": action, "limit": limit},
+    ).fetchall()
+
+
+def audit_summary(conn) -> dict:
+    return conn.execute(
+        """
+        SELECT count(*) AS event_count,
+               count(*) FILTER (
+                   WHERE occurred_at >= now() - interval '7 days'
+               ) AS recent_count,
+               min(occurred_at) AS oldest_at
+          FROM app.audit_log
+        """
+    ).fetchone()
+
+
+def prune_audit(conn, retain_days: int = 90) -> int:
+    if not 90 <= retain_days <= 3650:
+        raise ValidationError("保留天数不能少于 90 天")
+    return conn.execute(
+        "SELECT app.prune_audit_log(%s) AS n", (retain_days,)
+    ).fetchone()["n"]

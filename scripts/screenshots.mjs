@@ -196,6 +196,8 @@ async function run() {
     // admin：仅聚合数据
     const { context: adminCtx, page: admin } = await login(browser, "admin");
     await shot(admin, "14-admin.png");
+    await admin.goto(`${BASE}/admin`, { waitUntil: "networkidle" });
+    await shot(admin, "14b-admin-audit.png");
     await adminCtx.close();
 
     // bob：viewer 越权被拒（DB 课程为 viewer）；403 资源错误是预期行为

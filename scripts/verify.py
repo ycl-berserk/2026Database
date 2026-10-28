@@ -109,7 +109,7 @@ def _snapshot(conn) -> dict[str, int]:
             "users", "courses", "course_members", "sources", "conversations",
             "messages", "tags", "conversation_tags", "annotations",
             "review_items", "review_logs", "import_batches", "text2sql_log",
-            "api_tokens", "tag_edges",
+            "api_tokens", "tag_edges", "audit_log",
         )
     }
 
@@ -132,10 +132,10 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             conn,
             "SELECT count(*) AS n FROM pg_views WHERE schemaname = 't2s'",
         )
-        _ok(tables == 15, f"app 表数量应为 15，实际 {tables}")
+        _ok(tables == 16, f"app 表数量应为 16，实际 {tables}")
         _ok(views == 15, f"t2s 视图数量应为 15，实际 {views}")
-        return f"15 张表、15 个权限视图"
-    report.run("schema.tables", "Schema：15 张业务表与 15 个 t2s 视图", schema_tables)
+        return f"16 张表（15 业务 + 1 审计）、15 个权限视图"
+    report.run("schema.tables", "Schema：16 张表与 15 个 t2s 视图", schema_tables)
 
     def schema_constraints():
         constraints = {
@@ -159,6 +159,9 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             "messages_sender_check",
             "tag_edges_pair_unique",
             "tag_edges_no_self",
+            "audit_log_table_check",
+            "audit_log_action_check",
+            "audit_log_row_pk_check",
         }
         missing = required - constraints
         _ok(not missing, f"缺少约束：{sorted(missing)}")
@@ -176,6 +179,7 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             "review_items_queue_idx",
             "api_tokens_user_idx",
             "tag_edges_to_idx",
+            "audit_log_occurred_idx",
         }
         missing_idx = required_indexes - indexes
         _ok(not missing_idx, f"缺少索引：{sorted(missing_idx)}")
@@ -192,10 +196,13 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             "trg_review_items_access",
             "trg_annotations_updated_at",
             "trg_tag_edges_access",
+            "trg_courses_audit",
+            "trg_course_members_audit",
+            "trg_users_audit",
         }
         missing_trg = required_triggers - triggers
         _ok(not missing_trg, f"缺少触发器：{sorted(missing_trg)}")
-        return "唯一键、CHECK、部分唯一索引与 6 个触发器齐全"
+        return "唯一键、CHECK、部分唯一索引与 9 个触发器齐全"
     report.run("schema.constraints", "Schema：主外键、唯一/检查约束、索引与触发器", schema_constraints)
 
     def index_health():
@@ -975,7 +982,8 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
     def app_role_ddl():
         blocked = False
         try:
-            conn.execute("CREATE TABLE app._verify_should_fail (x int)")
+            with conn.transaction():
+                conn.execute("CREATE TABLE app._verify_should_fail (x int)")
         except psycopg.errors.InsufficientPrivilege:
             blocked = True
         _ok(blocked, "ls_app 不应拥有 DDL 权限")
@@ -1013,6 +1021,67 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             "实验对象已回滚"
         )
     report.run("db.rls", "数据库：RLS 与 security_barrier 视图对比", rls_comparison)
+
+    def audit_boundary():
+        privileges = conn.execute(
+            """
+            SELECT has_table_privilege('ls_app', 'app.audit_log', 'SELECT') AS can_read,
+                   has_table_privilege('ls_app', 'app.audit_log', 'INSERT') AS can_insert,
+                   has_table_privilege('ls_app', 'app.audit_log', 'UPDATE') AS can_update,
+                   has_table_privilege('ls_app', 'app.audit_log', 'DELETE') AS can_delete,
+                   has_function_privilege(
+                       'ls_app', 'app.prune_audit_log(integer)', 'EXECUTE'
+                   ) AS can_prune
+            """
+        ).fetchone()
+        _ok(privileges["can_read"], "ls_app 应能读取审计表")
+        _ok(
+            not privileges["can_insert"]
+            and not privileges["can_update"]
+            and not privileges["can_delete"],
+            f"ls_app 不应能修改审计表：{privileges}",
+        )
+        _ok(privileges["can_prune"], "ls_app 应能调用受控清理函数")
+
+        course_id = conn.execute(
+            "SELECT id FROM app.courses ORDER BY id LIMIT 1"
+        ).fetchone()["id"]
+        conn.execute(
+            "SELECT set_config('app.actor_user_id', %s, true)", (str(alice["id"]),)
+        )
+        try:
+            with conn.transaction():
+                conn.execute(
+                    "UPDATE app.courses "
+                    "SET description = coalesce(description, '') || ' [audit-check]' "
+                    "WHERE id = %s",
+                    (course_id,),
+                )
+                row = conn.execute(
+                    """
+                    SELECT actor_user_id, table_name, action, row_pk, changed_columns
+                      FROM app.audit_log
+                     WHERE table_name = 'courses'
+                       AND action = 'update'
+                       AND row_pk ->> 'id' = %s
+                     ORDER BY id DESC
+                     LIMIT 1
+                    """,
+                    (str(course_id),),
+                ).fetchone()
+                _ok(row is not None, "课程更新未写入审计记录")
+                _ok(row["actor_user_id"] == alice["id"], "审计记录未绑定操作者")
+                _ok(
+                    row["changed_columns"] == ["description"],
+                    f"审计变更列不正确：{row['changed_columns']}",
+                )
+                raise Rollback
+        except Rollback:
+            pass
+        finally:
+            conn.execute("SELECT set_config('app.actor_user_id', '', true)")
+        return "课程更新记录操作者、主键与变更列名；应用角色对审计表只读"
+    report.run("db.audit", "数据库：审计触发器与只读边界", audit_boundary)
 
     return state
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import psycopg
 from psycopg import errors
 
+from ..audit import set_actor
 from ..errors import ConflictError, NotFoundError, ValidationError
 from ..permissions import require_course_role
 
@@ -135,6 +136,7 @@ def create_course(conn, form: dict, user_id: int) -> int:
     values = _course_values(form)
     try:
         with conn.transaction():
+            set_actor(conn, user_id)
             course_id = conn.execute(
                 """
                 INSERT INTO app.courses (code, name, semester, instructor, description, created_by)
@@ -159,6 +161,7 @@ def update_course(conn, course_id: int, form: dict, user: dict) -> None:
     values = _course_values(form)
     try:
         with conn.transaction():
+            set_actor(conn, user["id"])
             conn.execute(
                 """
                 UPDATE app.courses
@@ -177,6 +180,7 @@ def update_course(conn, course_id: int, form: dict, user: dict) -> None:
 def delete_course(conn, course_id: int, user: dict) -> None:
     require_course_role(conn, course_id, user, "owner")
     with conn.transaction():
+        set_actor(conn, user["id"])
         conn.execute("DELETE FROM app.courses WHERE id = %s", (course_id,))
 
 
@@ -211,6 +215,7 @@ def add_member(conn, course_id: int, username: str, role: str, user: dict) -> No
         raise ValidationError("不能把自己重复加入课程")
     try:
         with conn.transaction():
+            set_actor(conn, user["id"])
             conn.execute(
                 "INSERT INTO app.course_members (course_id, user_id, role) VALUES (%s, %s, %s)",
                 (course_id, target["id"], role),
@@ -224,6 +229,7 @@ def set_member_role(conn, course_id: int, member_id: int, role: str, user: dict)
     if role not in ("editor", "viewer"):
         raise ValidationError("成员角色只能是 editor 或 viewer")
     with conn.transaction():
+        set_actor(conn, user["id"])
         cur = conn.execute(
             "UPDATE app.course_members SET role = %s "
             "WHERE course_id = %s AND user_id = %s AND role <> 'owner'",
@@ -238,6 +244,7 @@ def remove_member(conn, course_id: int, member_id: int, user: dict) -> None:
     if member_id == user["id"]:
         raise ValidationError("不能移除课程所有者")
     with conn.transaction():
+        set_actor(conn, user["id"])
         cur = conn.execute(
             "DELETE FROM app.course_members "
             "WHERE course_id = %s AND user_id = %s AND role <> 'owner'",

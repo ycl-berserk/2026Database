@@ -16,12 +16,20 @@ router = APIRouter(prefix="/admin")
 def admin_page(request: Request, user=Depends(require_user), conn=Depends(get_conn)):
     require_system_admin(user)
     keyword = request.query_params.get("q") or ""
+    audit_table = request.query_params.get("audit_table") or ""
+    audit_action = request.query_params.get("audit_action") or ""
     return render(
         request,
         "admin/index.html",
         stats=admin_service.system_stats(conn),
         users=admin_service.list_users(conn, keyword),
         imports=admin_service.recent_activity(conn),
+        audit=admin_service.audit_events(
+            conn, table=audit_table, action=audit_action
+        ),
+        audit_summary=admin_service.audit_summary(conn),
+        audit_table=audit_table,
+        audit_action=audit_action,
         q=keyword,
     )
 
@@ -45,4 +53,18 @@ async def toggle_user(
         f"已{'启用' if active else '停用'}账号 {row['username']}",
         "success",
     )
+    return RedirectResponse("/admin", status_code=303)
+
+
+@router.post("/audit/prune")
+async def prune_audit(
+    request: Request,
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    require_system_admin(user)
+    form = await request.form()
+    verify_csrf(request, form.get("csrf_token"))
+    removed = admin_service.prune_audit(conn, 90)
+    add_flash(request, f"已清理 {removed} 条超过 90 天的审计记录", "success")
     return RedirectResponse("/admin", status_code=303)

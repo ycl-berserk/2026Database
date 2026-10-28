@@ -4,7 +4,7 @@
 
 系统把 Qoder / ChatGPT / DeepSeek 等平台的问答导出文件解析为统一结构，按课程、来源、标签整理；提供中文检索、全局搜索、会话上下文、批注、间隔复习、统计导出，并额外实现一个受只读权限视图保护的 **Text2SQL** 页面。采集侧支持平台原生导出适配、采集令牌 + Bearer 导入接口，以及一个“点击才上传”的 MV3 浏览器扩展；另提供命令行与 MCP 工具接口，方便脚本和 AI 客户端复用同一套权限过滤。
 
-> 演示数据全部为围绕课程知识点生成的模拟聊天记录，不含任何真实个人信息。系统管理员只查看用户与聚合统计，不读取他人消息正文或批注。
+> 演示数据全部为围绕课程知识点生成的模拟聊天记录，不含任何真实个人信息。系统管理员只查看用户、聚合统计与结构变更审计（对象/动作/变更列名，不含内容），不读取他人消息正文或批注。
 
 ## 功能一览
 
@@ -24,7 +24,7 @@
 | Text2SQL | 自然语言→SQL→AST 守卫→EXPLAIN 预检→只读执行→表格展示、解释、审计历史；无 API Key 时使用本地规则 mock |
 | 命令行 | `ls search` / `ls import`：用采集令牌调用 `/api/search` 与 `/api/ingest`，支持环境变量、课程覆盖与 `--json` 输出 |
 | MCP 接口 | stdio JSON-RPC 服务：`search`、`get_conversation`、`list_due_reviews` 只读；令牌显式授予 `annotate` 后才开放 `add_annotation` |
-| 管理 | 用户启停、系统聚合统计（不读正文） |
+| 管理 | 用户启停、系统聚合统计；审计时间线只记录课程/成员/账号的结构变更（对象、动作、主键、变更列名），不读取正文；支持按 90 天保留期清理 |
 | 移动端与安装 | 390px 优先的底部标签栏 / 抽屉导航、列表卡片化、专注阅读模式；PWA manifest + Service Worker 应用壳缓存、离线页、桌面安装、分享快捷方式 |
 | 离线学习 | 会话快照、离线阅读与搜索、离线批注草稿、复习打卡 outbox，恢复联网后按事件 ID 幂等同步 |
 | 体验与可访问性 | 演示账号一键登录、空账号三步引导、删除类操作 5 秒撤销、可关闭且可播报的提示、错误页原因与恢复路径、键盘焦点可见、`prefers-reduced-motion` |
@@ -132,10 +132,10 @@ ls import data/samples/qoder_db.json --course-code DB --json
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（155 单元 + 113 集成，共 268 项）；集成测试需先初始化测试库
+# 全量测试（155 单元 + 119 集成，共 274 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest
 
-# 端到端验收：40 项 PASS/FAIL，写入 data/verification/report.json
+# 端到端验收：41 项 PASS/FAIL，写入 data/verification/report.json
 .venv/Scripts/python.exe scripts/verify.py --json data/verification/report.json
 
 # RLS / 视图 / 应用层 WHERE 隔离对比实验（全部回滚，输出 JSON）
@@ -173,6 +173,7 @@ learning-space/
 │   ├── config.py            # 环境变量与上限配置
 │   ├── db.py                # 连接池、事务、行工厂
 │   ├── auth.py              # PBKDF2、Session、CSRF
+│   ├── audit.py             # 事务内审计操作者 GUC
 │   ├── cli.py               # ls search / ls import 命令行客户端
 │   ├── mcp_server.py        # MCP stdio JSON-RPC 服务（四个工具）
 │   ├── migrations.py        # 迁移发现、应用与版本记录
@@ -186,7 +187,7 @@ learning-space/
 │   ├── schema.sql           # 12 张基线表、约束、索引、触发器
 │   ├── views.sql            # 15 个 t2s 只读权限视图
 │   ├── roles.sql            # ls_app / t2s_reader 最小权限
-│   ├── migrations/          # 增量迁移（review_logs、api_tokens 等，记录到 meta.schema_migrations）
+│   ├── migrations/          # 增量迁移（review_logs、api_tokens、tag_edges、audit_log 等，记录到 meta.schema_migrations）
 │   └── showcase.sql         # 报告用关键 SQL（带注释）
 ├── extension/               # Chrome MV3 扩展：内容脚本、弹窗、隐私与回退说明
 ├── scripts/                 # 初始化、迁移、种子、样例、验收、E-R、截图、扩展冒烟
@@ -195,7 +196,7 @@ learning-space/
 └── docs/                    # 报告、设计、需求、SQL 展示、桌面与移动端截图
 ```
 
-> 数据库共 15 张表：`schema.sql` 的 12 张基线表 + 迁移新增的 `review_logs`（复习事件流水）、`api_tokens`（采集令牌，仅存 SHA-256）与 `tag_edges`（知识先修关系）。
+> 数据库共 16 张表：`schema.sql` 的 12 张基线表 + 迁移新增的 `review_logs`（复习事件流水）、`api_tokens`（采集令牌，仅存 SHA-256）、`tag_edges`（知识先修关系）与 `audit_log`（结构变更审计，只记元数据）。
 
 ## 数据与安全说明
 
@@ -207,7 +208,8 @@ learning-space/
 - **离线同步**：会话快照、批注草稿与复习打卡保存在浏览器 IndexedDB；联网后按客户端事件 ID 幂等提交，避免重复写入。
 - **权限三层**：页面/服务层角色检查 → SQL 作用域过滤 → 数据库约束与触发器；Text2SQL 额外使用只读角色与 `security_barrier` 视图。
 - **数据库角色**：`ls_app` 只有 `app` schema 的 DML 权限，无 DDL；`t2s_reader` 只能 `SELECT` `t2s` 视图，默认只读事务、3 秒语句超时。
-- **管理边界**：管理员看不到课程 / 会话页面，也不能读取他人消息正文、批注或复习内容。
+- **管理边界**：管理员看不到课程 / 会话页面，也不能读取他人消息正文、批注或复习内容。审计面板只展示课程、课程成员与账号的结构变更元数据（谁、何时、对哪条记录、改了哪些列名），不保存任何列值；密码列即使变更也不出现在审计里。
+- **审计与保留**：`audit_log` 由 `SECURITY DEFINER` 触发器写入，`ls_app` 仅可读；清理函数最少保留 90 天，避免保留策略被当作删证据的捷径。
 - **混合检索与隐私**：向量能力默认关闭。只有部署方配置 `EMBEDDING_API_KEY` 后，系统才会把可见消息正文发送到该嵌入服务；未配置时检索完全在本地数据库内完成。向量只用于本人可见范围，管理员没有向量召回入口。
 - **整理建议与隐私**：`SUGGEST_MODE=auto`（默认）下，只有配置了 `LLM_API_KEY` 且具备会话编辑权的用户点击「生成 AI 建议」时，系统才会把该会话前 40 条消息的节选发送到大模型；建议只回填表单，不自动写入。未配置 Key 时按钮隐藏，可手动填写标签与摘要。管理员没有该入口。
 

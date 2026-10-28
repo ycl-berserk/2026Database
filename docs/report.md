@@ -12,7 +12,7 @@
 
 本项目实现了一个以“聊天记录”为核心的关系数据库应用系统。系统把 Qoder、ChatGPT、DeepSeek 等平台的问答导出文件解析为统一格式，按课程、来源、标签组织；支持中文检索、会话上下文、批注、间隔复习、统计导出，并额外实现了受数据库只读权限视图保护的 Text2SQL 页面。
 
-数据库包含 15 张业务表、15 个权限视图、6 个触发器、多组唯一/检查/外键约束；应用层使用参数化 SQL 与显式事务，不依赖 ORM。导入流水线采用“解析 → 校验 → 持久化预览 → 单事务确认 → 查重”的结构，并在文件导入之外提供平台原生导出适配、采集令牌 + Bearer 接口与 MV3 浏览器扩展。标签之间还维护一张有向无环的先修关系图，用递归 CTE 做环检测、闭包与最短路径查询；另在隔离事务中用 RLS 与应用层 WHERE、`security_barrier` 视图做同规则对比实验。系统通过 268 个自动化测试与 40 项端到端验收检查，覆盖 schema、权限、导入幂等、中文检索、全局搜索、统计、批注复习、整理建议、知识先修图、离线同步、导出、Text2SQL 安全、命令行与 MCP 接口、令牌作用域、RLS 隔离一致性与事务回滚。
+数据库包含 16 张表（15 张业务表 + 1 张审计表）、15 个权限视图、9 个触发器、多组唯一/检查/外键约束；应用层使用参数化 SQL 与显式事务，不依赖 ORM。导入流水线采用“解析 → 校验 → 持久化预览 → 单事务确认 → 查重”的结构，并在文件导入之外提供平台原生导出适配、采集令牌 + Bearer 接口与 MV3 浏览器扩展。标签之间还维护一张有向无环的先修关系图，用递归 CTE 做环检测、闭包与最短路径查询；另在隔离事务中用 RLS 与应用层 WHERE、`security_barrier` 视图做同规则对比实验。审计触发器只记录对象、主键与变更列名，不保存字段值，消息与批注表不开启审计。系统通过 274 个自动化测试与 41 项端到端验收检查，覆盖 schema、权限、导入幂等、中文检索、全局搜索、统计、批注复习、整理建议、知识先修图、离线同步、导出、Text2SQL 安全、命令行与 MCP 接口、令牌作用域、RLS 隔离一致性、审计元数据边界与事务回滚。
 
 ---
 
@@ -142,7 +142,7 @@
 
 ### 5.1 关系模式
 
-15 张表位于 `app` schema（12 张基线表 + 3 张迁移新增表）：
+16 张表位于 `app` schema（12 张基线表 + 4 张迁移新增表）：
 
 1. `users`：账号、PBKDF2 哈希、显示名、系统角色、启停状态。
 2. `courses`：课程编号、名称、学期、教师、创建者。
@@ -159,6 +159,7 @@
 13. `review_logs`：复习事件流水，`(user_id, event_id)` 唯一用于离线重放幂等；`review_item_id` 删除时 SET NULL。
 14. `api_tokens`：采集令牌，只存 SHA-256 与可读前缀，含 `scopes` 作用域、固定窗口限流计数、最近使用与撤销时间。
 15. `tag_edges`：标签先修关系 DAG，`(from_tag_id, to_tag_id)` 唯一，触发器校验同属主与无环。
+16. `audit_log`：审计历史，记录操作者、对象、动作、主键与变更列名；不保存字段值，`changed_columns` 排除 `password_hash`，并按 90 天保留策略清理。
 
 完整列定义、约束与索引见 [design.md](design.md)。
 
@@ -176,10 +177,11 @@
 - 主键：所有表均有单列或复合主键。
 - 外键：覆盖来源、课程、会话、消息、批注、复习等所有关系；删除行为按语义选择 CASCADE / SET NULL / RESTRICT。
 - 唯一：用户名、课程 `(created_by, code, semester)`、来源 `(owner_id, platform, label)`、会话 `(source_id, external_id)`、消息 `(conversation_id, seq_no)`、标签 `(owner_id, name)`、复习项 `(user_id, annotation_id)`、令牌哈希、复习事件 `(user_id, event_id)`、先修边 `(from_tag_id, to_tag_id)`。
-- CHECK：角色枚举、发送者枚举、批注类型/状态、复习状态、令牌名称长度与非负窗口计数、复习事件动作/间隔、时间顺序、文件大小、SHA-256 格式、颜色格式、先修边两端不同等。
+- CHECK：角色枚举、发送者枚举、批注类型/状态、复习状态、令牌名称长度与非负窗口计数、复习事件动作/间隔、时间顺序、文件大小、SHA-256 格式、颜色格式、先修边两端不同、审计对象/动作枚举与非空主键等。
 - 部分唯一索引：`course_members(course_id) WHERE role='owner'`。
 - 延迟约束触发器：事务结束时每门课恰好一个 owner。
 - 访问触发器：打标签、批注、复习时必须具备会话或课程编辑权限；写先修边时用递归 CTE 检查两端同属主且不形成环。
+- 审计触发器：`courses`、`course_members`、`users` 的增删改写入 `audit_log`；应用角色只能读，写入由 `SECURITY DEFINER` 触发器完成。
 
 ### 5.4 索引
 
@@ -194,6 +196,7 @@
 - `review_logs`：`(user_id, created_at DESC)`、`(review_item_id, created_at DESC)`。
 - `api_tokens`：`(user_id, created_at DESC)`；令牌哈希与 `(user_id, event_id)` 由唯一约束提供索引。
 - `tag_edges`：`(to_tag_id)` 支持反向“解锁了什么”查询，`(from_tag_id, to_tag_id)` 唯一约束提供正向索引。
+- `audit_log`：`(occurred_at DESC, id DESC)` 支撑时间线，`(table_name, action, occurred_at DESC)` 支撑筛选，`(actor_user_id, occurred_at DESC)` 支撑按操作者查询。
 
 中文检索没有使用 PostgreSQL 原生全文检索，因为其默认分词对中文不友好；改用 `pg_trgm` + `ILIKE`，并对用户输入的 `%`、`_`、`\` 做 `ESCAPE` 处理。
 
@@ -270,9 +273,11 @@ Text2SQL 页面提供示例问题、结果表格、生成的 SQL、解释和最�
 
 ### 6.8 管理与越权
 
-管理员只看到用户管理与系统聚合统计，不能进入课程/会话页面。bob 作为数据库课程 viewer，访问课程编辑页返回 403。错误页会说明可能原因，并提供“看看我参与的课程”“回到概览”“返回上一页”等恢复入口。
+管理员只看到用户管理与系统聚合统计，不能进入课程/会话页面。管理页新增只读的审计时间线：可按对象与动作筛选，展示操作者、主键与变更列名；审计表对应用角色只读，消息与批注表未开启审计，因此管理员无法借此读取学习内容。bob 作为数据库课程 viewer，访问课程编辑页返回 403。错误页会说明可能原因，并提供“看看我参与的课程”“回到概览”“返回上一页”等恢复入口。
 
 ![管理员](screenshots/14-admin.png)
+
+![管理员审计](screenshots/14b-admin-audit.png)
 
 ![越权 403](screenshots/15-permission-denied.png)
 
@@ -411,6 +416,16 @@ Markdown 导入仍需走网站上传页，因为 CLI 只发送统一 JSON，避�
 
 运行 `scripts/rls_experiment.py` 会输出摘要并写入 `data/verification/rls-experiment.json`；`verify.py` 的 `db.rls` 检查确认两种用户的行集合一致、GUC 未设置时返回 0 行，且实验对象全部回滚。
 
+### 6.16 审计历史与通用触发器
+
+`sql/migrations/007_add_audit_log.sql` 新增 `app.audit_log` 与通用触发器函数 `app.audit_row_change()`。只有 `courses`、`course_members`、`users` 三张管理型表开启审计；`messages`、`annotations`、`review_items` 等学习内容表刻意不开启，避免管理员页面成为读取正文或批注的旁路。
+
+每次增删改写入一行：`actor_user_id`（来自事务内 GUC `app.actor_user_id`，未设置记为系统）、`table_name`、`action`、`row_pk`（JSONB，课程/用户为 `{id}`，成员为 `{course_id, user_id}`）与 `changed_columns`（列名数组）。触发器用 `to_jsonb(OLD/NEW)` 做键级比较得到变更列，不保存任何字段值；`password_hash` 即使变更也不会出现在列名中。课程服务与管理员启停操作在各自事务内调用 `set_actor()`，因此审计与业务写入同成同败。
+
+权限边界：`ls_app` 对 `audit_log` 只有 `SELECT`，没有 `INSERT/UPDATE/DELETE/TRUNCATE`；写入由 `SECURITY DEFINER` 触发器完成。清理函数 `app.prune_audit_log(retain_days)` 同样以属主身份执行，只允许清理至少 90 天前的记录，并对应用角色单独授权，`PUBLIC` 无执行权限。管理页 `/admin` 的时间线支持按对象/动作筛选，底部按钮手动清理 90 天前记录；页面只展示元数据，不渲染正文或批注内容。
+
+演示库种子数据留下 15 条系统/课程创建事件（3 个用户、5 门课程、7 条成员关系），用于说明审计链路。`verify.py` 的 `db.audit` 检查在一次课程更新中确认操作者、主键与 `changed_columns = ['description']` 被记录，同时断言应用角色对审计表没有写权限。
+
 ## 7. 关键 SQL
 
 完整 21 条关键 SQL 及真实结果见 [sql-showcase.md](sql-showcase.md)，可执行脚本见 [../sql/showcase.sql](../sql/showcase.sql)。覆盖：
@@ -486,33 +501,37 @@ mock 只覆盖固定问法，Q18–Q30 的换问法、聚合与排名问题会�
 
 数据库层目前采用“只读角色 + `security_barrier` 视图”，而不是在 `app` 基表上启用 RLS。对比实验表明两者能返回同一行集合，计划形状也符合预期；但 RLS 需要为每张表维护策略、处理表属主绕过，并让所有查询路径都承担策略子查询。视图方案把可见性规则集中在一处，Text2SQL 只需暴露视图，个人单机场景的可维护性更高。RLS 的实现与实验保留在 `rls_experiment` 服务中，作为答辩材料和未来多租户部署的参考，不在演示库启用。
 
+### 9.4 审计的可见性与保留
+
+审计的目标是“证明谁改了什么结构”，而不是复制业务数据。因此 `audit_log` 只存主键与列名，不存值；`password_hash` 连列名都不记录；消息、批注、复习内容表不参与审计。管理员可以查看时间线与聚合统计，但看不到任何正文。应用角色对审计表只读，唯一的写路径是 `SECURITY DEFINER` 触发器；清理必须通过至少保留 90 天的受控函数，无法用普通 DML 抹掉近期记录。
+
 ## 10. 测试与验收
 
 ### 10.1 自动化测试
 
 ```text
 155 unit tests
-113 integration tests
-268 total, all passed
+119 integration tests
+274 total, all passed
 ```
 
 - 单元：密码哈希/校验、CSRF、JSON/Markdown/裸文本与三种平台原生导出解析、字段校验、去重分类、Text2SQL AST 守卫（嵌套 DML、表函数、锁、字面量误伤）、EXPLAIN 预检、评测集加载/结果规范化/指标计算、RRF 融合、向量字面量/维度校验、整理建议的模式切换/标签清洗/摘要截断/Prompt 结构、mock 规则、MCP JSON-RPC 协议/工具过滤/输出格式、CLI 文档改写与输出、RLS 执行计划摘要、PWA 资产、MV3 扩展契约、引导/撤销/错误页/静态缓存与性能预算。
-- 集成：schema 约束与删除行为、权限边界、导入预览/确认/幂等/损坏文件、收件箱批量归类、检索与全局搜索、令牌搜索 API 的可见范围与管理边界、令牌作用域与 MCP 端点（会话详情、到期复习、批注写入及 viewer 越权）、pgvector 可见范围与混合排名、批注复习间隔与事件流水、新标签与摘要的创建/更新/清空及 viewer 越权、知识先修图的防环/闭包/级联与视图过滤、RLS 三方式行集合一致与实验对象回滚、统计、管理员、采集令牌与 Bearer 入库、Text2SQL 只读/越权/审计与评测编排。
+- 集成：schema 约束与删除行为、权限边界、导入预览/确认/幂等/损坏文件、收件箱批量归类、检索与全局搜索、令牌搜索 API 的可见范围与管理边界、令牌作用域与 MCP 端点（会话详情、到期复习、批注写入及 viewer 越权）、pgvector 可见范围与混合排名、批注复习间隔与事件流水、新标签与摘要的创建/更新/清空及 viewer 越权、知识先修图的防环/闭包/级联与视图过滤、RLS 三方式行集合一致与实验对象回滚、审计触发器/只读边界/保留清理与内容表不审计、统计、管理员、采集令牌与 Bearer 入库、Text2SQL 只读/越权/审计与评测编排。
 
 集成测试只连接以 `_test` 结尾的数据库，每个用例前 `TRUNCATE app.users RESTART IDENTITY CASCADE`。测试脚手架使用管理员连接执行 TRUNCATE，因为应用角色 `ls_app` 被刻意设计为没有 TRUNCATE 权限。
 
 ### 10.2 端到端验收
 
-`scripts/verify.py` 在演示库上执行 40 项检查，所有写操作放在外层事务中，最后主动回滚：
+`scripts/verify.py` 在演示库上执行 41 项检查，所有写操作放在外层事务中，最后主动回滚：
 
 ```text
-结果：40/40 PASS，0 FAIL，耗时约 2–4 秒
+结果：41/41 PASS，0 FAIL，耗时约 1–4 秒
 报告：data/verification/report.json
 ```
 
 检查项包括：
 
-- 15 张表、15 个视图、主外键/唯一/检查约束、索引与 6 个触发器；标签唯一索引与数据一致性
+- 16 张表、15 个视图、主外键/唯一/检查约束、索引与 9 个触发器；标签唯一索引与数据一致性
 - 演示数据规模、密码哈希、角色边界
 - 重复导入 0 新增 / 84 跳过、损坏文件拒绝、ChatGPT/Qoder/DeepSeek 原生导出适配
 - 关键词检索、课程/标签筛选、上下文与批注内联、全局搜索隔离、pgvector 混合检索与管理员 0 结果
@@ -523,12 +542,13 @@ mock 只覆盖固定问法，Q18–Q30 的换问法、聚合与排名问题会�
 - 知识先修图：32 条边/6 组图、最短路径闭包、成环拒绝、增删后闭包一致
 - 采集令牌哈希存储、作用域、Bearer 认证、限流与幂等入库
 - RLS / 视图 / 应用层 WHERE 行集合一致、GUC 未设置返回 0 行、实验对象回滚
+- 审计：课程更新记录操作者/主键/变更列名，应用角色对审计表无写权限
 - Text2SQL mock 查询、用户过滤、AST 守卫、EXPLAIN 预检拒绝高成本查询、30 题金标准评测（准确率 / 合法率 / 越权拦截）、恶意 SQL 审计、只读角色
 - 事务回滚后计数不变、`ls_app` 无 DDL 权限
 
 ### 10.3 UI 验证
 
-Playwright 脚本登录 alice / bob / admin，生成桌面 31 张（含扩展弹窗）与移动端 10 张截图，检查控制台错误与 390px 横向溢出；bob 的 403 页面是预期行为，脚本单独放行。知识先修图另用浏览器在 1440px 与 390px 宽度手工截图，确认 6 张课程卡片无横向溢出、控制台无错误。R1 另在第二个实例上串联本地嵌入桩：无 Key 时确认“词法检索”徽标与关键词高亮，启用后确认覆盖率、补齐按钮、“混合检索”徽标和 5 条“语义相近”结果，测试结束清除桩向量并恢复演示库。R6 同样在独立实例上验证：无 Key 时按钮不渲染；配置本地 LLM 桩后点击建议，摘要与新标签填入表单，保存后页面出现“总结”批注与新标签，控制台无错误；测试结束重新播种演示库。`scripts/extension_smoke.mjs` 另用真实浏览器验证扩展提取、按钮文字清理、预览、Bearer 鉴权与发送体结构。另外用 Performance API 验证首屏 JS 8KB、请求数 2、移动端 LCP 268ms，并检查 Service Worker 缓存版本与静态资源版本参数。
+Playwright 脚本登录 alice / bob / admin，生成桌面 32 张（含扩展弹窗与审计页）与移动端 10 张截图，检查控制台错误与 390px 横向溢出；bob 的 403 页面是预期行为，脚本单独放行。知识先修图另用浏览器在 1440px 与 390px 宽度手工截图，确认 6 张课程卡片无横向溢出、控制台无错误。R1 另在第二个实例上串联本地嵌入桩：无 Key 时确认“词法检索”徽标与关键词高亮，启用后确认覆盖率、补齐按钮、“混合检索”徽标和 5 条“语义相近”结果，测试结束清除桩向量并恢复演示库。R6 同样在独立实例上验证：无 Key 时按钮不渲染；配置本地 LLM 桩后点击建议，摘要与新标签填入表单，保存后页面出现“总结”批注与新标签，控制台无错误；测试结束重新播种演示库。`scripts/extension_smoke.mjs` 另用真实浏览器验证扩展提取、按钮文字清理、预览、Bearer 鉴权与发送体结构。另外用 Performance API 验证首屏 JS 8KB、请求数 2、移动端 LCP 268ms，并检查 Service Worker 缓存版本与静态资源版本参数。
 
 截图与走查过程中发现并修复了三个问题：
 
@@ -601,7 +621,7 @@ node scripts/screenshots.mjs
 | 文件 | 说明 |
 | --- | --- |
 | `sql/schema.sql` | 12 张基线表、约束、索引、触发器 |
-| `sql/migrations/` | 增量迁移：复习事件流水、批注事件 ID、采集令牌、消息向量、标签先修边、令牌作用域 |
+| `sql/migrations/` | 增量迁移：复习事件流水、批注事件 ID、采集令牌、消息向量、标签先修边、令牌作用域、审计历史 |
 | `sql/views.sql` | 15 个 t2s 权限视图 |
 | `sql/roles.sql` | `ls_app` / `t2s_reader` 最小权限 |
 | `sql/showcase.sql` | 21 条关键 SQL |
@@ -613,10 +633,11 @@ node scripts/screenshots.mjs
 | `app/mcp_server.py` | MCP stdio JSON-RPC 服务与四个工具 |
 | `app/routers/mcp.py` | 令牌作用域保护的 MCP 查询与批注端点 |
 | `app/services/rls_experiment.py` | RLS / 视图 / 应用层 WHERE 隔离对比实验 |
+| `app/audit.py` | 事务内操作者 GUC，供审计触发器读取 |
 | `app/services/text2sql_service.py` | 生成、守卫、只读执行、审计 |
 | `app/permissions.py` | 课程角色与会话可见性 |
 | `extension/` | Chrome MV3 扩展、隐私说明与回退指引 |
-| `scripts/verify.py` | 40 项端到端验收 |
+| `scripts/verify.py` | 41 项端到端验收 |
 | `scripts/rls_experiment.py` | 隔离对比实验 CLI 与 JSON 报告 |
 | `scripts/extension_smoke.mjs` | 扩展提取与发送契约冒烟 |
 | `docs/design.md` | 数据库设计详解 |

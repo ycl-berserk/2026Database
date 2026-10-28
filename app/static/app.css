@@ -337,6 +337,14 @@ mark { background: var(--amber-soft); color: inherit; padding: 0 1px; border-rad
   border-bottom: 1px dashed var(--line);
 }
 .panel-head h2 { display: flex; align-items: center; gap: 8px; }
+.panel-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
 .two-col { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 18px; align-items: stretch; }
 
 /* ---------- stats ---------- */

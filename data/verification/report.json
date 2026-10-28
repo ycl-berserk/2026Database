@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-10-28T06:39:52+00:00",
+  "generated_at": "2026-10-28T07:02:29+00:00",
   "database": "learning_space",
   "summary": {
-    "total": 40,
-    "passed": 40,
+    "total": 41,
+    "passed": 41,
     "failed": 0,
-    "duration_ms": 966
+    "duration_ms": 1074
   },
   "counts": {
     "users": 3,
@@ -22,21 +22,22 @@
     "import_batches": 5,
     "text2sql_log": 0,
     "api_tokens": 0,
-    "tag_edges": 32
+    "tag_edges": 32,
+    "audit_log": 15
   },
   "checks": [
     {
       "key": "schema.tables",
-      "label": "Schema：15 张业务表与 15 个 t2s 视图",
+      "label": "Schema：16 张表与 15 个 t2s 视图",
       "status": "PASS",
-      "detail": "15 张表、15 个权限视图",
-      "elapsed_ms": 2
+      "detail": "16 张表（15 业务 + 1 审计）、15 个权限视图",
+      "elapsed_ms": 3
     },
     {
       "key": "schema.constraints",
       "label": "Schema：主外键、唯一/检查约束、索引与触发器",
       "status": "PASS",
-      "detail": "唯一键、CHECK、部分唯一索引与 6 个触发器齐全",
+      "detail": "唯一键、CHECK、部分唯一索引与 9 个触发器齐全",
       "elapsed_ms": 2
     },
     {
@@ -44,35 +45,35 @@
       "label": "Schema：索引与数据一致性（排序规则变更防护）",
       "status": "PASS",
       "detail": "59 个标签均可通过 tags_owner_name_unique 命中",
-      "elapsed_ms": 17
+      "elapsed_ms": 19
     },
     {
       "key": "data.counts",
       "label": "演示数据规模与来源标注",
       "status": "PASS",
       "detail": "3 用户 / 5 课程 / 30 会话 / 420 消息 / 66 批注 / 39 复习项 / 32 先修关系",
-      "elapsed_ms": 3
+      "elapsed_ms": 4
     },
     {
       "key": "data.import_batches",
       "label": "导入批次：状态与 payload 清理",
       "status": "PASS",
       "detail": "5 个批次均已导入，payload 已清理",
-      "elapsed_ms": 0
+      "elapsed_ms": 1
     },
     {
       "key": "data.inbox",
       "label": "演示数据：收件箱未归类会话",
       "status": "PASS",
       "detail": "收件箱保留 3 个未归类会话，供批量整理演示",
-      "elapsed_ms": 17
+      "elapsed_ms": 18
     },
     {
       "key": "auth.passwords",
       "label": "认证：演示账号密码哈希与校验",
       "status": "PASS",
       "detail": "PBKDF2 哈希校验通过，错误密码被拒绝",
-      "elapsed_ms": 360
+      "elapsed_ms": 394
     },
     {
       "key": "auth.roles",
@@ -107,7 +108,7 @@
       "label": "导入：确认入库幂等（ON CONFLICT 去重）",
       "status": "PASS",
       "detail": "重复确认新增 0 会话 / 0 消息，跳过 84 条",
-      "elapsed_ms": 19
+      "elapsed_ms": 21
     },
     {
       "key": "import.broken",
@@ -121,7 +122,7 @@
       "label": "导入：平台导出适配器（ChatGPT / Qoder / DeepSeek）",
       "status": "PASS",
       "detail": "ChatGPT mapping、Qoder sessions、DeepSeek Markdown 均映射为统一格式",
-      "elapsed_ms": 2
+      "elapsed_ms": 1
     },
     {
       "key": "search.keyword",
@@ -135,21 +136,21 @@
       "label": "检索：课程 / 标签筛选",
       "status": "PASS",
       "detail": "课程筛选 6 个会话，标签筛选正常",
-      "elapsed_ms": 2
+      "elapsed_ms": 3
     },
     {
       "key": "search.hybrid",
       "label": "搜索：pgvector 混合检索与范围隔离",
       "status": "PASS",
       "detail": "pgvector + HNSW 生效，RRF 命中向量会话，管理员 0 结果",
-      "elapsed_ms": 10
+      "elapsed_ms": 12
     },
     {
       "key": "search.context",
       "label": "阅读：会话上下文、发送者统计与批注内联",
       "status": "PASS",
       "detail": "14 条消息按顺序展示，批注内联返回",
-      "elapsed_ms": 4
+      "elapsed_ms": 5
     },
     {
       "key": "stats.overview",
@@ -177,7 +178,7 @@
       "label": "批注与复习：创建、入队、间隔翻倍",
       "status": "PASS",
       "detail": "批注 → 复习项 → 间隔 2/4 天递增，事件幂等落库",
-      "elapsed_ms": 10
+      "elapsed_ms": 12
     },
     {
       "key": "review.activity",
@@ -191,7 +192,7 @@
       "label": "Text2SQL：mock 模式查询与结果",
       "status": "PASS",
       "detail": "自然语言→SQL→执行返回 28 条复习项（mock 模式）",
-      "elapsed_ms": 27
+      "elapsed_ms": 28
     },
     {
       "key": "t2s.scope",
@@ -205,28 +206,28 @@
       "label": "Text2SQL：单语句 / 只读 / 白名单守卫",
       "status": "PASS",
       "detail": "10 条危险 SQL 全部被拒绝，正常字面量未被误伤",
-      "elapsed_ms": 2
+      "elapsed_ms": 1
     },
     {
       "key": "t2s.preflight",
       "label": "Text2SQL：EXPLAIN 预检拦截高成本查询",
       "status": "PASS",
       "detail": "正常查询代价 24.31，高成本笛卡尔积被拒绝",
-      "elapsed_ms": 4
+      "elapsed_ms": 5
     },
     {
       "key": "t2s.eval",
       "label": "Text2SQL：金标准评测集与越权拦截",
       "status": "PASS",
       "detail": "30 题金标准全部合法，mock 准确率 56.7%，越权拦截 12/12",
-      "elapsed_ms": 274
+      "elapsed_ms": 327
     },
     {
       "key": "t2s.audit",
       "label": "Text2SQL：危险 SQL 拒绝与审计日志",
       "status": "PASS",
       "detail": "危险 SQL 被拒绝并写入 rejected 审计日志",
-      "elapsed_ms": 2
+      "elapsed_ms": 3
     },
     {
       "key": "t2s.role",
@@ -240,28 +241,28 @@
       "label": "采集：粘贴解析、收录与幂等",
       "status": "PASS",
       "detail": "粘贴识别 2 条角色消息，重复收录幂等",
-      "elapsed_ms": 11
+      "elapsed_ms": 14
     },
     {
       "key": "token.ingest",
       "label": "采集令牌：哈希存储、作用域、Bearer 认证、限流与幂等入库",
       "status": "PASS",
       "detail": "哈希存储、作用域、课程映射、重复幂等、60 次/分钟限流与撤销均生效",
-      "elapsed_ms": 20
+      "elapsed_ms": 24
     },
     {
       "key": "search.global",
       "label": "搜索：全局检索与课程范围隔离",
       "status": "PASS",
       "detail": "全局搜索命中本人会话，未泄露他人数据",
-      "elapsed_ms": 10
+      "elapsed_ms": 12
     },
     {
       "key": "inbox.organize",
       "label": "收件箱：批量归入课程",
       "status": "PASS",
       "detail": "未归类会话批量归入 DB 课程",
-      "elapsed_ms": 1
+      "elapsed_ms": 2
     },
     {
       "key": "ai.organize",
@@ -282,21 +283,28 @@
       "label": "事务：异常回滚后计数不变",
       "status": "PASS",
       "detail": "强制回滚后标签数保持 61",
-      "elapsed_ms": 1
+      "elapsed_ms": 2
     },
     {
       "key": "db.app_role",
       "label": "数据库：应用角色最小权限（无 DDL）",
       "status": "PASS",
       "detail": "应用角色 ls_app 无 DDL 权限",
-      "elapsed_ms": 0
+      "elapsed_ms": 1
     },
     {
       "key": "db.rls",
       "label": "数据库：RLS 与 security_barrier 视图对比",
       "status": "PASS",
       "detail": "alice/bob 在视图、应用层 WHERE、RLS 下均得到 30/12 行，实验对象已回滚",
-      "elapsed_ms": 39
+      "elapsed_ms": 34
+    },
+    {
+      "key": "db.audit",
+      "label": "数据库：审计触发器与只读边界",
+      "status": "PASS",
+      "detail": "课程更新记录操作者、主键与变更列名；应用角色对审计表只读",
+      "elapsed_ms": 4
     },
     {
       "key": "tx.outer_rollback",

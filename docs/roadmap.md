@@ -1,6 +1,6 @@
 # v2 改进路线图
 
-> 状态：Phase 1、Phase 2、Phase 3、Phase 4 已完成（T1、T2、T5、R1、R6、K2、A1、A2、D1、D2、D3）。当前基线为 307 项测试（183 单元 + 124 集成）与 42 项端到端验收，本路线图的任何后续项都不得破坏这些基线。
+> 状态：Phase 1、Phase 2、Phase 3、Phase 4 已完成（T1、T2、T5、R1、R6、K2、A1、A2、D1、D2、D3）。当前基线为 308 项测试（183 单元 + 125 集成）与 42 项端到端验收，本路线图的任何后续项都不得破坏这些基线。
 >
 > 面向对象：课程小组全体成员。每项都有编号，可据此开 Issue、分任务、写周报。
 
@@ -116,7 +116,7 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 | D5 | PG19 Beta：SQL/PGQ 属性图（知识点先修关系）、`ON CONFLICT DO SELECT` | 实验 | M | 待办 | 独立 compose profile，Beta 不稳定 |
 | D6 | Apache AGE 图查询替代 | 实验 | M | 待办 | 扩展需编译 |
 | D7 | messages 按月分区 | — | M | 不推荐 | 420 行数据下演示价值低于维护成本 |
-| D8 | 物化视图 + 定时刷新统计 | 答辩 | S | 待办 | 与实时统计做性能对比 |
+| D8 | 物化视图 + 定时刷新统计 | 答辩 | S | 完成 | `app/services/stats_experiment.py` + `scripts/stats_experiment.py`：回滚事务内创建 `mv_course_stats`（唯一索引，可改 `CONCURRENTLY`），对比实时聚合与物化的中位耗时、计划形状，插入临时数据验证陈旧与刷新一致性；CI 执行并上传 JSON |
 
 ### 6. AI 接口
 
@@ -130,7 +130,7 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 | # | 事项 | 价值 | 量 | 状态 | 说明 |
 | --- | --- | --- | --- | --- | --- |
 | E1 | Dockerfile + compose 增加 app 服务（多阶段、非 root） | 答辩 | S/M | 完成 | 多阶段 `python:3.13-slim` 构建，运行用户 `app`（uid 999）；入口脚本按 `INIT_DB` / `SEED_DEMO` 自动迁移与空库播种，等 db healthy 后启动；`docker compose up -d --build` 一条命令起全栈 |
-| E2 | CI：GitHub Actions + Postgres service + pytest + verify | 答辩 | S/M | 完成 | `.github/workflows/ci.yml`：`pgvector/pgvector:pg16` 服务、Python 3.13 缓存依赖、初始化/播种、307 项测试 + 42 项验收，上传 JUnit 与验收 JSON；离线模式与 concurrency 取消旧任务 |
+| E2 | CI：GitHub Actions + Postgres service + pytest + verify | 答辩 | S/M | 完成 | `.github/workflows/ci.yml`：`pgvector/pgvector:pg16` 服务、Python 3.13 缓存依赖、初始化/播种、308 项测试 + 42 项验收，上传 JUnit 与验收 JSON；离线模式与 concurrency 取消旧任务 |
 | E3 | uv + lockfile、Ruff、pyright、pre-commit | 答辩 | S | 完成 | `pyproject.toml` 声明运行/开发依赖，`uv.lock` 锁定完整依赖图（当前 57 个包）；Ruff `E/F/I/UP/B/SIM/RUF/C4` 全绿，pyright basic 0 error；pre-commit 校验 YAML/TOML、Ruff 与 pyright；CI 用 `uv sync --frozen` 并检查锁文件 |
 | E4 | Hypothesis 属性测试（解析器 / SQL 守卫） | 答辩 | S/M | 完成 | `tests/unit/test_properties.py` 随机生成 JSON/字节/文本与 SQL，验证解析器不抛异常、导入结果不变量、守卫拒绝集合与幂等、字面量掩码与行数上限；新增 28 项测试，并修复随机化暴露的非字符串字段、混合时间戳、非字典节点/作者与词法错误泄漏 |
 | E5 | Playwright E2E 进 CI | 答辩 | M | 完成 | `playwright.config.mjs` + `tests/e2e/app.spec.mjs`：9 项带断言的用例（匿名跳转、学生/管理员/只读权限、会话与全局搜索、粘贴预览、Text2SQL、手机端溢出与 manifest），收集控制台错误、失败保留 trace；CI 安装 Chromium、启动 uvicorn 并上传 JUnit |
@@ -192,9 +192,9 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 
 **Phase 4 进度**：K2 知识先修图、A1 只读 MCP、A2 CLI、D1 迁移体系、D2 审计历史、D3 数据库观测均已完成，Phase 4 收尾。
 
-**Phase 5 进度**：E1 容器化、E2 GitHub Actions CI、E3 工程工具链、E4 属性测试、E5 Playwright E2E 已完成；下一步 E9 游标分页。
+**Phase 5 进度**：E1 容器化、E2 GitHub Actions CI、E3 工程工具链、E4 属性测试、E5 Playwright E2E、D8 物化视图统计实验已完成；下一步 E9 游标分页。
 
-**Phase 4 进度**：K2 知识先修图、A1 MCP 工具接口、A2 命令行、D1 RLS 对比实验、D2 审计历史与 D3 数据库观测页已完成（16 张表、15 个视图、9 个触发器；307 项测试、42 项验收）。Phase 4 收尾。
+**Phase 4 进度**：K2 知识先修图、A1 MCP 工具接口、A2 命令行、D1 RLS 对比实验、D2 审计历史与 D3 数据库观测页已完成（16 张表、15 个视图、9 个触发器；308 项测试、42 项验收）。Phase 4 收尾。
 
 每个阶段的统一验收：
 

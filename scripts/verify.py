@@ -25,7 +25,7 @@ from psycopg.rows import dict_row
 
 from app.auth import verify_password
 from app.config import settings
-from app.errors import AuthRequired, NotFoundError, PermissionDenied, RateLimited
+from app.errors import AuthRequired, NotFoundError, PermissionDenied, RateLimited, ValidationError
 from app.permissions import get_course_role, require_conversation_edit
 from app.services import (
     annotation_service,
@@ -36,6 +36,7 @@ from app.services import (
     review_service,
     search_service,
     stats_service,
+    tag_graph_service,
     text2sql_eval_service,
     text2sql_service,
     token_service,
@@ -106,7 +107,7 @@ def _snapshot(conn) -> dict[str, int]:
             "users", "courses", "course_members", "sources", "conversations",
             "messages", "tags", "conversation_tags", "annotations",
             "review_items", "review_logs", "import_batches", "text2sql_log",
-            "api_tokens",
+            "api_tokens", "tag_edges",
         )
     }
 
@@ -129,10 +130,10 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             conn,
             "SELECT count(*) AS n FROM pg_views WHERE schemaname = 't2s'",
         )
-        _ok(tables == 14, f"app 表数量应为 14，实际 {tables}")
-        _ok(views == 13, f"t2s 视图数量应为 13，实际 {views}")
-        return f"14 张表、13 个权限视图"
-    report.run("schema.tables", "Schema：14 张业务表与 13 个 t2s 视图", schema_tables)
+        _ok(tables == 15, f"app 表数量应为 15，实际 {tables}")
+        _ok(views == 15, f"t2s 视图数量应为 15，实际 {views}")
+        return f"15 张表、15 个权限视图"
+    report.run("schema.tables", "Schema：15 张业务表与 15 个 t2s 视图", schema_tables)
 
     def schema_constraints():
         constraints = {
@@ -154,6 +155,8 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             "api_tokens_hash_unique",
             "api_tokens_name_check",
             "messages_sender_check",
+            "tag_edges_pair_unique",
+            "tag_edges_no_self",
         }
         missing = required - constraints
         _ok(not missing, f"缺少约束：{sorted(missing)}")
@@ -170,6 +173,7 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             "conversations_title_trgm",
             "review_items_queue_idx",
             "api_tokens_user_idx",
+            "tag_edges_to_idx",
         }
         missing_idx = required_indexes - indexes
         _ok(not missing_idx, f"缺少索引：{sorted(missing_idx)}")
@@ -185,10 +189,11 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             "trg_annotations_access",
             "trg_review_items_access",
             "trg_annotations_updated_at",
+            "trg_tag_edges_access",
         }
         missing_trg = required_triggers - triggers
         _ok(not missing_trg, f"缺少触发器：{sorted(missing_trg)}")
-        return "唯一键、CHECK、部分唯一索引与 5 个触发器齐全"
+        return "唯一键、CHECK、部分唯一索引与 6 个触发器齐全"
     report.run("schema.constraints", "Schema：主外键、唯一/检查约束、索引与触发器", schema_constraints)
 
     def index_health():
@@ -219,12 +224,12 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
         expected = {
             "users": 3, "courses": 5, "course_members": 7, "sources": 4,
             "conversations": 30, "messages": 420, "tags": 59,
-            "annotations": 66, "review_items": 39,
+            "annotations": 66, "review_items": 39, "tag_edges": 32,
         }
         actual = {table: _count(conn, f"SELECT count(*) AS n FROM app.{table}")
                   for table in expected}
         _ok(actual == expected, f"演示数据计数不符：{actual} != {expected}")
-        return "3 用户 / 5 课程 / 30 会话 / 420 消息 / 66 批注 / 39 复习项"
+        return "3 用户 / 5 课程 / 30 会话 / 420 消息 / 66 批注 / 39 复习项 / 32 先修关系"
     report.run("data.counts", "演示数据规模与来源标注", demo_counts)
 
     def import_batches():
@@ -909,6 +914,32 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             raise AssertionError("viewer 不应能写入标签或摘要")
         return "新标签幂等创建、摘要唯一更新、viewer 越权被拒"
     report.run("ai.organize", "整理建议：标签幂等写入、摘要更新与越权拦截", ai_organize_apply)
+
+    def tag_prerequisites():
+        data = tag_graph_service.graph(conn, alice["id"])
+        _ok(data["edge_count"] == 32, f"先修关系应为 32 条，实际 {data['edge_count']}")
+        _ok(len(data["components"]) == 6, f"先修图应分为 6 个课程分组，实际 {len(data['components'])}")
+        tags = {tag["name"]: tag["id"] for tag in data["tags"]}
+        detail = tag_graph_service.tag_detail(conn, alice["id"], tags["Dijkstra"])
+        pairs = [(item["name"], item["depth"]) for item in detail["prerequisites"]]
+        _ok(pairs[:2] == [("最短路径", 1), ("图", 2)], f"Dijkstra 递归先修链异常：{pairs}")
+
+        try:
+            tag_graph_service.add_edge(conn, alice["id"], tags["Dijkstra"], tags["图"])
+        except ValidationError:
+            pass
+        else:
+            raise AssertionError("形成环的先修关系未被拒绝")
+
+        edge_id = tag_graph_service.add_edge(conn, alice["id"], tags["BFS"], tags["Dijkstra"])
+        detail = tag_graph_service.tag_detail(conn, alice["id"], tags["Dijkstra"])
+        _ok(
+            ("BFS", 1) in [(item["name"], item["depth"]) for item in detail["prerequisites"]],
+            "新增先修关系后递归闭包未包含 BFS",
+        )
+        tag_graph_service.delete_edge(conn, alice["id"], edge_id)
+        return "6 个课程分组、32 条边；递归闭包距离正确，环被拒绝"
+    report.run("graph.prerequisites", "知识先修图：递归闭包、分组与环检测", tag_prerequisites)
 
     def rollback_savepoint():
         before = _count(conn, "SELECT count(*) AS n FROM app.tags")

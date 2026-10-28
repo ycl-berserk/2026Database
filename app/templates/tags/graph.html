@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block title %}知识先修图{% endblock %}
+{% block page_title %}知识先修图{% endblock %}
+{% block page_subtitle %}用有向无环图记录“先学什么，再学什么”；箭头由先修标签指向后继标签{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h2>先修关系</h2>
+    <span class="muted">{{ tag_count }} 个标签 · {{ edge_count }} 条先修关系</span>
+  </div>
+
+  {% if tag_count < 2 %}
+    <p class="empty">至少需要两个标签才能建立先修关系。<a class="link" href="/tags">先去创建标签</a></p>
+  {% else %}
+    <form method="post" action="/tags/graph/edges" class="graph-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="field">
+        <span>先修标签</span>
+        <select name="from_tag_id" required>
+          <option value="">选择先修</option>
+          {% for tag in tags %}
+            <option value="{{ tag.id }}">{{ tag.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <span class="graph-arrow" aria-hidden="true">→</span>
+      <label class="field">
+        <span>后继标签</span>
+        <select name="to_tag_id" required>
+          <option value="">选择后继</option>
+          {% for tag in tags %}
+            <option value="{{ tag.id }}" {% if selected and selected.tag.id == tag.id %}selected{% endif %}>{{ tag.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button class="btn" type="submit">添加先修关系</button>
+    </form>
+    <p class="muted graph-hint">系统会检查两个标签属于同一用户，并拒绝任何形成环的关系。</p>
+
+    {% if components %}
+      <div class="graph-grid">
+        {% for component in components %}
+          {% set component_index = loop.index %}
+          <article class="graph-card">
+            <div class="graph-card-head">
+              <h3>{{ component.label }}</h3>
+              <span class="muted">{{ component.tag_count }} 标签 · {{ component.edge_count }} 条</span>
+            </div>
+            <div class="graph-scroll">
+              <svg class="tag-graph" viewBox="0 0 {{ component.width }} {{ component.height }}"
+                   width="{{ component.width }}" height="{{ component.height }}"
+                   role="img" aria-label="{{ component.label }}知识先修图，共 {{ component.tag_count }} 个标签">
+                <defs>
+                  <marker id="arrow-{{ component_index }}" viewBox="0 0 10 10" refX="9" refY="5"
+                          markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                    <path d="M 0 0 L 10 5 L 0 10 z" class="graph-arrow-head"></path>
+                  </marker>
+                </defs>
+                {% for edge in component.paths %}
+                  <path class="graph-edge" d="{{ edge.path }}"
+                        marker-end="url(#arrow-{{ component_index }})">
+                    <title>{{ edge.from_name }} → {{ edge.to_name }}</title>
+                  </path>
+                {% endfor %}
+                {% for node in component.nodes %}
+                  <a href="/tags/graph?tag_id={{ node.id }}" class="graph-node-link"
+                     aria-label="查看 {{ node.name }} 的先修关系">
+                    <g class="graph-node{% if node.selected %} selected{% endif %}"
+                       transform="translate({{ node.x }}, {{ node.y }})">
+                      <rect width="{{ node.width }}" height="{{ node.height }}" rx="8"></rect>
+                      <circle cx="14" cy="21" r="4" fill="{{ node.color or '#2f5d4e' }}"></circle>
+                      <text x="26" y="26">{{ node.name[:9] }}{% if node.name|length > 9 %}…{% endif %}</text>
+                      <title>{{ node.name }}</title>
+                    </g>
+                  </a>
+                {% endfor %}
+              </svg>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-block">
+        <p>还没有先修关系。选择两个标签，先建立第一组“先学 → 再学”。</p>
+        <p class="muted">例如：索引 → B+树，事务 → 隔离级别。</p>
+      </div>
+    {% endif %}
+
+    {% if isolated %}
+      <div class="graph-isolated">
+        <h3>待连接标签</h3>
+        <p class="muted">这些标签还没有先修关系，点击可以在下方查看详情并添加。</p>
+        <div class="chip-row">
+          {% for tag in isolated %}
+            <a class="tag-pill" href="/tags/graph?tag_id={{ tag.id }}">
+              <span class="tag-dot" style="background: {{ tag.color or '#2f5d4e' }}"></span>
+              {{ tag.name }}
+            </a>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+  {% endif %}
+</section>
+
+{% if selected %}
+  <section class="panel">
+    <div class="panel-head">
+      <h2>
+        <span class="tag-dot" style="background: {{ selected.tag.color or '#2f5d4e' }}"></span>
+        {{ selected.tag.name }}
+      </h2>
+      <span class="muted">{{ kind_label(selected.tag.kind) }}</span>
+    </div>
+    <div class="detail-grid">
+      <div>
+        <h3>直接先修</h3>
+        {% if selected.prerequisites %}
+          <ul class="edge-list">
+            {% for item in selected.prerequisites if item.depth == 1 %}
+              <li>
+                <a href="/tags/graph?tag_id={{ item.id }}">{{ item.name }}</a>
+                <span class="chip">先修</span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="muted">没有更基础的标签，可以从这里开始。</p>
+        {% endif %}
+
+        <h3>全部先修（递归）</h3>
+        {% if selected.prerequisites %}
+          <ul class="edge-list">
+            {% for item in selected.prerequisites %}
+              <li>
+                <a href="/tags/graph?tag_id={{ item.id }}">{{ item.name }}</a>
+                <span class="muted">距离 {{ item.depth }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="muted">暂无先修标签。</p>
+        {% endif %}
+      </div>
+      <div>
+        <h3>掌握后可以接着学</h3>
+        {% if selected.unlocks %}
+          <ul class="edge-list">
+            {% for item in selected.unlocks %}
+              <li>
+                <a href="/tags/graph?tag_id={{ item.id }}">{{ item.name }}</a>
+                <span class="chip">后继</span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="muted">暂无后继标签。</p>
+        {% endif %}
+
+        <h3>相关会话</h3>
+        {% if selected.conversations %}
+          <ul class="edge-list">
+            {% for item in selected.conversations %}
+              <li>
+                <a href="/conversations/{{ item.id }}">{{ item.title }}</a>
+                <span class="muted">{{ item.course_name or '未归类' }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="muted">这个标签还没有关联会话。</p>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+{% endif %}
+
+{% if edges %}
+  <section class="panel">
+    <div class="panel-head">
+      <h2>全部先修关系</h2>
+      <span class="muted">{{ edges | length }} 条</span>
+    </div>
+    <div class="table-wrap">
+      <table class="table table-stack">
+        <thead>
+          <tr><th>先修</th><th>后继</th><th class="col-actions">操作</th></tr>
+        </thead>
+        <tbody>
+          {% for edge in edges %}
+            <tr>
+              <td data-label="先修"><a href="/tags/graph?tag_id={{ edge.from_tag_id }}">{{ edge.from_name }}</a></td>
+              <td data-label="后继"><a href="/tags/graph?tag_id={{ edge.to_tag_id }}">{{ edge.to_name }}</a></td>
+              <td class="col-actions" data-label="操作">
+                <form method="post" action="/tags/graph/edges/{{ edge.id }}/delete" class="inline-form"
+                      data-undo-submit="先修关系「{{ edge.from_name }} → {{ edge.to_name }}」已删除">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <button class="btn btn-danger btn-sm" type="submit">删除</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endif %}
+{% endblock %}

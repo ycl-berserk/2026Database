@@ -50,6 +50,59 @@ SAMPLE_FILES = [
     "chatgpt_ds.json",
 ]
 
+DEMO_TAG_EDGES = [
+    ("SQL", "索引"),
+    ("索引", "B+树"),
+    ("索引", "查询执行"),
+    ("事务", "隔离级别"),
+    ("隔离级别", "并发"),
+    ("并发", "锁"),
+    ("范式", "函数依赖"),
+    ("视图", "权限"),
+    ("进程", "线程"),
+    ("调度", "FCFS"),
+    ("同步", "死锁"),
+    ("虚拟内存", "分页"),
+    ("分页", "页面置换"),
+    ("页面置换", "LRU"),
+    ("文件系统", "inode"),
+    ("TCP", "握手"),
+    ("TCP", "拥塞控制"),
+    ("IP", "子网"),
+    ("HTTPS", "TLS"),
+    ("过拟合", "正则化"),
+    ("评估", "交叉验证"),
+    ("梯度下降", "优化"),
+    ("逻辑回归", "分类"),
+    ("决策树", "集成学习"),
+    ("评价指标", "不平衡"),
+    ("二叉树", "遍历"),
+    ("二叉树", "平衡树"),
+    ("平衡树", "AVL"),
+    ("图", "BFS"),
+    ("图", "最短路径"),
+    ("最短路径", "Dijkstra"),
+    ("排序", "分治"),
+]
+
+
+def seed_tag_edges(conn, user_id: int) -> int:
+    names = {name for pair in DEMO_TAG_EDGES for name in pair}
+    rows = conn.execute(
+        "SELECT id, name FROM app.tags WHERE owner_id = %s AND name = ANY(%s)",
+        (user_id, sorted(names)),
+    ).fetchall()
+    tag_ids = {row["name"]: row["id"] for row in rows}
+    missing = names - set(tag_ids)
+    if missing:
+        raise SystemExit(f"标签缺失，无法建立先修图: {sorted(missing)}")
+    for from_name, to_name in DEMO_TAG_EDGES:
+        conn.execute(
+            "INSERT INTO app.tag_edges (from_tag_id, to_tag_id) VALUES (%s, %s)",
+            (tag_ids[from_name], tag_ids[to_name]),
+        )
+    return len(DEMO_TAG_EDGES)
+
 
 def seed_annotations(conn, user_ids: dict[str, int]) -> tuple[int, int]:
     rows = conn.execute(
@@ -293,6 +346,9 @@ def main() -> int:
 
         annotation_count, review_count = seed_annotations(conn, user_ids)
         print(f"seeded annotations: {annotation_count}, review items: {review_count}")
+
+        edge_count = seed_tag_edges(conn, user_ids["alice"])
+        print(f"seeded tag prerequisites: {edge_count}")
 
         unclassified = conn.execute(
             """

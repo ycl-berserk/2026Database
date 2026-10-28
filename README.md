@@ -14,6 +14,7 @@
 | 快速采集 | PWA Share Target、裸文本粘贴、ChatGPT `conversations.json` / Qoder 会话 / DeepSeek Markdown 原生导出适配；采集令牌 + Bearer `POST /api/ingest`；MV3 扩展仅在点击发送时读取当前会话 |
 | 收件箱 | 未归类会话队列、批量归类到课程、分享落地页与高亮定位 |
 | 课程与标签 | 课程 CRUD、成员共享（owner / editor / viewer）、标签 CRUD、会话归类与打标签 |
+| 知识先修图 | 用 `tag_edges` 维护标签之间的先修关系（有向无环图），数据库触发器校验同属主与无环；按课程分组渲染 SVG，支持递归查询全部先修链、查看后继与相关会话 |
 | 整理建议 | 配置大模型后可一键生成“会话摘要 + 标签建议”，只填入整理表单；用户检查并点击保存后才写入数据库。新标签按用户去重，摘要复用已有“总结”批注更新而非重复插入；无 Key 时按钮隐藏，表单仍可手动填写 |
 | 检索阅读 | 全局搜索（`/` 或 `Ctrl/Cmd+K`）、课程 / 标签 / 日期 / 关键词筛选、分页、消息上下文、关键词高亮、命中片段；配置向量模型后启用 pgvector + RRF 混合检索，否则自动退回词法检索 |
 | 批注与复习 | 笔记 / 疑问 / 纠错 / 总结四类批注、解决状态、加入复习队列、间隔 1→2→4→8… 天、逾期提示、掌握/重置、近 5 周复习热力图 |
@@ -81,10 +82,10 @@ py -3.13 -m venv .venv
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（135 单元 + 96 集成，共 231 项）；集成测试需先初始化测试库
+# 全量测试（137 单元 + 101 集成，共 238 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest
 
-# 端到端验收：38 项 PASS/FAIL，写入 data/verification/report.json
+# 端到端验收：39 项 PASS/FAIL，写入 data/verification/report.json
 .venv/Scripts/python.exe scripts/verify.py --json data/verification/report.json
 
 # 为已配置向量模型的用户补齐消息向量（未配置时命令会提示并退出）
@@ -128,7 +129,7 @@ learning-space/
 │   └── static/              # CSS / JS / PWA manifest、Service Worker、离线页与图标
 ├── sql/
 │   ├── schema.sql           # 12 张基线表、约束、索引、触发器
-│   ├── views.sql            # 13 个 t2s 只读权限视图
+│   ├── views.sql            # 15 个 t2s 只读权限视图
 │   ├── roles.sql            # ls_app / t2s_reader 最小权限
 │   ├── migrations/          # 增量迁移（review_logs、api_tokens 等，记录到 meta.schema_migrations）
 │   └── showcase.sql         # 报告用关键 SQL（带注释）
@@ -139,7 +140,7 @@ learning-space/
 └── docs/                    # 报告、设计、需求、SQL 展示、桌面与移动端截图
 ```
 
-> 数据库共 14 张表：`schema.sql` 的 12 张基线表 + 迁移新增的 `review_logs`（复习事件流水）与 `api_tokens`（采集令牌，仅存 SHA-256）。
+> 数据库共 15 张表：`schema.sql` 的 12 张基线表 + 迁移新增的 `review_logs`（复习事件流水）、`api_tokens`（采集令牌，仅存 SHA-256）与 `tag_edges`（知识先修关系）。
 
 ## 数据与安全说明
 

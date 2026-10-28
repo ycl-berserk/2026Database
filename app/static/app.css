@@ -1322,6 +1322,65 @@ mark { background: #f7e3a8; color: inherit; padding: 0 1px; border-radius: 2px; 
 .ai-suggest[data-state="error"] .ai-suggest-status { color: #7d2f1f; }
 .ai-suggest-note { margin: 4px 0 0; font-size: 12px; }
 
+/* ---------- tag prerequisite graph ---------- */
+.graph-form { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.graph-form .field { min-width: 180px; flex: 1 1 180px; }
+.graph-arrow { font-size: 18px; color: var(--ink-3); padding-bottom: 8px; }
+.graph-hint { font-size: 12px; margin-top: 8px; }
+.graph-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+.graph-card {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+}
+.graph-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.graph-card-head h3 { font-size: 14px; }
+.graph-scroll {
+  max-height: 520px;
+  overflow: auto;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
+.tag-graph { display: block; max-width: none; }
+.tag-graph text { font-family: var(--font); font-size: 12px; fill: var(--ink); }
+.graph-node rect { fill: var(--paper-2); stroke: var(--line-strong); transition: stroke .12s, fill .12s; }
+.graph-node.selected rect { fill: var(--jade-soft); stroke: var(--jade); }
+.graph-node-link:hover rect { stroke: var(--jade); }
+.graph-node-link:hover { text-decoration: none; }
+.graph-edge { fill: none; stroke: var(--line-strong); stroke-width: 1.6; }
+.graph-arrow-head { fill: var(--line-strong); }
+.graph-isolated {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+.graph-isolated h3 { font-size: 14px; margin-bottom: 4px; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; }
+.detail-grid h3 { font-size: 14px; margin: 10px 0 6px; }
+.edge-list { display: grid; gap: 6px; margin-bottom: 14px; }
+.edge-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--line);
+  font-size: 13.5px;
+}
+
 /* ---------- text2sql ---------- */
 .t2s-form { display: flex; gap: 12px; align-items: flex-end; }
 .t2s-form .field { flex: 1; }

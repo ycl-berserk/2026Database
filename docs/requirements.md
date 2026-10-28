@@ -160,6 +160,21 @@
 - 摘要复用现有批注模型（`kind='summary'`），不新增表；同一用户在同一会话只保留一条总结，重复保存执行 UPDATE，清空则 DELETE，避免重复内容。
 - Prompt 明确把对话内容当作数据、要求只输出 JSON，并要求优先复用用户已有标签；这只降低提示注入风险，真正的权限边界仍在服务端与数据库。
 
+## R12 知识先修图
+
+| ID | 功能 | 输入 | 输出 / 行为 | 异常与边界 | 实现位置 | 验收 |
+| --- | --- | --- | --- | --- | --- | --- |
+| R12-F01 | 先修关系维护 | 先修标签、后继标签 | 写入 `tag_edges`，页面按课程分组重绘，成功提示并高亮后继标签 | 自环/重复边/成环/跨属主拒绝；标签不存在 404 | `routers/tags.py`、`tag_graph_service.add_edge`、`sql/migrations/005_add_tag_edges.sql` | `tests/integration/test_tag_graph.py`、`verify.graph.prerequisites` |
+| R12-F02 | 先修图浏览 | 当前用户、可选选中标签 | 6 类课程卡片 + SVG 节点/曲线；孤立标签单独列出；选中显示直接先修、递归闭包、解锁标签、关联会话 | 无标签/无先修边空态；管理员无入口 | `templates/tags/graph.html`、`tag_graph_service.graph/tag_detail` | `tests/unit/test_tag_graph_layout.py`、`tests/integration/test_tag_graph.py` |
+| R12-F03 | 递归闭包与深度 | 标签 ID | 每个先修标签的最短深度（`DISTINCT ON`），供页面与 Text2SQL 使用 | 环路不可进入（触发器保证）；未设置用户返回 0 行 | `sql/views.sql`（`v_my_tag_edges`、`v_my_tag_prerequisites`） | `test_tag_graph.py`、Text2SQL 集成测试 |
+| R12-F04 | 删除先修边 | 边 ID | 删除并回写闭包，页面 5 秒内可撤销失败状态提示 | 非本人边 404；已删除边重复操作幂等 | `tag_graph_service.delete_edge`、`routers/tags.py` | `test_tag_graph.py`、浏览器走查 |
+
+**设计要点**
+
+- 环检测放在数据库：BEFORE 触发器用递归 CTE 从 `to_tag_id` 出发判断 `from_tag_id` 是否可达，跨属主与成环都抛 `check_violation`，应用层只负责翻译提示。
+- 闭包不落表：`v_my_tag_prerequisites` 每次实时递归，避免“边变了闭包没更新”的冗余一致性问题。
+- 布局不引入图库：服务层按最长路径给节点分层，SVG 直接输出，保持零前端依赖且可截图。
+
 ## 非功能需求
 
 | 类别 | 要求 | 实现 |
@@ -169,12 +184,12 @@
 | 性能 | 列表分页、关键查询有索引、统计实时但规模可控 | 索引设计、`LIMIT/OFFSET`、部分索引、trgm、HNSW |
 | 可维护性 | 关键 SQL 可定位、无 ORM 黑盒 | `sql/` + `services/` + 本文件映射 |
 | 可演示性 | 离线可演示、模拟数据可复现 | mock Text2SQL、`make_samples.py`、`seed_demo.py` |
-| 可验收 | 自动化测试与端到端报告 | 231 个 pytest 用例 + 38 项 `verify.py` 检查 |
+| 可验收 | 自动化测试与端到端报告 | 238 个 pytest 用例 + 39 项 `verify.py` 检查 |
 
 ## 需求到验收命令的映射
 
 ```bash
-# R01–R11 的主要回归
+# R01–R12 的主要回归
 .venv/Scripts/python.exe -m pytest -q
 
 # 端到端 PASS/FAIL（含权限、导入、检索、统计、导出、Text2SQL、事务）

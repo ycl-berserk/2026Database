@@ -38,7 +38,7 @@
 
 | ID | 功能 | 输入 | 输出 / 行为 | 异常与边界 | 实现位置 | 验收 |
 | --- | --- | --- | --- | --- | --- | --- |
-| R03-F01 | 会话列表与筛选分页 | 关键词、课程、标签、日期、页码 | 每页会话、消息数、标签、命中片段、总数 | 无权限数据不可见；空结果；非法日期忽略 | `conversation_service.list_conversations` | `test_search.py` |
+| R03-F01 | 会话列表与筛选分页 | 关键词、课程、标签、日期、游标（上一页/下一页） | 每页会话、消息数、标签、命中片段、总数 | 无权限数据不可见；空结果；非法日期忽略 | `conversation_service.list_conversations` | `test_search.py` |
 | R03-F02 | 中文关键词检索 | 1–100 字关键词 | 标题或消息命中；命中消息的 `seq_no` 与片段 | `%`/`_`/`\` 转义；超长截断 | 同上，`ILIKE ... ESCAPE '\'` + `pg_trgm` | `verify.search.keyword`、`test_search.py` |
 | R03-F03 | 会话上下文 | 会话 ID、发送者筛选 | 消息按 `seq_no` 排序；上下文窗口；批注内联；发送者统计 | 无权限 403；会话不存在 404 | `conversation_service.get_conversation`、`routers/conversations.py` | `verify.search.context`、`test_search.py` |
 | R03-F04 | 数据范围过滤 | 当前用户 ID | 只返回本人来源或共享课程下的会话 | 管理员不进入课程页面 | `permissions.can_access_conversation`、SQL 作用域 | `test_permissions.py`、`verify.scope` |
@@ -243,11 +243,11 @@
 | --- | --- | --- |
 | 安全 | 密码不落明文、所有写操作防 CSRF、越权三层防护 | PBKDF2、CSRF、角色检查 + SQL 作用域 + 触发器 |
 | 数据完整性 | 主外键、唯一、CHECK、事务 | `schema.sql`、导入确认事务、复习单语句更新 |
-| 性能 | 列表分页、关键查询有索引、统计实时但规模可控 | 索引设计、`LIMIT/OFFSET`、部分索引、trgm、HNSW |
+| 性能 | 列表分页、关键查询有索引、统计实时但规模可控 | 索引设计、keyset 游标、部分索引、trgm、HNSW |
 | 可维护性 | 关键 SQL 可定位、无 ORM 黑盒 | `sql/` + `services/` + 本文件映射 |
 | 工程质量 | 依赖可复现、静态检查、提交钩子、随机化与浏览器测试 | `uv.lock`、Ruff、pyright、pre-commit、Hypothesis、Playwright；CI 同步执行 |
 | 可演示性 | 离线可演示、模拟数据可复现 | mock Text2SQL、`make_samples.py`、`seed_demo.py` |
-| 可验收 | 自动化测试与端到端报告 | 308 个 pytest 用例 + 9 项 Playwright E2E + 42 项 `verify.py` 检查 |
+| 可验收 | 自动化测试与端到端报告 | 311 个 pytest 用例 + 10 项 Playwright E2E + 42 项 `verify.py` 检查 |
 
 ## 需求到验收命令的映射
 

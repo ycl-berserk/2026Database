@@ -33,6 +33,8 @@ def conversation_list(
 ):
     _require_student(user)
     params = request.query_params
+    after = params.get("after")
+    before = params.get("before")
     data = conversation_service.list_conversations(
         conn,
         user["id"],
@@ -42,33 +44,29 @@ def conversation_list(
         date_from=params.get("date_from"),
         date_to=params.get("date_to"),
         page=_to_int(params.get("page")) or 1,
+        cursor=before or after,
+        direction="before" if before else "after",
     )
     options = conversation_service.filter_options(conn, user["id"])
 
-    query = [(key, value) for key, value in params.multi_items() if key != "page" and value]
-    base = urlencode(query)
-
-    def page_url(number: int) -> str:
-        return f"/conversations?{base}&page={number}" if base else f"/conversations?page={number}"
-
-    pages = [
-        {"n": number, "url": page_url(number), "active": number == data["page"]}
-        for number in range(1, data["total_pages"] + 1)
+    filters = [
+        (key, value)
+        for key, value in params.multi_items()
+        if key not in ("page", "after", "before") and value
     ]
-    prev_url = page_url(data["page"] - 1) if data["page"] > 1 else None
-    next_url = (
-        page_url(data["page"] + 1)
-        if data["page"] < data["total_pages"]
-        else None
-    )
+
+    def cursor_url(name: str, value: str | None) -> str | None:
+        if not value:
+            return None
+        return "/conversations?" + urlencode([*filters, (name, value)])
+
     return render(
         request,
         "conversations/list.html",
         **data,
         **options,
-        pages=pages,
-        prev_url=prev_url,
-        next_url=next_url,
+        prev_url=cursor_url("before", data["prev_cursor"]),
+        next_url=cursor_url("after", data["next_cursor"]),
     )
 
 

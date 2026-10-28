@@ -80,6 +80,28 @@ test("会话详情渲染消息，全局搜索返回结果", async ({ page }) => 
   expect(errors).toEqual([]);
 });
 
+test("会话列表用游标翻页且可返回上一页", async ({ page }) => {
+  const errors = trackErrors(page);
+  await login(page, "alice");
+  await page.goto("/conversations");
+  expect(await page.locator(".conv-card").count()).toBe(10);
+  const firstTitle = await page.locator(".conv-card .conv-title").first().innerText();
+
+  await page.locator('nav.pagination a[rel="next"]').click();
+  await expect(page).toHaveURL(/[?&]after=/);
+  expect(await page.locator(".conv-card").count()).toBe(10);
+  expect(await page.locator(".conv-card .conv-title").first().innerText()).not.toBe(
+    firstTitle,
+  );
+
+  await page.locator('nav.pagination a[rel="prev"]').click();
+  await expect(page).toHaveURL(/[?&]before=/);
+  expect(await page.locator(".conv-card .conv-title").first().innerText()).toBe(
+    firstTitle,
+  );
+  expect(errors).toEqual([]);
+});
+
 test("粘贴对话可预览解析结果且不直接入库", async ({ page }) => {
   const errors = trackErrors(page);
   await login(page, "alice");

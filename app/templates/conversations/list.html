@@ -48,7 +48,7 @@
 </form>
 
 <div class="result-head">
-  <p>共 <b>{{ total }}</b> 个会话{% if total_pages %} · 第 {{ page }} / {{ total_pages }} 页{% endif %}</p>
+  <p>共 <b>{{ total }}</b> 个会话{% if rows %} · 本页 {{ rows | length }} 条{% endif %}</p>
   {% if q %}<span class="chip chip-seal">关键词：{{ q }}</span>{% endif %}
   {% if course_id %}<span class="chip">课程筛选已启用</span>{% endif %}
   {% if tag_id %}<span class="chip">标签筛选已启用</span>{% endif %}
@@ -91,17 +91,10 @@
     {% endfor %}
   </div>
 
-  {% if total_pages > 1 %}
+  {% if prev_url or next_url %}
     <nav class="pagination">
-      {% if prev_url %}<a class="page-link" href="{{ prev_url }}">上一页</a>{% endif %}
-      {% for item in pages %}
-        {% if item.n == page %}
-          <span class="page-link active">{{ item.n }}</span>
-        {% else %}
-          <a class="page-link" href="{{ item.url }}">{{ item.n }}</a>
-        {% endif %}
-      {% endfor %}
-      {% if next_url %}<a class="page-link" href="{{ next_url }}">下一页</a>{% endif %}
+      {% if prev_url %}<a class="page-link" href="{{ prev_url }}" rel="prev">上一页</a>{% endif %}
+      {% if next_url %}<a class="page-link" href="{{ next_url }}" rel="next">下一页</a>{% endif %}
     </nav>
   {% endif %}
 {% else %}

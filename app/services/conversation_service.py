@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+import base64
+import json
+from datetime import date, datetime, timedelta
 
 from ..config import settings
 from ..errors import NotFoundError, PermissionDenied, ValidationError
@@ -9,6 +11,42 @@ from . import embedding_service, tag_service
 
 PAGE_SIZE = 10
 SENDERS = ("user", "assistant", "system")
+CURSOR_VERSION = 1
+SORT_EXPR = (
+    "coalesce((SELECT max(m.created_at) FROM app.messages m"
+    " WHERE m.conversation_id = v.id), v.started_at, v.created_at)"
+)
+
+
+def encode_cursor(payload: dict) -> str:
+    raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+    return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+
+
+def decode_cursor(value: str | None) -> dict | None:
+    if not value:
+        return None
+    try:
+        padded = value + "=" * (-len(value) % 4)
+        data = json.loads(base64.urlsafe_b64decode(padded).decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return None
+    if not isinstance(data, dict) or data.get("v") != CURSOR_VERSION:
+        return None
+    return data
+
+
+def _lexical_key(state: dict | None) -> tuple[str, int] | None:
+    if not state or state.get("m") != "lexical":
+        return None
+    stamp, conversation_id = state.get("t"), state.get("i")
+    if not isinstance(stamp, str) or not isinstance(conversation_id, int):
+        return None
+    try:
+        datetime.fromisoformat(stamp)
+    except ValueError:
+        return None
+    return stamp, conversation_id
 
 
 def _like(value: str) -> str:
@@ -128,6 +166,8 @@ def list_conversations(
     date_from: str | None = None,
     date_to: str | None = None,
     page: int = 1,
+    cursor: str | None = None,
+    direction: str = "after",
     query_vector: list[float] | None = None,
 ) -> dict:
     q = (q or "").strip()[:100] or None
@@ -190,10 +230,15 @@ def list_conversations(
     hybrid = bool(q and query_vector and settings.hybrid_search_enabled)
 
     page = max(1, page)
-    params["offset"] = (page - 1) * PAGE_SIZE
+    offset = (page - 1) * PAGE_SIZE
+    state = decode_cursor(cursor)
+    direction = direction if direction in ("after", "before") else "after"
+    key = None if hybrid else _lexical_key(state)
     retrieval = {"mode": "lexical", "rrf_k": settings.hybrid_rrf_k, "candidates": None}
     page_ids: list[int] | None = None
     total = 0
+    next_cursor: str | None = None
+    prev_cursor: str | None = None
 
     if hybrid:
         assert q is not None and query_vector is not None
@@ -202,7 +247,31 @@ def list_conversations(
         )
         fused = rrf_fuse([lexical_ids, vector_ids])
         total = len(fused)
-        page_ids = fused[params["offset"] : params["offset"] + PAGE_SIZE]
+        start = offset
+        embedded = state.get("n") if state else None
+        if (
+            state
+            and state.get("m") == "hybrid"
+            and isinstance(state.get("p"), int)
+        ):
+            position = max(0, int(state["p"]))
+            if isinstance(embedded, int) and embedded >= 0:
+                total = embedded
+            start = (
+                max(0, position - PAGE_SIZE)
+                if direction == "before"
+                else min(total, position + PAGE_SIZE)
+            )
+        end = min(total, start + PAGE_SIZE)
+        page_ids = fused[start:end]
+        if start > 0:
+            prev_cursor = encode_cursor(
+                {"v": CURSOR_VERSION, "m": "hybrid", "p": start, "n": total}
+            )
+        if end < total:
+            next_cursor = encode_cursor(
+                {"v": CURSOR_VERSION, "m": "hybrid", "p": end, "n": total}
+            )
         retrieval = {
             "mode": "hybrid",
             "rrf_k": settings.hybrid_rrf_k,
@@ -266,6 +335,23 @@ def list_conversations(
             rows.sort(key=lambda row: order[row["id"]])
     else:
         params["embedding"] = None
+        params["limit"] = PAGE_SIZE + 1
+        where_sql = query_sql
+        order_sql = f"{SORT_EXPR} DESC, v.id DESC"
+        tail_sql = ""
+        if key:
+            comparator = ">" if direction == "before" else "<"
+            where_sql += (
+                f" AND ({SORT_EXPR}, v.id) {comparator}"
+                " (%(c_ts)s::timestamptz, %(c_id)s)"
+            )
+            params["c_ts"] = key[0]
+            params["c_id"] = key[1]
+            if direction == "before":
+                order_sql = f"{SORT_EXPR} ASC, v.id ASC"
+        else:
+            params["offset"] = offset
+            tail_sql = " OFFSET %(offset)s"
         rows = conn.execute(
             f"""
             SELECT v.id, v.title, v.course_id, v.started_at, v.is_archived,
@@ -280,6 +366,7 @@ def list_conversations(
                    hit.seq_no AS hit_seq,
                    hit.sender AS hit_sender,
                    hit.content AS hit_content,
+                   {SORT_EXPR} AS sort_at,
                    count(*) OVER() AS total
               FROM app.conversations v
               JOIN app.sources s ON s.id = v.source_id
@@ -293,18 +380,46 @@ def list_conversations(
                    ORDER BY m.seq_no
                    LIMIT 1
               ) hit ON true
-             WHERE {query_sql}
-             ORDER BY coalesce(
-                        (SELECT max(m.created_at) FROM app.messages m
-                          WHERE m.conversation_id = v.id),
-                        v.started_at, v.created_at
-                      ) DESC NULLS LAST,
-                      v.id DESC
-             LIMIT %(limit)s OFFSET %(offset)s
+             WHERE {where_sql}
+             ORDER BY {order_sql}
+             LIMIT %(limit)s{tail_sql}
             """,
             params,
         ).fetchall()
-        total = rows[0]["total"] if rows else 0
+        if direction == "before" and key:
+            rows.reverse()
+        extra = len(rows) > PAGE_SIZE
+        if extra:
+            rows = rows[:PAGE_SIZE]
+        embedded = state.get("n") if state else None
+        if key and isinstance(embedded, int) and embedded >= 0:
+            total = embedded
+        else:
+            total = rows[0]["total"] if rows else 0
+        if rows:
+            first_key = (rows[0]["sort_at"].isoformat(), rows[0]["id"])
+            last_key = (rows[-1]["sort_at"].isoformat(), rows[-1]["id"])
+
+            def make_cursor(item: tuple[str, int]) -> str:
+                return encode_cursor(
+                    {
+                        "v": CURSOR_VERSION,
+                        "m": "lexical",
+                        "t": item[0],
+                        "i": item[1],
+                        "n": total,
+                    }
+                )
+
+            if direction == "before" and key:
+                if extra:
+                    prev_cursor = make_cursor(first_key)
+                next_cursor = make_cursor(last_key)
+            else:
+                if extra:
+                    next_cursor = make_cursor(last_key)
+                if key:
+                    prev_cursor = make_cursor(first_key)
 
     needle = (q or "").lower()
     for row in rows:
@@ -327,6 +442,8 @@ def list_conversations(
         "page_size": PAGE_SIZE,
         "total": total,
         "total_pages": (total + PAGE_SIZE - 1) // PAGE_SIZE if total else 0,
+        "next_cursor": next_cursor,
+        "prev_cursor": prev_cursor,
         "retrieval": retrieval,
     }
 

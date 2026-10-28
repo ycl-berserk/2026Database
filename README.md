@@ -18,7 +18,7 @@
 | 课程与标签 | 课程 CRUD、成员共享（owner / editor / viewer）、标签 CRUD、会话归类与打标签 |
 | 知识先修图 | 用 `tag_edges` 维护标签之间的先修关系（有向无环图），数据库触发器校验同属主与无环；按课程分组渲染 SVG，支持递归查询全部先修链、查看后继与相关会话 |
 | 整理建议 | 配置大模型后可一键生成“会话摘要 + 标签建议”，只填入整理表单；用户检查并点击保存后才写入数据库。新标签按用户去重，摘要复用已有“总结”批注更新而非重复插入；无 Key 时按钮隐藏，表单仍可手动填写 |
-| 检索阅读 | 全局搜索（`/` 或 `Ctrl/Cmd+K`）、课程 / 标签 / 日期 / 关键词筛选、分页、消息上下文、关键词高亮、命中片段；配置向量模型后启用 pgvector + RRF 混合检索，否则自动退回词法检索 |
+| 检索阅读 | 全局搜索（`/` 或 `Ctrl/Cmd+K`）、课程 / 标签 / 日期 / 关键词筛选、游标分页、消息上下文、关键词高亮、命中片段；配置向量模型后启用 pgvector + RRF 混合检索，否则自动退回词法检索 |
 | 批注与复习 | 笔记 / 疑问 / 纠错 / 总结四类批注、解决状态、加入复习队列、间隔 1→2→4→8… 天、逾期提示、掌握/重置、近 5 周复习热力图 |
 | 统计与导出 | 概览、课程排名、月度活跃补零、标签 TopN、批注解决率、复习状态、重复内容检测；统计 CSV、单会话 Markdown |
 | 用户与权限 | Session 登录、PBKDF2 密码哈希、CSRF、系统角色 + 课程角色、应用层与数据库层双重防护 |
@@ -155,7 +155,7 @@ ls import data/samples/qoder_db.json --course-code DB --json
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（183 单元 + 125 集成，共 308 项）；集成测试需先初始化测试库
+# 全量测试（185 单元 + 126 集成，共 311 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest
 
 # 静态检查与提交钩子（uv sync 已安装 Ruff / pyright / pre-commit）
@@ -200,7 +200,7 @@ node scripts/screenshots.mjs
 node scripts/extension_smoke.mjs
 ```
 
-> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、308 项测试、42 项验收与 9 项 Playwright E2E，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
+> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、311 项测试、42 项验收与 10 项 Playwright E2E，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
 
 ## 目录结构
 

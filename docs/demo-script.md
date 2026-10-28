@@ -44,7 +44,7 @@ curl -s http://127.0.0.1:8000/healthz
 | 0:00–0:35 | 开场与选题 | 登录页 | 业务问题、模拟数据声明 |
 | 0:35–1:15 | 登录与概览 | `/login` → `/dashboard` | Session、PBKDF2、按用户过滤 |
 | 1:15–2:00 | 课程与共享 | `/courses`、`/courses/1` | 课程成员 M:N、owner/editor/viewer |
-| 2:00–2:50 | 检索、上下文与整理 | `/conversations?q=隔离级别`、会话详情 | trgm + ILIKE、可选 pgvector + RRF、分页、seq_no 上下文；新标签 `ON CONFLICT`、摘要复用“总结”批注 |
+| 2:00–2:50 | 检索、上下文与整理 | `/conversations?q=隔离级别`、会话详情 | trgm + ILIKE、可选 pgvector + RRF、游标分页、seq_no 上下文；新标签 `ON CONFLICT`、摘要复用“总结”批注 |
 | 2:50–3:50 | 导入与查重 | `/imports`、预览页、`/tokens` | 解析校验、JSONB 预览、唯一键、单事务、原生导出适配、Bearer 令牌与作用域 |
 | 3:50–4:35 | 批注与复习 | `/annotations`、`/reviews` | 1:N、UNIQUE(user_id, annotation_id)、间隔重复 |
 | 4:35–5:05 | 知识先修图 | `/tags/graph` | DAG、触发器递归防环、递归闭包、SVG 布局 |
@@ -141,7 +141,7 @@ curl -s http://127.0.0.1:8000/healthz
 **可补充**：
 
 - 左侧可以按课程、标签、日期过滤；
-- 分页使用 `count(*) OVER()` 一次查询拿到总数；
+- 首页用 `count(*) OVER()` 取总数并写入游标；翻页按 `(最近消息时间, id)` 做 keyset 比较，不再使用 OFFSET；混合检索按融合结果位置生成游标。
 - 命中片段由 SQL 侧截取，避免把整段长回答传到页面。
 
 **备用画面**：`docs/screenshots/04-conversations.png`、`05-conversation-detail.png`。

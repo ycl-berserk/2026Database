@@ -59,6 +59,15 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
+      - name: Preload pg_stat_statements
+        run: |
+          docker exec "${{ job.services.postgres.id }}" \
+            psql -U postgres -d postgres \
+            -c "ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_statements';"
+          docker restart "${{ job.services.postgres.id }}"
+          timeout 60 sh -c \
+            'until docker exec "${{ job.services.postgres.id }}" pg_isready -U postgres; do sleep 2; done'
+
       - name: Initialize demo and test databases
         run: python scripts/init_db.py --reset
 

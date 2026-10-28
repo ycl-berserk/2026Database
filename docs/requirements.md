@@ -183,6 +183,20 @@
 | R13-F02 | 令牌导入 | `ls import 文件.json [--course-code] [--platform] [--json]` | 覆盖课程/平台后调用 `POST /api/ingest`，复用预览、查重与单事务入库 | 非 JSON/缺字段本地拒绝；服务端校验失败退出 1；Markdown 引导到网页导入 | `app/cli.py`、`services/import_service.ingest_json` | `test_cli.py`、`test_tokens.py` |
 | R13-F03 | 配置与输出 | `--base-url` / `LS_BASE_URL`、`--token` / `LS_TOKEN` | 不打印令牌；两个子命令都支持 `--json` | `LS_TOKEN` 缺失时给出明确错误；连接失败输出原因 | `app/cli.py`、`pyproject.toml` | `test_cli.py`、CLI 冒烟 |
 
+## R14 MCP 工具接口
+
+| ID | 功能 | 输入 | 输出 / 行为 | 异常与边界 | 实现位置 | 验收 |
+| --- | --- | --- | --- | --- | --- | --- |
+| R14-F01 | 令牌作用域 | 创建令牌时勾选 annotate | `scopes text[]` 默认 `{read,ingest}`，取值 `read/ingest/annotate`；页面展示作用域 | 未知或空作用域 400；非本人令牌不可撤销；作用域在服务端端点逐项校验 | `sql/migrations/006_add_token_scopes.sql`、`services/token_service.py`、`auth.require_scope` | `test_tokens.py`、`test_api_search.py` |
+| R14-F02 | MCP 只读服务 | stdio JSON-RPC `initialize` / `tools/list` / `tools/call` | `search`、`get_conversation`、`list_due_reviews`；启动时读取 `/api/mcp/me` 隐藏无权工具 | 无 `read` 作用域 403；会话越权 404；管理员 403；协议错误返回 JSON-RPC 标准错误码 | `app/mcp_server.py`、`routers/mcp.py` | `test_mcp_server.py`、`test_mcp_api.py` |
+| R14-F03 | MCP 写批注 | `add_annotation(message_id, kind, content, event_id?)` | 仅在 `annotate` 作用域出现；新增批注并返回 ID，支持 UUID 幂等重放 | 无作用域工具不可见；viewer 403；非法 kind 400；重复 event_id 返回 duplicate | `routers/mcp.py`、`annotation_service.create_annotation` | `test_mcp_server.py`、`test_mcp_api.py` |
+
+**设计要点**
+
+- MCP 服务不持有数据库连接，只通过 `LS_BASE_URL` + `LS_TOKEN` 调用 Bearer API，权限过滤、限流与审计只维护一份。
+- `tools/list` 在首次请求时读取令牌作用域；默认只暴露三个只读工具，避免模型误以为可以写库。
+- JSON-RPC 与 HTTP 错误分层：参数/方法错误使用 `-32602` / `-32601`，工具调用失败以 `isError` 文本返回，模型可以读取原因后修正。
+
 ## 非功能需求
 
 | 类别 | 要求 | 实现 |
@@ -192,12 +206,12 @@
 | 性能 | 列表分页、关键查询有索引、统计实时但规模可控 | 索引设计、`LIMIT/OFFSET`、部分索引、trgm、HNSW |
 | 可维护性 | 关键 SQL 可定位、无 ORM 黑盒 | `sql/` + `services/` + 本文件映射 |
 | 可演示性 | 离线可演示、模拟数据可复现 | mock Text2SQL、`make_samples.py`、`seed_demo.py` |
-| 可验收 | 自动化测试与端到端报告 | 247 个 pytest 用例 + 39 项 `verify.py` 检查 |
+| 可验收 | 自动化测试与端到端报告 | 264 个 pytest 用例 + 39 项 `verify.py` 检查 |
 
 ## 需求到验收命令的映射
 
 ```bash
-# R01–R13 的主要回归
+# R01–R14 的主要回归
 .venv/Scripts/python.exe -m pytest -q
 
 # 端到端 PASS/FAIL（含权限、导入、检索、统计、导出、Text2SQL、事务）
@@ -207,4 +221,4 @@
 .venv/Scripts/python.exe scripts/eval_text2sql.py
 ```
 
-验收输出示例见 `data/verification/report.json`：38/38 PASS，0 FAIL。
+验收输出示例见 `data/verification/report.json`：39/39 PASS，0 FAIL。

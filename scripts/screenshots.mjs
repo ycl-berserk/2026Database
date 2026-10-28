@@ -97,7 +97,8 @@ async function run() {
     await shot(alice, "06-tags.png");
 
     await alice.goto(`${BASE}/tokens`, { waitUntil: "networkidle" });
-    await alice.fill('input[name="name"]', "演示扩展");
+    await alice.fill('input[name="name"]', "MCP 客户端");
+    await alice.check('input[name="allow_annotate"]');
     await alice.click('form[action="/tokens"] button[type="submit"]');
     await alice.waitForSelector(".token-reveal");
     await alice.goto(`${BASE}/tokens`, { waitUntil: "networkidle" });

@@ -34,10 +34,16 @@
       <span>用途名称</span>
       <input name="name" maxlength="60" placeholder="如 桌面浏览器扩展 / 论文数据脚本" required>
     </label>
+    <label class="check-field">
+      <input type="checkbox" name="allow_annotate" value="1">
+      <span>允许 MCP 写入批注（annotate）</span>
+    </label>
     <button class="btn" type="submit">创建令牌</button>
   </form>
   <p class="muted token-hint">
-    令牌形如 <code>ls_…</code>，可调用 <code>POST /api/ingest</code> 写入统一 JSON；
+    令牌形如 <code>ls_…</code>，默认拥有读取与导入权限，可调用 <code>GET /api/search</code>
+    与 <code>POST /api/ingest</code>；勾选后额外允许 MCP 客户端通过
+    <code>POST /api/mcp/annotations</code> 写入批注，不能修改或删除已有批注。
     同一令牌每分钟最多 {{ rate_limit }} 次请求。令牌只应放在本机脚本或扩展中，不要提交到代码仓库。
   </p>
 </section>
@@ -51,13 +57,18 @@
     <div class="table-wrap">
       <table class="table table-stack">
         <thead>
-          <tr><th>用途</th><th>前缀</th><th>创建时间</th><th>最近使用</th><th>状态</th><th class="col-actions">操作</th></tr>
+          <tr><th>用途</th><th>前缀</th><th>作用域</th><th>创建时间</th><th>最近使用</th><th>状态</th><th class="col-actions">操作</th></tr>
         </thead>
         <tbody>
           {% for token in tokens %}
             <tr>
               <td data-label="用途">{{ token.name }}</td>
               <td data-label="前缀"><code>{{ token.token_prefix }}…</code></td>
+              <td data-label="作用域">
+                {% for scope in token.scopes %}
+                  <span class="chip{% if scope == 'annotate' %} chip-warn{% endif %}">{{ scope }}</span>
+                {% endfor %}
+              </td>
               <td data-label="创建时间" class="muted">{{ token.created_at | dt }}</td>
               <td data-label="最近使用" class="muted">{{ token.last_used_at | dt if token.last_used_at else '尚未使用' }}</td>
               <td data-label="状态">
@@ -99,6 +110,30 @@
   <p class="muted token-hint">
     请求体是导入页使用同一份统一 JSON，包含 <code>platform</code>、<code>account_label</code> 与 <code>conversations</code>；
     每个会话可用 <code>course_code</code> 自动归入自己的课程。重复提交同一会话只补充新消息，不会产生重复记录。
+  </p>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>接入 MCP 客户端</h2>
+    <span class="muted">Claude Desktop / Cursor / 其他 stdio 客户端</span>
+  </div>
+  <pre class="code-block">{
+  "mcpServers": {
+    "learning-space": {
+      "command": "C:/path/to/learning-space/.venv/Scripts/python.exe",
+      "args": ["-m", "app.mcp_server"],
+      "env": {
+        "LS_BASE_URL": "{{ request.base_url }}",
+        "LS_TOKEN": "ls_你的令牌"
+      }
+    }
+  }
+}</pre>
+  <p class="muted token-hint">
+    请把 <code>command</code> 换成项目 <code>.venv</code> 里 Python 的绝对路径。MCP 服务只通过 Bearer
+    令牌调用本机网站，不直接连接数据库；默认提供 <code>search</code>、<code>get_conversation</code>
+    与 <code>list_due_reviews</code>，令牌勾选 annotate 后才会出现 <code>add_annotation</code>。
   </p>
 </section>
 {% endblock %}

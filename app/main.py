@@ -186,6 +186,7 @@ from .routers import (  # noqa: E402
     courses,
     dashboard,
     imports,
+    mcp,
     reviews,
     search,
     stats,
@@ -196,6 +197,7 @@ from .routers import (  # noqa: E402
 
 app.include_router(auth.router)
 app.include_router(api.router)
+app.include_router(mcp.router)
 app.include_router(dashboard.router)
 app.include_router(search.router)
 app.include_router(capture.router)

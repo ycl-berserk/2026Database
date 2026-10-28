@@ -12,7 +12,7 @@
 
 本项目实现了一个以“聊天记录”为核心的关系数据库应用系统。系统把 Qoder、ChatGPT、DeepSeek 等平台的问答导出文件解析为统一格式，按课程、来源、标签组织；支持中文检索、会话上下文、批注、间隔复习、统计导出，并额外实现了受数据库只读权限视图保护的 Text2SQL 页面。
 
-数据库包含 15 张业务表、15 个权限视图、6 个触发器、多组唯一/检查/外键约束；应用层使用参数化 SQL 与显式事务，不依赖 ORM。导入流水线采用“解析 → 校验 → 持久化预览 → 单事务确认 → 查重”的结构，并在文件导入之外提供平台原生导出适配、采集令牌 + Bearer 接口与 MV3 浏览器扩展。标签之间还维护一张有向无环的先修关系图，用递归 CTE 做环检测、闭包与最短路径查询。系统通过 247 个自动化测试与 39 项端到端验收检查，覆盖 schema、权限、导入幂等、中文检索、全局搜索、统计、批注复习、整理建议、知识先修图、离线同步、导出、Text2SQL 安全、命令行接口与事务回滚。
+数据库包含 15 张业务表、15 个权限视图、6 个触发器、多组唯一/检查/外键约束；应用层使用参数化 SQL 与显式事务，不依赖 ORM。导入流水线采用“解析 → 校验 → 持久化预览 → 单事务确认 → 查重”的结构，并在文件导入之外提供平台原生导出适配、采集令牌 + Bearer 接口与 MV3 浏览器扩展。标签之间还维护一张有向无环的先修关系图，用递归 CTE 做环检测、闭包与最短路径查询。系统通过 264 个自动化测试与 39 项端到端验收检查，覆盖 schema、权限、导入幂等、中文检索、全局搜索、统计、批注复习、整理建议、知识先修图、离线同步、导出、Text2SQL 安全、命令行与 MCP 接口、令牌作用域与事务回滚。
 
 ---
 
@@ -53,6 +53,7 @@
 | R09 | 快速采集与离线 | PWA 分享、裸文本、平台原生导出适配、采集令牌 + Bearer API、MV3 扩展、离线阅读/批注/复习 |
 | R12 | 知识先修图 | 标签间 DAG、触发器防环、递归闭包与最短路径、按课程分组的 SVG 图、Text2SQL 可查 |
 | R13 | 命令行客户端 | `ls search` / `ls import`，采集令牌认证、课程/平台覆盖、人类可读与 JSON 输出 |
+| R14 | MCP 只读工具 | stdio JSON-RPC、search / get_conversation / list_due_reviews / add_annotation、令牌作用域 |
 
 更细的输入/输出/异常/代码位置/验收映射见 [requirements.md](requirements.md)。
 
@@ -155,7 +156,7 @@
 11. `review_items`：`(user_id, annotation_id)` 唯一，间隔与到期日。
 12. `text2sql_log`：问题、生成 SQL、状态、耗时、行数、错误。
 13. `review_logs`：复习事件流水，`(user_id, event_id)` 唯一用于离线重放幂等；`review_item_id` 删除时 SET NULL。
-14. `api_tokens`：采集令牌，只存 SHA-256 与可读前缀，含固定窗口限流计数、最近使用与撤销时间。
+14. `api_tokens`：采集令牌，只存 SHA-256 与可读前缀，含 `scopes` 作用域、固定窗口限流计数、最近使用与撤销时间。
 15. `tag_edges`：标签先修关系 DAG，`(from_tag_id, to_tag_id)` 唯一，触发器校验同属主与无环。
 
 完整列定义、约束与索引见 [design.md](design.md)。
@@ -279,7 +280,7 @@ Text2SQL 页面提供示例问题、结果表格、生成的 SQL、解释和最�
 除了统一 JSON / Markdown 文件导入，系统提供五条更低摩擦的采集路径：
 
 1. **平台原生导出适配**：ChatGPT `conversations.json` 沿 `current_node` 还原主线并转换 UTC 时间；Qoder `sessions` 导出做字段别名映射；DeepSeek Markdown 识别 `### User/Assistant` 与英文元信息。适配层只做归一，之后复用同一套解析、校验与入库逻辑。
-2. **采集令牌 + Bearer API**：`/tokens` 创建的令牌明文只显示一次，服务端仅存 SHA-256；`POST /api/ingest` 按 `course_code` 自动归课，每令牌每分钟 60 次固定窗口限流，可随时撤销。
+2. **采集令牌 + Bearer API**：`/tokens` 创建的令牌明文只显示一次，服务端仅存 SHA-256；令牌默认 `{read,ingest}`，MCP 写批注需显式勾选 `annotate`；`POST /api/ingest` 按 `course_code` 自动归课，每令牌每分钟 60 次固定窗口限流，可随时撤销。
 3. **MV3 浏览器扩展**：`extension/` 固定权限只有 `activeTab` / `storage`，仅当用户点击「发送到学习空间」时读取当前会话并调用 `/api/ingest`；令牌保存在本机浏览器，不写入网页。
 4. **PWA Share Target**：手机从任意 App 分享文本/链接，解析结果进入 `import_batches` 预览。
 5. **裸文本粘贴**：直接粘贴 `我：… / 助手：…` 对话，自动识别角色、时间与课程/标签。
@@ -367,6 +368,32 @@ ls import data/samples/qoder_db.json --course-code DB
 
 Markdown 导入仍需走网站上传页，因为 CLI 只发送统一 JSON，避免在客户端再维护一套解析规则。`tests/unit/test_cli.py` 覆盖文档改写与输出格式，`tests/integration/test_api_search.py` 覆盖令牌搜索的可见范围、管理员拒绝与空查询。
 
+### 6.14 MCP 工具接口
+
+`app/mcp_server.py` 通过 stdio 暴露 JSON-RPC 2.0（MCP `2024-11-05`），让 Claude Desktop、Cursor 等客户端把学习空间当作工具使用。服务不直接连接数据库，而是以 `LS_TOKEN` 调用本机 Bearer API，因此沿用同一套权限过滤、限流与审计边界。
+
+- 工具：`search`、`get_conversation`、`list_due_reviews` 为只读；`add_annotation` 为唯一写工具，只能新增批注，不能修改或删除已有批注。
+- 作用域：迁移 006 给 `app.api_tokens` 增加 `scopes text[]`，默认 `{read,ingest}`，允许值为 `read` / `ingest` / `annotate`；`require_scope` 在服务端逐端点校验，页面创建令牌时需显式勾选才会写入 `annotate`。
+- 端点：`/api/mcp/me` 返回作用域，客户端据此隐藏无权工具；`/api/mcp/search`、`/api/mcp/conversations/{id}`、`/api/mcp/reviews/due`、`/api/mcp/annotations` 分别对应四个工具。管理员在令牌层即被拒绝，MCP 端点也会再次检查。
+- 协议：支持 `initialize`、`notifications/initialized`、`ping`、`tools/list`、`tools/call` 与批量请求；JSON 解析失败、未知方法与参数错误分别返回标准 JSON-RPC 错误码，工具执行失败以 `isError` 结果返回，便于模型自行修正。
+
+```json
+{
+  "mcpServers": {
+    "learning-space": {
+      "command": "C:/path/to/learning-space/.venv/Scripts/python.exe",
+      "args": ["-m", "app.mcp_server"],
+      "env": {
+        "LS_BASE_URL": "http://127.0.0.1:8000",
+        "LS_TOKEN": "ls_你的令牌"
+      }
+    }
+  }
+}
+```
+
+`tests/unit/test_mcp_server.py` 覆盖工具过滤、输入校验、结果格式、JSON-RPC 错误与批量请求；`tests/integration/test_mcp_api.py` 覆盖作用域拒绝、会话/批注可见范围、到期复习与幂等写入。
+
 ## 7. 关键 SQL
 
 完整 21 条关键 SQL 及真实结果见 [sql-showcase.md](sql-showcase.md)，可执行脚本见 [../sql/showcase.sql](../sql/showcase.sql)。覆盖：
@@ -443,13 +470,13 @@ mock 只覆盖固定问法，Q18–Q30 的换问法、聚合与排名问题会�
 ### 10.1 自动化测试
 
 ```text
-143 unit tests
-104 integration tests
-247 total, all passed
+153 unit tests
+111 integration tests
+264 total, all passed
 ```
 
-- 单元：密码哈希/校验、CSRF、JSON/Markdown/裸文本与三种平台原生导出解析、字段校验、去重分类、Text2SQL AST 守卫（嵌套 DML、表函数、锁、字面量误伤）、EXPLAIN 预检、评测集加载/结果规范化/指标计算、RRF 融合、向量字面量/维度校验、整理建议的模式切换/标签清洗/摘要截断/Prompt 结构、mock 规则、PWA 资产、MV3 扩展契约、引导/撤销/错误页/静态缓存与性能预算。
-- 集成：schema 约束与删除行为、权限边界、导入预览/确认/幂等/损坏文件、收件箱批量归类、检索与全局搜索、令牌搜索 API 的可见范围与管理边界、pgvector 可见范围与混合排名、批注复习间隔与事件流水、新标签与摘要的创建/更新/清空及 viewer 越权、知识先修图的防环/闭包/级联与视图过滤、统计、管理员、采集令牌与 Bearer 入库、Text2SQL 只读/越权/审计与评测编排。
+- 单元：密码哈希/校验、CSRF、JSON/Markdown/裸文本与三种平台原生导出解析、字段校验、去重分类、Text2SQL AST 守卫（嵌套 DML、表函数、锁、字面量误伤）、EXPLAIN 预检、评测集加载/结果规范化/指标计算、RRF 融合、向量字面量/维度校验、整理建议的模式切换/标签清洗/摘要截断/Prompt 结构、mock 规则、MCP JSON-RPC 协议/工具过滤/输出格式、CLI 文档改写与输出、PWA 资产、MV3 扩展契约、引导/撤销/错误页/静态缓存与性能预算。
+- 集成：schema 约束与删除行为、权限边界、导入预览/确认/幂等/损坏文件、收件箱批量归类、检索与全局搜索、令牌搜索 API 的可见范围与管理边界、令牌作用域与 MCP 端点（会话详情、到期复习、批注写入及 viewer 越权）、pgvector 可见范围与混合排名、批注复习间隔与事件流水、新标签与摘要的创建/更新/清空及 viewer 越权、知识先修图的防环/闭包/级联与视图过滤、统计、管理员、采集令牌与 Bearer 入库、Text2SQL 只读/越权/审计与评测编排。
 
 集成测试只连接以 `_test` 结尾的数据库，每个用例前 `TRUNCATE app.users RESTART IDENTITY CASCADE`。测试脚手架使用管理员连接执行 TRUNCATE，因为应用角色 `ls_app` 被刻意设计为没有 TRUNCATE 权限。
 
@@ -473,7 +500,7 @@ mock 只覆盖固定问法，Q18–Q30 的换问法、聚合与排名问题会�
 - 粘贴收录、重复收录幂等、收件箱批量归类
 - 整理建议：新标签幂等写入、摘要唯一更新、viewer 越权拦截
 - 知识先修图：32 条边/6 组图、最短路径闭包、成环拒绝、增删后闭包一致
-- 采集令牌哈希存储、Bearer 认证、限流与幂等入库
+- 采集令牌哈希存储、作用域、Bearer 认证、限流与幂等入库
 - Text2SQL mock 查询、用户过滤、AST 守卫、EXPLAIN 预检拒绝高成本查询、30 题金标准评测（准确率 / 合法率 / 越权拦截）、恶意 SQL 审计、只读角色
 - 事务回滚后计数不变、`ls_app` 无 DDL 权限
 
@@ -500,7 +527,7 @@ Playwright 脚本登录 alice / bob / admin，生成桌面 31 张（含扩展弹
 - 不用生成列存 `content_hash`，改用表达式索引。
 - `review_items` 唯一键设为 `(user_id, annotation_id)`，支持共享课程多人各自复习。
 - Text2SQL 不信任 Prompt，安全边界放在只读角色与权限视图。
-- 采集令牌只存 SHA-256，不做可逆加密；限流计数落在数据库行上，避免多 worker 内存态不一致。
+- 采集令牌只存 SHA-256，不做可逆加密；作用域与限流计数都落在数据库行上，避免多 worker 内存态不一致。
 - 浏览器扩展坚持“点击才读取、点击才上传”，不申请常驻 host 权限，也不做后台轮询；DOM 改版时回退到平台导出文件。
 - 平台导出适配只做字段归一，不复制一套入库逻辑，所有来源继续共享预览、查重与事务确认。
 - 测试库脚手架使用管理员连接，而不是给应用角色开放 TRUNCATE。
@@ -535,7 +562,7 @@ node scripts/screenshots.mjs
 
 ## 14. 结论
 
-本项目完成了一个从导入、组织、检索、批注、复习到统计导出的完整学习数据闭环，并用 Text2SQL 展示了自然语言查询关系数据的一种可控实现方式。数据库设计覆盖了 E-R 建模、范式分析、完整性约束、索引、触发器、递归查询、事务与最小权限；应用层保持了 SQL 可见、权限可验证、流程可回滚。采集侧的令牌、Bearer 接口、平台适配与 MV3 扩展，离线阅读/复习能力，把标签连成有向无环先修图的探索，以及可供脚本调用的命令行入口，让系统在真实使用中更顺手。自动化测试与端到端验收为演示和答辩提供了可重复的证据。
+本项目完成了一个从导入、组织、检索、批注、复习到统计导出的完整学习数据闭环，并用 Text2SQL 展示了自然语言查询关系数据的一种可控实现方式。数据库设计覆盖了 E-R 建模、范式分析、完整性约束、索引、触发器、递归查询、事务与最小权限；应用层保持了 SQL 可见、权限可验证、流程可回滚。采集侧的令牌与作用域、Bearer 接口、平台适配与 MV3 扩展，离线阅读/复习能力，把标签连成有向无环先修图的探索，以及可供脚本与 MCP 客户端调用的接口，让系统在真实使用中更顺手。自动化测试与端到端验收为演示和答辩提供了可重复的证据。
 
 ---
 
@@ -552,7 +579,7 @@ node scripts/screenshots.mjs
 | 文件 | 说明 |
 | --- | --- |
 | `sql/schema.sql` | 12 张基线表、约束、索引、触发器 |
-| `sql/migrations/` | 增量迁移：复习事件流水、批注事件 ID、采集令牌、消息向量、标签先修边 |
+| `sql/migrations/` | 增量迁移：复习事件流水、批注事件 ID、采集令牌、消息向量、标签先修边、令牌作用域 |
 | `sql/views.sql` | 15 个 t2s 权限视图 |
 | `sql/roles.sql` | `ls_app` / `t2s_reader` 最小权限 |
 | `sql/showcase.sql` | 21 条关键 SQL |
@@ -561,6 +588,8 @@ node scripts/screenshots.mjs
 | `app/services/token_service.py` | 采集令牌哈希、限流、认证与撤销 |
 | `app/services/tag_graph_service.py` | 先修图查询、环检测辅助、分层布局与 SVG 生成 |
 | `app/cli.py` | `ls search` / `ls import` 命令行客户端 |
+| `app/mcp_server.py` | MCP stdio JSON-RPC 服务与四个工具 |
+| `app/routers/mcp.py` | 令牌作用域保护的 MCP 查询与批注端点 |
 | `app/services/text2sql_service.py` | 生成、守卫、只读执行、审计 |
 | `app/permissions.py` | 课程角色与会话可见性 |
 | `extension/` | Chrome MV3 扩展、隐私说明与回退指引 |

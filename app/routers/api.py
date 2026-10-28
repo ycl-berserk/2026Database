@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
-from ..auth import ensure_csrf, require_token, require_user, verify_csrf
+from ..auth import ensure_csrf, require_scope, require_token, require_user, verify_csrf
 from ..config import settings
 from ..db import get_conn
 from ..errors import NotFoundError, PermissionDenied, ValidationError
@@ -108,6 +108,7 @@ def search(
 ):
     """采集令牌可读的全局搜索，供命令行与外部只读客户端调用。"""
     _require_student(user)
+    require_scope(user, "read")
     query = (q or "").strip()
     if not query:
         raise ValidationError("请输入搜索关键词")
@@ -123,6 +124,7 @@ async def ingest(
 ):
     """用采集令牌一次性写入统一 JSON；脚本与浏览器扩展的入口。"""
     _require_student(user)
+    require_scope(user, "ingest")
     raw = await request.body()
     if len(raw) > settings.import_max_bytes:
         limit = settings.import_max_bytes // (1024 * 1024)

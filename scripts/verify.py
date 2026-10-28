@@ -787,6 +787,18 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
         _ok(again["messages_new"] == 0 and again["messages_skipped"] == 2,
             "重复采集应只跳过相同消息")
 
+        _ok(created["scopes"] == ["read", "ingest"],
+            f"令牌默认作用域应为 read/ingest，实际 {created['scopes']}")
+        writer = token_service.create_token(
+            conn, alice["id"], "验收 MCP", ["read", "annotate"]
+        )
+        _ok(
+            token_service.authenticate(conn, writer["token"])["scopes"]
+            == ["read", "annotate"],
+            "MCP 令牌作用域未持久化或未返回",
+        )
+        token_service.revoke_token(conn, writer["id"], alice["id"])
+
         conn.execute(
             "UPDATE app.api_tokens SET window_started_at = now(), window_count = 60 "
             "WHERE id = %s",
@@ -808,8 +820,8 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             raise AssertionError("已撤销令牌不应通过认证")
         except AuthRequired:
             pass
-        return "哈希存储、课程映射、重复幂等、60 次/分钟限流与撤销均生效"
-    report.run("token.ingest", "采集令牌：哈希存储、Bearer 认证、限流与幂等入库", token_ingest)
+        return "哈希存储、作用域、课程映射、重复幂等、60 次/分钟限流与撤销均生效"
+    report.run("token.ingest", "采集令牌：哈希存储、作用域、Bearer 认证、限流与幂等入库", token_ingest)
 
     def search_global():
         alice_hits = search_service.global_search(conn, alice_ctx, "验收速记")

@@ -344,7 +344,7 @@ def slide_er(prs):
 
 def slide_schema(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "05 / 逻辑设计", "14 张表：核心业务与操作型数据分离", 6)
+    header(slide, "05 / 逻辑设计", "15 张表：核心业务与操作型数据分离", 6)
 
     rows = [
         ["领域", "表", "关键约束"],
@@ -352,9 +352,10 @@ def slide_schema(prs):
         ["内容", "sources · conversations · messages", "(source, external_id)、(conversation, seq_no) 唯一"],
         ["组织", "courses · tags · conversation_tags", "(created_by, code, semester) 唯一；标签同 owner"],
         ["学习", "annotations · review_items · review_logs", "UNIQUE(user_id, annotation_id)；事件流水幂等"],
+        ["知识结构", "tag_edges", "先修边唯一；触发器递归防环"],
         ["采集与运维", "import_batches · api_tokens · text2sql_log", "预览 token 唯一；令牌只存哈希；执行审计"],
     ]
-    table(slide, 0.72, 1.62, 11.9, 3.3, rows, [1.7, 4.2, 6.0], font_size=11.5, header_size=11.5)
+    table(slide, 0.72, 1.62, 11.9, 3.55, rows, [1.7, 4.2, 6.0], font_size=11, header_size=11)
 
     bullets(slide, 0.72, 5.22, 5.8, 1.5, [
         "单列代理键 + 关联表，避免复合业务键扩散",
@@ -388,11 +389,11 @@ def slide_norm(prs):
     text(slide, 7.0, 1.62, 5.5, 0.35, "完整性约束", size=13, bold=True, color=GREEN)
     rows = [
         ["类型", "例子"],
-        ["主键 / 外键", "14 张表全部有 PK；关键关系均有 FK"],
-        ["UNIQUE", "会话外部 ID、消息序号、标签名"],
-        ["CHECK", "角色枚举、消息非空、结束时间 ≥ 开始"],
+        ["主键 / 外键", "15 张表全部有 PK；关键关系均有 FK"],
+        ["UNIQUE", "会话外部 ID、消息序号、标签名、先修边"],
+        ["CHECK", "角色枚举、消息非空、结束时间 ≥ 开始、先修边两端不同"],
         ["部分唯一", "每门课最多一个 owner"],
-        ["触发器", "标签与会话同 owner；仅剩一个 owner 时拒绝移除"],
+        ["触发器", "标签与会话同 owner；先修边同属主且不形成环"],
         ["删除行为", "CASCADE / SET NULL / RESTRICT 按语义选择"],
     ]
     table(slide, 7.0, 2.02, 5.6, 2.6, rows, [1.45, 4.15], font_size=10, header_size=10)
@@ -495,9 +496,55 @@ def slide_review(prs):
     notes(slide, "40 秒：从批注页加入复习，再到队列点“复习一次”，展示间隔翻倍与到期日变化。")
 
 
+def slide_graph(prs):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    header(slide, "10 / 知识先修图", "把标签连成 DAG：先学什么，后学什么", 11)
+
+    cards = [
+        ("图模型", "tag_edges\n(from → to)", GREEN),
+        ("防环", "触发器\n递归 CTE", RUST),
+        ("闭包", "视图实时\n最短深度", GREEN_DARK),
+    ]
+    for index, (name, body, accent) in enumerate(cards):
+        x = 0.72 + index * 2.05
+        card(slide, x, 1.62, 1.88, 1.2, name, body, accent=accent)
+
+    bullets(slide, 0.72, 3.05, 6.1, 2.0, [
+        "先修边唯一 (from_tag_id, to_tag_id)，两端必须同一属主",
+        "写入前从后继出发递归检查，能回到先修就拒绝",
+        "闭包不落表，边变化后立即生效，无冗余一致性问题",
+        "页面按主导课程拆成 6 张 SVG 子图，最长路径分层",
+    ], size=11.5, gap=6)
+
+    code_block(slide, 0.72, 5.25, 6.1, 1.65,
+               "WITH RECURSIVE walk AS (\n"
+               "  SELECT id AS tag, id AS prereq, 0 AS depth, ARRAY[id] AS path\n"
+               "    FROM app.tags WHERE owner_id = :uid\n"
+               "  UNION ALL\n"
+               "  SELECT w.tag, e.from_tag_id, w.depth + 1, w.path || e.from_tag_id\n"
+               "    FROM walk w JOIN app.tag_edges e ON e.to_tag_id = w.prereq\n"
+               "   WHERE NOT e.from_tag_id = ANY (w.path)\n"
+               ") SELECT DISTINCT ON (tag, prereq) ...", size=8)
+
+    rows = [
+        ["标签", "先修（间接）", "深度"],
+        ["B+树", "SQL", "2"],
+        ["Dijkstra", "图", "2"],
+    ]
+    table(slide, 7.25, 1.62, 5.25, 1.55, rows, [1.85, 2.4, 1.0], font_size=11, header_size=11)
+    bullets(slide, 7.25, 3.45, 5.25, 3.35, [
+        "直接先修深度为 1，如 索引 → SQL、最短路径 → 图",
+        "DISTINCT ON 只保留每对标签的最短路径",
+        "path 数组同时防止环路重复展开与无限递归",
+        "t2s.v_my_tag_prerequisites 对 Text2SQL 暴露同一闭包",
+        "种子数据：59 标签、32 条先修边、6 张课程卡",
+    ], size=11.5, gap=6)
+    notes(slide, "35 秒：讲边表、触发器防环、递归闭包；指出页面拆成 6 张课程子图，避免一张巨图。")
+
+
 def slide_stats(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "10 / 统计与导出", "把课程里的聚合查询真正用起来", 11)
+    header(slide, "11 / 统计与导出", "把课程里的聚合查询真正用起来", 12)
 
     snippets = [
         ("课程排名", "RANK() OVER (ORDER BY message_count DESC)"),
@@ -521,7 +568,7 @@ def slide_stats(prs):
 
 def slide_t2s(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "11 / Text2SQL", "自然语言查询，但权限在数据库层兜底", 12)
+    header(slide, "12 / Text2SQL", "自然语言查询，但权限在数据库层兜底", 13)
 
     flow = ["自然语言", "LLM / 本地规则", "AST 守卫/预检", "只读视图", "结果 + 审计"]
     for index, label in enumerate(flow):
@@ -535,7 +582,7 @@ def slide_t2s(prs):
 
     left = [
         "sqlglot 只允许一条 SELECT/WITH，拒绝嵌套 DML 与表函数",
-        "对象白名单：13 个 t2s 视图，禁止 app / pg_catalog",
+        "对象白名单：15 个 t2s 视图，禁止 app / pg_catalog",
         "EXPLAIN 预检代价与估算行数，超限直接拒绝",
         "包裹 200 行上限；t2s_reader 只读事务、3 秒超时",
         "视图 security_barrier，按 app.user_id 过滤",
@@ -552,7 +599,7 @@ def slide_t2s(prs):
 
 def slide_permissions(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "12 / 权限模型", "应用层、SQL 作用域、数据库约束三层防护", 13)
+    header(slide, "13 / 权限模型", "应用层、SQL 作用域、数据库约束三层防护", 14)
 
     rows = [
         ["操作", "owner", "editor", "viewer", "admin"],
@@ -578,9 +625,9 @@ def slide_permissions(prs):
 
 def slide_tests(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "13 / 测试与验收", "231 项测试与 38 项端到端验收全部通过", 14)
+    header(slide, "14 / 测试与验收", "238 项测试与 39 项端到端验收全部通过", 15)
 
-    stats = [("231", "自动化测试"), ("38", "端到端检查"), ("0", "失败项")]
+    stats = [("238", "自动化测试"), ("39", "端到端检查"), ("0", "失败项")]
     for index, (value, label) in enumerate(stats):
         x = 0.72 + index * 2.15
         rect(slide, x, 1.62, 1.95, 1.35, WHITE, radius=True, line=LINE, width=0.7)
@@ -589,17 +636,18 @@ def slide_tests(prs):
 
     code_block(slide, 0.72, 3.3, 6.0, 2.4,
                ".venv/Scripts/python.exe -m pytest -q\n"
-               "# 135 unit + 96 integration\n\n"
+               "# 137 unit + 101 integration\n\n"
                ".venv/Scripts/python.exe scripts/verify.py \\\n"
                "  --json data/verification/report.json", size=10.5)
     text(slide, 0.9, 5.78, 5.6, 0.75,
-         "输出：38/38 PASS，0 FAIL，约 1–4 秒\n所有写入检查在结束时整体回滚。", size=11.5, color=GREEN)
+         "输出：39/39 PASS，0 FAIL，约 2–4 秒\n所有写入检查在结束时整体回滚。", size=11.5, color=GREEN)
 
     right = [
         "Schema：表、FK、UNIQUE、CHECK、索引、触发器",
         "权限：alice / bob / viewer / admin 边界",
         "导入：幂等、重复、损坏文件、平台适配",
         "检索：关键词、课程、标签、全局搜索、混合检索、AI 建议",
+        "知识结构：先修边防环、递归闭包、Text2SQL 可查",
         "统计：种子数据下的计数与排名",
         "采集：令牌哈希、限流、Bearer 幂等入库",
         "Text2SQL：AST / 预检 / 金标准评测",
@@ -614,7 +662,7 @@ def slide_tests(prs):
 
 def slide_ai(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "14 / AI 协作", "哪些交给 AI，哪些必须自己判断", 15)
+    header(slide, "15 / AI 协作", "哪些交给 AI，哪些必须自己判断", 16)
 
     rows = [
         ["被否方案", "最终选择", "原因"],
@@ -625,6 +673,7 @@ def slide_ai(prs):
         ["只靠 prompt 保护 T2SQL", "只读角色 + 视图", "数据库层兜底"],
         ["AI 建议直接入库", "人工确认 + 复用总结批注", "避免污染与重复表"],
         ["中文全文检索", "pg_trgm + ILIKE", "中文分词不可靠"],
+        ["先修图只在应用层防环", "触发器递归 CTE", "所有写入入口共享约束"],
     ]
     table(slide, 0.72, 1.62, 8.1, 3.7, rows, [3.25, 2.65, 2.2], font_size=10, header_size=10)
 
@@ -640,17 +689,18 @@ def slide_ai(prs):
 def slide_end(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     rect(slide, 0, 0, W, H, GREEN_DARK)
-    text(slide, 0.85, 0.8, 7.6, 0.32, "15 / 结论", size=12, bold=True,
+    text(slide, 0.85, 0.8, 7.6, 0.32, "16 / 结论", size=12, bold=True,
          color=RGBColor(0xD9, 0xC8, 0xA8))
     text(slide, 0.85, 1.45, 8.3, 0.9, "一个可运行、可验证、可复现的\n数据库课程项目", size=34, bold=True,
          color=WHITE, spacing=1.18)
 
     left = [
-        "8 个核心实体，14 张表，完整 E-R 与范式分析",
+        "8 个核心实体，15 张表，完整 E-R 与范式分析",
         "导入、检索、批注、复习、统计、导出的闭环",
         "令牌 + 扩展 + 平台导出，离线也可读可复习",
+        "标签先修图：触发器防环 + 递归闭包",
         "Text2SQL 由只读视图与角色做最终兜底",
-        "231 项测试 + 38 项验收，全部通过",
+        "238 项测试 + 39 项验收，全部通过",
         "README 五条命令从零复现",
     ]
     bullets(slide, 0.85, 3.15, 6.4, 2.4, left, size=14, color=RGBColor(0xE8, 0xE3, 0xD3), gap=8,
@@ -695,6 +745,7 @@ def build() -> Path:
     slide_import(prs)
     slide_search(prs)
     slide_review(prs)
+    slide_graph(prs)
     slide_stats(prs)
     slide_t2s(prs)
     slide_permissions(prs)
@@ -709,4 +760,4 @@ def build() -> Path:
 
 if __name__ == "__main__":
     path = build()
-    print(f"已生成 {path.relative_to(ROOT)}（16 页）")
+    print(f"已生成 {path.relative_to(ROOT)}（17 页）")

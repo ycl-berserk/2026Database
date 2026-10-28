@@ -60,7 +60,8 @@
         <a class="nav-link {% if active_path.startswith('/share') %}active{% endif %}" href="/share" {% if active_path.startswith('/share') %}aria-current="page"{% endif %}>快速收录</a>
         <a class="nav-link {% if active_path.startswith('/courses') %}active{% endif %}" href="/courses" {% if active_path.startswith('/courses') %}aria-current="page"{% endif %}>课程</a>
         <a class="nav-link {% if active_path.startswith('/conversations') %}active{% endif %}" href="/conversations" {% if active_path.startswith('/conversations') %}aria-current="page"{% endif %}>会话</a>
-        <a class="nav-link {% if active_path.startswith('/tags') %}active{% endif %}" href="/tags" {% if active_path.startswith('/tags') %}aria-current="page"{% endif %}>标签</a>
+        <a class="nav-link {% if active_path == '/tags' or (active_path.startswith('/tags/') and not active_path.startswith('/tags/graph')) %}active{% endif %}" href="/tags" {% if active_path == '/tags' or (active_path.startswith('/tags/') and not active_path.startswith('/tags/graph')) %}aria-current="page"{% endif %}>标签</a>
+        <a class="nav-link {% if active_path.startswith('/tags/graph') %}active{% endif %}" href="/tags/graph" {% if active_path.startswith('/tags/graph') %}aria-current="page"{% endif %}>知识先修图</a>
         <a class="nav-link {% if active_path.startswith('/imports') %}active{% endif %}" href="/imports" {% if active_path.startswith('/imports') %}aria-current="page"{% endif %}>导入记录</a>
         <a class="nav-link {% if active_path.startswith('/tokens') %}active{% endif %}" href="/tokens" {% if active_path.startswith('/tokens') %}aria-current="page"{% endif %}>采集令牌</a>
         <span class="nav-label">复习</span>

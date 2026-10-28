@@ -47,7 +47,7 @@ Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查�
 
 ## 3. 关系模式
 
-14 张表全部位于 `app` schema（12 张基线表 + 迁移新增的 `review_logs`、`api_tokens`）。
+15 张表全部位于 `app` schema（12 张基线表 + 迁移新增的 `review_logs`、`api_tokens`、`tag_edges`）。
 
 ### 3.1 用户 `users`
 
@@ -250,6 +250,19 @@ Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查�
 
 令牌明文只在创建响应中返回一次；服务端不保存可逆密文。`(user_id, created_at DESC)` 索引用于令牌管理页。
 
+### 3.15 标签先修关系 `tag_edges`（迁移 005）
+
+| 列 | 类型 | 约束 |
+| --- | --- | --- |
+| id | bigint identity | PK |
+| from_tag_id | bigint | FK → tags(id) ON DELETE CASCADE |
+| to_tag_id | bigint | FK → tags(id) ON DELETE CASCADE |
+| created_at | timestamptz | 默认 now() |
+
+- `UNIQUE (from_tag_id, to_tag_id)` 阻止重复边，`CHECK (from_tag_id <> to_tag_id)` 阻止自环，`(to_tag_id)` 索引支持反向“后继”查询。
+- 表不冗余 `owner_id`：标签已带属主，边的属主由端点决定。触发器 `check_tag_edge_access` 要求两端标签属于同一用户，并用递归 CTE 检查 `to_tag_id` 是否已经可达 `from_tag_id`，是则拒绝插入，从而在数据库层保证有向无环图。
+- 先修链查询使用递归 CTE；标签删除时边随外键级联删除。
+
 ## 4. 范式分析
 
 ### 4.1 第一范式（1NF）
@@ -376,6 +389,14 @@ AI 建议本身不建表：它是用户点击保存前的草稿，只存在于�
 
 这样既不引入“建议表”这类操作型实体，也避免把摘要复制到 `conversations` 造成传递依赖。建议调用只读消息、不写库；真正的写入只在用户提交归类表单时发生，并与课程归属、标签勾选处于同一个事务。发送给模型的内容是该用户可编辑会话的前 40 条消息节选，未配置 Key 时不会发生任何外部调用。
 
+### 6.4 知识先修图
+
+标签先修关系是有向无环图（DAG）：一条边 `from → to` 表示“先掌握 from，再学 to”。实现分三层：
+
+- **数据层**：`tag_edges` 只存两个端点与时间；同属主约束与无环约束由触发器完成。环检测使用递归 CTE：插入 `a → b` 前，从 `b` 沿现有边向前走，如果能到达 `a`，说明会成环，直接拒绝。
+- **查询层**：`t2s.v_my_tag_prerequisites` 用 `WITH RECURSIVE` 展开传递闭包，并用 `DISTINCT ON (tag_id, prerequisite_tag_id) ... ORDER BY depth` 保留最短距离；页面详情与 Text2SQL 都复用这一思路。
+- **展示层**：服务按“无入边的根 → 最长路径层号”计算每个节点的列，同层按名称排序，再用三次贝塞尔曲线连接端点。SVG 由服务端渲染，不依赖前端图库；按课程拆分卡片，避免 59 个标签挤在一张图里。390px 下卡片单列、图区域横向滚动，页面本身不横向溢出。
+
 ## 7. 权限模型
 
 ### 7.1 系统角色
@@ -410,7 +431,7 @@ AI 建议本身不建表：它是用户点击保存前的草稿，只存在于�
 
 ## 8. Text2SQL 权限视图
 
-`sql/views.sql` 定义了 13 个 `t2s` 视图，全部使用 `WITH (security_barrier = true)`，以视图属主（postgres）权限读取 `app` 基表，`t2s_reader` 只被授予这些视图的 `SELECT`。
+`sql/views.sql` 定义了 15 个 `t2s` 视图，全部使用 `WITH (security_barrier = true)`，以视图属主（postgres）权限读取 `app` 基表，`t2s_reader` 只被授予这些视图的 `SELECT`。
 
 | 视图 | 内容 |
 | --- | --- |
@@ -427,6 +448,8 @@ AI 建议本身不建表：它是用户点击保存前的草稿，只存在于�
 | `v_my_sender_stats` | 按课程统计提问/助手消息量 |
 | `v_my_import_stats` | 我的导入批次 |
 | `v_my_t2s_stats` | 我的 Text2SQL 查询历史 |
+| `v_my_tag_edges` | 我的标签之间的直接先修关系 |
+| `v_my_tag_prerequisites` | 先修传递闭包，带最短距离 `depth` |
 
 用户身份通过事务内的 `set_config('app.user_id', <id>, true)` 注入；`nullif(current_setting('app.user_id', true), '')::bigint` 在未设置时返回 NULL，视图返回 0 行。`t2s_reader` 的角色级设置：
 
@@ -439,7 +462,7 @@ ALTER ROLE t2s_reader SET lock_timeout = '2s';
 
 `t2s_reader` 对 `app` schema 没有任何基线权限，因此即使 SQL 守卫被绕过，也无法读取基表或执行写操作。
 
-应用层的 SQL 守卫以 `sqlglot` 的 PostgreSQL AST 为主：只接受单条 SELECT/WITH/UNION，遍历语法树拒绝嵌套 DML、`SELECT INTO`、`FOR UPDATE`、表函数和 `pg_*` / `lo_*` / `dblink` 等函数；所有 `FROM` / `JOIN` 对象必须属于 13 个 `t2s` 视图或当前语句定义的 CTE。正则黑名单保留为第二层，匹配前先屏蔽字符串字面量与引用标识符，避免正文关键词误伤。
+应用层的 SQL 守卫以 `sqlglot` 的 PostgreSQL AST 为主：只接受单条 SELECT/WITH/UNION，遍历语法树拒绝嵌套 DML、`SELECT INTO`、`FOR UPDATE`、表函数和 `pg_*` / `lo_*` / `dblink` 等函数；所有 `FROM` / `JOIN` 对象必须属于 15 个 `t2s` 视图或当前语句定义的 CTE。正则黑名单保留为第二层，匹配前先屏蔽字符串字面量与引用标识符，避免正文关键词误伤。
 
 守卫通过后先做执行计划预检：在同一只读角色下执行 `EXPLAIN (FORMAT JSON)`，不实际取数；根节点 `Total Cost` 超过 500000 或 `Plan Rows` 超过 200000 时拒绝，预检超时 1 秒。阈值可通过 `TEXT2SQL_MAX_COST`、`TEXT2SQL_MAX_EST_ROWS` 调整，预检拒绝写入 `text2sql_log.status = 'rejected'`。
 
@@ -513,5 +536,5 @@ v1 的基线结构保存在 `sql/schema.sql`。v2 起所有结构变更以编号
 - `000_baseline` 表示 `schema.sql` 已应用，它不对应迁移文件；旧库首次执行迁移时自动补记。
 - 每个迁移在单独事务中执行，失败整体回滚且不写版本记录。
 - 初始化顺序为 `schema.sql → migrations → views.sql → roles.sql`，保证 `t2s` 视图始终基于最新结构创建。
-- 业务表仍集中在 `app` schema（14 张），迁移登记表放在独立的 `meta` schema，不参与业务计数与权限视图。
-- 当前迁移：`001_add_review_logs`（复习事件流水）、`002_add_annotation_event_id`（批注客户端事件 ID）、`003_add_api_tokens`（采集令牌）。
+- 业务表仍集中在 `app` schema（15 张），迁移登记表放在独立的 `meta` schema，不参与业务计数与权限视图。
+- 当前迁移：`001_add_review_logs`（复习事件流水）、`002_add_annotation_event_id`（批注客户端事件 ID）、`003_add_api_tokens`（采集令牌）、`004_add_message_embeddings`（可选向量）、`005_add_tag_edges`（知识先修关系）。

@@ -38,14 +38,15 @@ curl -s http://127.0.0.1:8000/healthz
 | 1:15–2:00 | 课程与共享 | `/courses`、`/courses/1` | 课程成员 M:N、owner/editor/viewer |
 | 2:00–2:50 | 检索、上下文与整理 | `/conversations?q=隔离级别`、会话详情 | trgm + ILIKE、可选 pgvector + RRF、分页、seq_no 上下文；新标签 `ON CONFLICT`、摘要复用“总结”批注 |
 | 2:50–3:50 | 导入与查重 | `/imports`、预览页、`/tokens` | 解析校验、JSONB 预览、唯一键、单事务、原生导出适配、Bearer 令牌 |
-| 3:50–4:40 | 批注与复习 | `/annotations`、`/reviews` | 1:N、UNIQUE(user_id, annotation_id)、间隔重复 |
-| 4:40–5:30 | 统计与导出 | `/stats`、CSV / Markdown | JOIN、GROUP BY、FILTER、窗口函数、CTE |
-| 5:30–6:40 | Text2SQL | `/text2sql` | 权限视图、只读角色、SQL 守卫、审计 |
-| 6:40–7:20 | 权限边界 | bob 403、admin | 应用层 + SQL 作用域 + 数据库权限 |
-| 7:20–7:50 | 设计与验收 | E-R 图、`verify.py` | 8 实体、12 联系、14 张表、38 项验收 |
+| 3:50–4:35 | 批注与复习 | `/annotations`、`/reviews` | 1:N、UNIQUE(user_id, annotation_id)、间隔重复 |
+| 4:35–5:05 | 知识先修图 | `/tags/graph` | DAG、触发器递归防环、递归闭包、SVG 布局 |
+| 5:05–5:45 | 统计与导出 | `/stats`、CSV / Markdown | JOIN、GROUP BY、FILTER、窗口函数、CTE |
+| 5:45–6:45 | Text2SQL | `/text2sql` | 权限视图、只读角色、SQL 守卫、审计 |
+| 6:45–7:20 | 权限边界 | bob 403、admin | 应用层 + SQL 作用域 + 数据库权限 |
+| 7:20–7:50 | 设计与验收 | E-R 图、`verify.py` | 8 实体、12 联系、15 张表、39 项验收 |
 | 7:50–8:00 | 收尾 | 报告 / README | 可复现命令与限制 |
 
-如果时间紧，优先保留：**检索 → 导入查重 → 批注复习 → Text2SQL → 权限 403**；统计和 E-R 可各用 20 秒带过。
+如果时间紧，优先保留：**检索 → 导入查重 → 批注复习 → 知识先修图 → Text2SQL → 权限 403**；统计和 E-R 可各用 20 秒带过。
 
 ---
 
@@ -192,7 +193,29 @@ curl -s http://127.0.0.1:8000/healthz
 
 ---
 
-### 4:40–5:30 统计与导出
+### 4:35–5:05 知识先修图
+
+**操作**：
+
+1. 点击「标签」，再点右上角「知识先修图」。
+2. 展示六张按课程分组的卡片：数据库、操作系统、计算机网络、机器学习、数据结构、跨课程。
+3. 选中「最短路径」，展示右侧详情：直接先修「图」、递归先修链深度 2、解锁的后续标签、关联会话。
+4. 在表单里尝试添加「最短路径 → 图」，展示被拒绝的提示；随后添加一条合法边并删除，说明增删即时生效。
+5. 可选：在 Text2SQL 提问「我的标签有哪些先修关系？」，指出结果来自递归视图。
+
+**口播**：
+
+> 标签不仅能筛选，还能表达先学什么、后学什么。`tag_edges` 是一张有向无环图，一条边表示先修关系。
+>
+> 环不是靠页面挡的：数据库上的触发器会用递归 CTE 检查从后继出发能否回到先修，如果能就拒绝写入；跨用户的标签也会被拒绝。这样脚本、接口和页面共享同一个正确性边界。
+>
+> 页面显示的先修链是实时递归出来的，不落闭包表，避免边变了闭包没更新；每个标签只保留最短深度。布局在服务层按最长路径分层，输出 SVG，不引入前端图库。
+
+**备用画面**：`docs/screenshots/27-tag-graph.png`、`27b-tag-graph-detail.png`。
+
+---
+
+### 5:05–5:45 统计与导出
 
 **操作**：
 
@@ -214,7 +237,7 @@ curl -s http://127.0.0.1:8000/healthz
 
 ---
 
-### 5:30–6:40 Text2SQL
+### 5:45–6:45 Text2SQL
 
 **操作**：
 
@@ -232,7 +255,7 @@ curl -s http://127.0.0.1:8000/healthz
 >
 > 生成 SQL 后不是直接执行：先要求恰好一条 SELECT/WITH，拒绝 DDL/DML、系统表、`pg_` 函数和注释；再包一层 200 行上限，交给 `t2s_reader` 在只读事务里执行，语句超时 3 秒。
 >
-> 最关键的是权限兜底：`t2s_reader` 对 `app` schema 没有任何权限，只能读 `t2s` 下 13 个 `security_barrier` 视图；视图通过 `current_setting('app.user_id')` 过滤。所以即使模型生成了越权 SQL，数据库层也拿不到别人的数据，更写不进去。
+> 最关键的是权限兜底：`t2s_reader` 对 `app` schema 没有任何权限，只能读 `t2s` 下 15 个 `security_barrier` 视图；视图通过 `current_setting('app.user_id')` 过滤。所以即使模型生成了越权 SQL，数据库层也拿不到别人的数据，更写不进去。
 >
 > 每次成功、拒绝或异常都会写 `text2sql_log`，包括问题、SQL、状态、耗时和行数。
 
@@ -240,7 +263,7 @@ curl -s http://127.0.0.1:8000/healthz
 
 ---
 
-### 6:40–7:20 权限边界
+### 6:45–7:20 权限边界
 
 **操作**：
 
@@ -265,23 +288,23 @@ curl -s http://127.0.0.1:8000/healthz
 **操作**：
 
 1. 打开 `docs/er-chen.svg` 或 `docs/screenshots/16-er-chen.png`，指出 8 个核心实体和 12 组联系。
-2. 打开 `docs/design.md`，快速展示 14 张表、范式分析和删除策略。
+2. 打开 `docs/design.md`，快速展示 15 张表、范式分析和删除策略。
 3. 在终端执行验收脚本：
 
 ```bash
 .venv/Scripts/python.exe scripts/verify.py --json data/verification/report.json
 ```
 
-4. 指出输出 `38/38 PASS` 与报告路径。
+4. 指出输出 `39/39 PASS` 与报告路径。
 5. 可选：讲解 Text2SQL 金标准评测，指出 30 题中 mock 准确率 56.7%，但合法率与越权拦截率均为 100%。
 
 **口播**：
 
 > 概念设计有 8 个核心实体：用户、课程、来源、会话、消息、标签、批注、复习项；另外还有课程成员、导入批次、Text2SQL 日志、复习事件和采集令牌这些操作型实体。批注和复习项按弱实体处理。
 >
-> 逻辑设计上，标签、课程成员、会话标签都拆成关联表，满足 1NF；核心表用单列代理键，关联表的非键属性依赖整个复合键；会话不冗余 owner，消息不冗余课程和来源，避免传递依赖。`import_batches.payload` 是预览期的受控冗余，导入完成后清理。
+> 逻辑设计上，标签、课程成员、会话标签都拆成关联表，满足 1NF；核心表用单列代理键，关联表的非键属性依赖整个复合键；会话不冗余 owner，消息不冗余课程和来源，避免传递依赖。`import_batches.payload` 是预览期的受控冗余，导入完成后清理。标签之间的先修关系单独建边表，闭包实时递归，不存冗余路径。
 >
-> 验收脚本覆盖表与约束、演示数据、登录权限、导入幂等、平台适配、检索、批注复习、整理建议、统计、采集令牌、Text2SQL 守卫/预检/金标准评测/拒绝与跨用户隔离、导出、混合检索和数据一致性，共 38 项。
+> 验收脚本覆盖表与约束、演示数据、登录权限、导入幂等、平台适配、检索、批注复习、整理建议、知识先修图、统计、采集令牌、Text2SQL 守卫/预检/金标准评测/拒绝与跨用户隔离、导出、混合检索和数据一致性，共 39 项。
 
 **备用画面**：`docs/screenshots/16-er-chen.png`、`docs/verification/report.json`（实际路径 `data/verification/report.json`）。
 
@@ -324,7 +347,7 @@ docker compose exec -T db psql -U postgres -d learning_space \
   -c "DELETE FROM app.text2sql_log;"
 ```
 
-如果演示中点击了「确认导入」「加入复习」「复习一次」或停用了账号，建议直接重置：
+如果演示中点击了「确认导入」「加入复习」「复习一次」、新增先修边或停用了账号，建议直接重置：
 
 ```bash
 .venv/Scripts/python.exe scripts/init_db.py --reset
@@ -357,6 +380,7 @@ node scripts/screenshots.mjs --record
 | 标签 | `/tags` | `06-tags.png` |
 | 导入 | `/imports`、预览页 | `07-imports.png`、`08-import-preview.png` |
 | 批注 / 复习 | `/annotations`、`/reviews` | `09-annotations.png`、`10-reviews.png` |
+| 知识先修图 | `/tags/graph` | `27-tag-graph.png`、`27b-tag-graph-detail.png` |
 | 统计 | `/stats` | `11-stats.png` |
 | Text2SQL | `/text2sql` | `12-text2sql.png`、`13-text2sql-result.png`、`13b-text2sql-history.png` |
 | 管理 / 越权 | `/admin`、403 页 | `14-admin.png`、`15-permission-denied.png` |

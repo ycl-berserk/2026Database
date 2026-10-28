@@ -329,3 +329,62 @@ SELECT l.id AS log_id,
 FROM app.text2sql_log l
 CROSS JOIN me
 WHERE l.user_id = me.uid;
+
+-- 当前用户标签之间的直接先修关系
+CREATE OR REPLACE VIEW t2s.v_my_tag_edges WITH (security_barrier = true) AS
+WITH me AS (
+    SELECT nullif(current_setting('app.user_id', true), '')::bigint AS uid
+)
+SELECT e.id AS edge_id,
+       tf.id AS prerequisite_tag_id,
+       tf.name AS prerequisite_tag,
+       tt.id AS tag_id,
+       tt.name AS tag_name,
+       e.created_at
+FROM app.tag_edges e
+JOIN app.tags tf ON tf.id = e.from_tag_id
+JOIN app.tags tt ON tt.id = e.to_tag_id
+CROSS JOIN me
+WHERE tf.owner_id = me.uid
+  AND tt.owner_id = me.uid;
+
+-- 先修传递闭包：深度为最短先修距离，供递归 CTE 查询与 Text2SQL 使用
+CREATE OR REPLACE VIEW t2s.v_my_tag_prerequisites WITH (security_barrier = true) AS
+WITH RECURSIVE me AS (
+    SELECT nullif(current_setting('app.user_id', true), '')::bigint AS uid
+),
+walk AS (
+    SELECT e.to_tag_id AS tag_id,
+           e.from_tag_id AS prerequisite_tag_id,
+           1 AS depth,
+           ARRAY[e.to_tag_id, e.from_tag_id] AS path
+    FROM app.tag_edges e
+    JOIN app.tags tf ON tf.id = e.from_tag_id
+    CROSS JOIN me
+    WHERE tf.owner_id = me.uid
+    UNION ALL
+    SELECT w.tag_id,
+           e.from_tag_id,
+           w.depth + 1,
+           w.path || e.from_tag_id
+    FROM walk w
+    JOIN app.tag_edges e ON e.to_tag_id = w.prerequisite_tag_id
+    WHERE NOT e.from_tag_id = ANY(w.path)
+),
+best AS (
+    SELECT DISTINCT ON (tag_id, prerequisite_tag_id)
+           tag_id, prerequisite_tag_id, depth
+    FROM walk
+    ORDER BY tag_id, prerequisite_tag_id, depth
+)
+SELECT b.tag_id,
+       tt.name AS tag_name,
+       b.prerequisite_tag_id,
+       tp.name AS prerequisite_tag,
+       b.depth
+FROM best b
+JOIN app.tags tt ON tt.id = b.tag_id
+JOIN app.tags tp ON tp.id = b.prerequisite_tag_id
+CROSS JOIN me
+WHERE tt.owner_id = me.uid
+  AND tp.owner_id = me.uid;

@@ -1,6 +1,6 @@
 # v2 改进路线图
 
-> 状态：Phase 1、Phase 2 与 Phase 3 已完成（T1、T2、T5、R1、R6）。当前基线为 231 项测试（135 单元 + 96 集成）与 38 项端到端验收，本路线图的任何后续项都不得破坏这些基线。
+> 状态：Phase 1、Phase 2、Phase 3 已完成，Phase 4 的 K2 已完成（T1、T2、T5、R1、R6、K2）。当前基线为 238 项测试（137 单元 + 101 集成）与 39 项端到端验收，本路线图的任何后续项都不得破坏这些基线。
 >
 > 面向对象：课程小组全体成员。每项都有编号，可据此开 Issue、分任务、写周报。
 
@@ -98,7 +98,7 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 
 | # | 事项 | 价值 | 量 | 状态 | 说明 |
 | --- | --- | --- | --- | --- | --- |
-| T1 | AST 校验（pglast / sqlglot）替换正则黑名单 | 答辩 | M | 完成 | `sqlglot` PostgreSQL 方言解析：单条 SELECT/WITH/UNION、拒绝嵌套 DML/`SELECT INTO`/`FOR UPDATE`/表函数/`pg_*` 等函数、13 个视图 + CTE 白名单；字符串与引用标识符先屏蔽再跑正则黑名单；新增 16 项单元测试，`verify.t2sql.guard` 覆盖嵌套 DML 与表函数 |
+| T1 | AST 校验（pglast / sqlglot）替换正则黑名单 | 答辩 | M | 完成 | `sqlglot` PostgreSQL 方言解析：单条 SELECT/WITH/UNION、拒绝嵌套 DML/`SELECT INTO`/`FOR UPDATE`/表函数/`pg_*` 等函数、15 个视图 + CTE 白名单；字符串与引用标识符先屏蔽再跑正则黑名单；新增 16 项单元测试，`verify.t2sql.guard` 覆盖嵌套 DML 与表函数 |
 | T2 | EXPLAIN 预检：估算行数 / 成本超阈值直接拒绝 | 答辩 | S/M | 完成 | `preflight_query` 在只读事务内执行 `EXPLAIN (FORMAT JSON)`，不取数；默认代价上限 500000、估算行数上限 200000、预检超时 1s，可用 `TEXT2SQL_MAX_COST` / `TEXT2SQL_MAX_EST_ROWS` 调整；拒绝写 `rejected` 日志；页面展示预检代价与估算行数；新增 3 项集成测试与 `verify.t2s.preflight` |
 | T3 | 结构化输出 / 工具调用 + few-shot | 答辩 | S/M | 待办 | 不同 provider 需适配 |
 | T4 | Schema RAG：只向模型提供相关视图与列 | 答辩 | S/M | 待办 | 视图数量少，收益有限但便于讲解 |
@@ -146,7 +146,7 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 | # | 事项 | 价值 | 量 | 状态 | 说明 |
 | --- | --- | --- | --- | --- | --- |
 | K1 | `review_logs` 复习事件表 + 幂等键 | 用户 + 答辩 | S/M | 完成 | `sql/migrations/001_add_review_logs.sql`；每次复习/掌握/重置写事件，`(user_id,event_id)` 唯一键支持离线重放；复习页展示近 5 周热力图 |
-| K2 | 知识先修图：`tag_edges` + 递归 CTE + 可视化 | 用户 + 答辩 | M | 待办 | 让系统从“聊天记录浏览器”变成“学习空间”；递归 CTE 是很好的答辩素材 |
+| K2 | 知识先修图：`tag_edges` + 递归 CTE + 可视化 | 用户 + 答辩 | M | 完成 | 迁移 005 新增 `tag_edges`（第 15 张表，同属主、禁自环、触发器递归 CTE 防环）；`/tags/graph` 按课程合并连通分量渲染 SVG，最长路径分层 + 贝塞尔曲线；`t2s.v_my_tag_edges` / `v_my_tag_prerequisites` 暴露给 Text2SQL，闭包用 `DISTINCT ON` 取最短深度；种子 32 条边，新增 2 项布局单元 + 5 项集成测试与 `verify.graph.prerequisites` |
 | K3 | FSRS / 可插拔复习算法 | 实验 | M | 待办 | 依赖 K1，先积累复习事件再谈算法 |
 
 ### 9. 体验专项
@@ -188,7 +188,9 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 
 **Phase 2 进度**：K1 复习事件流水、O2 离线阅读、O3 离线批注草稿、O4 复习 outbox、U4 全局搜索、U8 离线状态提示、C3 采集令牌 / Bearer 导入接口、C5 平台导出适配器与 C4 MV3 扩展已完成；Phase 2 验收与文档已收尾。
 
-**Phase 3 进度**：T1 AST 校验、T2 EXPLAIN 预检、T5 金标准评测、R1 pgvector 混合检索、R6 自动标签/摘要建议已完成，Phase 3 收尾。下一步进入 Phase 4（知识先修图、只读 MCP、数据库观测）。
+**Phase 3 进度**：T1 AST 校验、T2 EXPLAIN 预检、T5 金标准评测、R1 pgvector 混合检索、R6 自动标签/摘要建议已完成，Phase 3 收尾。
+
+**Phase 4 进度**：K2 知识先修图已完成（15 张表、15 个视图、6 个触发器；238 项测试、39 项验收）。下一步 A2 命令行、A1 只读 MCP，然后 D1 RLS 对比、D2 审计历史、D3 观测页。
 
 每个阶段的统一验收：
 

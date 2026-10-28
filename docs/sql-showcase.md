@@ -493,8 +493,41 @@ SELECT status, count(*) AS n, round(avg(latency_ms)) AS avg_ms, sum(row_count) A
 
 种子数据不预置查询日志，执行一次 `verify.py` 或页面查询后才有记录。审计表同时记录成功、被拒绝（`rejected`）与执行失败（`error`）三类状态。
 
+## 21. 知识先修闭包：递归 CTE + 最短深度
+
+```sql
+WITH RECURSIVE mine AS (
+    SELECT id FROM app.tags
+     WHERE owner_id = (SELECT id FROM app.users WHERE username = 'alice')
+), walk AS (
+    SELECT t.id AS tag_id, t.id AS prereq_id, 0 AS depth, ARRAY[t.id] AS path
+      FROM app.tags t JOIN mine ON mine.id = t.id
+    UNION ALL
+    SELECT w.tag_id, e.from_tag_id, w.depth + 1, w.path || e.from_tag_id
+      FROM walk w
+      JOIN app.tag_edges e ON e.to_tag_id = w.prereq_id
+     WHERE NOT e.from_tag_id = ANY (w.path)
+), best AS (
+    SELECT DISTINCT ON (tag_id, prereq_id) tag_id, prereq_id, depth
+      FROM walk WHERE depth >= 2
+     ORDER BY tag_id, prereq_id, depth
+)
+SELECT rt.name AS tag, pt.name AS prerequisite, b.depth
+  FROM best b
+  JOIN app.tags rt ON rt.id = b.tag_id
+  JOIN app.tags pt ON pt.id = b.prereq_id
+ ORDER BY rt.name, b.depth;
+```
+
+| tag | prerequisite | depth |
+| --- | --- | ---: |
+| B+树 | SQL | 2 |
+| Dijkstra | 图 | 2 |
+
+直接先修的深度是 1（如 `索引 → SQL`、`最短路径 → 图`），这里过滤 `depth >= 2` 以展示递归展开的间接依赖。`path` 数组既用于防止环路重复展开，也保证闭包不会无限递归；`DISTINCT ON` 让同一对“标签—先修”只保留最短路径。生产查询 `t2s.v_my_tag_prerequisites` 就是这一结构，并额外用 `me.uid` 限定当前用户。
+
 ---
 
 ### 覆盖的 SQL 知识点
 
-`WHERE` / `ORDER BY` / `LIMIT`、多表 `JOIN`、`LEFT JOIN`、`LATERAL`、`DISTINCT ON`、`GROUP BY` + `HAVING`、`COUNT(DISTINCT)`、`FILTER`、`CASE`、`COALESCE`、`generate_series`、`date_trunc`、窗口函数 `RANK()` 与 `count(*) OVER()`、CTE、JSONB 取值、`ON CONFLICT`、表达式索引、部分索引、GIN 索引、`EXPLAIN (ANALYZE, BUFFERS)`。
+`WHERE` / `ORDER BY` / `LIMIT`、多表 `JOIN`、`LEFT JOIN`、`LATERAL`、`DISTINCT ON`、`GROUP BY` + `HAVING`、`COUNT(DISTINCT)`、`FILTER`、`CASE`、`COALESCE`、`generate_series`、`date_trunc`、窗口函数 `RANK()` 与 `count(*) OVER()`、CTE、`WITH RECURSIVE`、数组包含、JSONB 取值、`ON CONFLICT`、表达式索引、部分索引、GIN 索引、`EXPLAIN (ANALYZE, BUFFERS)`。

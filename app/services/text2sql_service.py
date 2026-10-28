@@ -30,6 +30,8 @@ VIEWS = (
     "v_my_sender_stats",
     "v_my_import_stats",
     "v_my_t2s_stats",
+    "v_my_tag_edges",
+    "v_my_tag_prerequisites",
 )
 
 SCHEMA_DOC = """
@@ -47,6 +49,8 @@ SCHEMA_DOC = """
 - v_my_sender_stats(course_name, sender, message_count)
 - v_my_import_stats(batch_id, file_name, status, platform, summary, created_at, imported_at)
 - v_my_t2s_stats(log_id, question, status, latency_ms, row_count, created_at)
+- v_my_tag_edges(edge_id, prerequisite_tag_id, prerequisite_tag, tag_id, tag_name, created_at)
+- v_my_tag_prerequisites(tag_id, tag_name, prerequisite_tag_id, prerequisite_tag, depth)
 
 约束：
 1. 只生成一条 SELECT 或 WITH 查询，不要写分号，不要注释。
@@ -387,6 +391,12 @@ def _mock_sql(question: str) -> tuple[str, str]:
             "按批注类型统计数量。",
         )
 
+    if "先修" in q or "前置" in q:
+        return (
+            "SELECT tag_name, prerequisite_tag, depth FROM v_my_tag_prerequisites "
+            "ORDER BY tag_name, depth",
+            "递归列出每个标签的全部先修标签，depth 为最短先修距离。",
+        )
     if "标签" in q:
         return (
             "SELECT name, conversation_count, message_count FROM v_my_tag_stats "

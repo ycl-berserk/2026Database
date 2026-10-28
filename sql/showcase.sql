@@ -343,3 +343,28 @@ SELECT status, count(*) AS n,
   FROM app.text2sql_log
  GROUP BY status
  ORDER BY status;
+
+-- ---------------------------------------------------------------------------
+-- 21. 知识先修闭包：递归 CTE + 最短深度
+-- ---------------------------------------------------------------------------
+WITH RECURSIVE mine AS (
+    SELECT id FROM app.tags
+     WHERE owner_id = (SELECT id FROM app.users WHERE username = 'alice')
+), walk AS (
+    SELECT t.id AS tag_id, t.id AS prereq_id, 0 AS depth, ARRAY[t.id] AS path
+      FROM app.tags t JOIN mine ON mine.id = t.id
+    UNION ALL
+    SELECT w.tag_id, e.from_tag_id, w.depth + 1, w.path || e.from_tag_id
+      FROM walk w
+      JOIN app.tag_edges e ON e.to_tag_id = w.prereq_id
+     WHERE NOT e.from_tag_id = ANY (w.path)
+), best AS (
+    SELECT DISTINCT ON (tag_id, prereq_id) tag_id, prereq_id, depth
+      FROM walk WHERE depth >= 2
+     ORDER BY tag_id, prereq_id, depth
+)
+SELECT rt.name AS tag, pt.name AS prerequisite, b.depth
+  FROM best b
+  JOIN app.tags rt ON rt.id = b.tag_id
+  JOIN app.tags pt ON pt.id = b.prereq_id
+ ORDER BY rt.name, b.depth;

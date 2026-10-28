@@ -12,7 +12,7 @@
 
 本项目实现了一个以“聊天记录”为核心的关系数据库应用系统。系统把 Qoder、ChatGPT、DeepSeek 等平台的问答导出文件解析为统一格式，按课程、来源、标签组织；支持中文检索、会话上下文、批注、间隔复习、统计导出，并额外实现了受数据库只读权限视图保护的 Text2SQL 页面。
 
-数据库包含 14 张业务表、13 个权限视图、4 个触发器、多组唯一/检查/外键约束；应用层使用参数化 SQL 与显式事务，不依赖 ORM。导入流水线采用“解析 → 校验 → 持久化预览 → 单事务确认 → 查重”的结构，并在文件导入之外提供平台原生导出适配、采集令牌 + Bearer 接口与 MV3 浏览器扩展。系统通过 231 个自动化测试与 38 项端到端验收检查，覆盖 schema、权限、导入幂等、中文检索、全局搜索、统计、批注复习、整理建议、离线同步、导出、Text2SQL 安全与事务回滚。
+数据库包含 15 张业务表、15 个权限视图、6 个触发器、多组唯一/检查/外键约束；应用层使用参数化 SQL 与显式事务，不依赖 ORM。导入流水线采用“解析 → 校验 → 持久化预览 → 单事务确认 → 查重”的结构，并在文件导入之外提供平台原生导出适配、采集令牌 + Bearer 接口与 MV3 浏览器扩展。标签之间还维护一张有向无环的先修关系图，用递归 CTE 做环检测、闭包与最短路径查询。系统通过 238 个自动化测试与 39 项端到端验收检查，覆盖 schema、权限、导入幂等、中文检索、全局搜索、统计、批注复习、整理建议、知识先修图、离线同步、导出、Text2SQL 安全与事务回滚。
 
 ---
 
@@ -51,6 +51,7 @@
 | R07 | Text2SQL | 自然语言→SQL、守卫、只读执行、审计历史、mock/LLM |
 | R08 | 管理 | 用户启停、系统聚合统计、管理边界 |
 | R09 | 快速采集与离线 | PWA 分享、裸文本、平台原生导出适配、采集令牌 + Bearer API、MV3 扩展、离线阅读/批注/复习 |
+| R12 | 知识先修图 | 标签间 DAG、触发器防环、递归闭包与最短路径、按课程分组的 SVG 图、Text2SQL 可查 |
 
 更细的输入/输出/异常/代码位置/验收映射见 [requirements.md](requirements.md)。
 
@@ -75,6 +76,7 @@
 | 批注 | 66 |
 | 复习项 | 39（alice 35，bob 4） |
 | 复习事件 | 76（热力图与离线 outbox 幂等使用） |
+| 标签先修边 | 32（覆盖 DFS/BFS、事务、TCP 等知识点） |
 | 导入批次 | 5（全部 imported） |
 | 采集令牌 | 种子数据 0；演示时可在 `/tokens` 创建 |
 | Text2SQL 日志 | 种子数据 0；运行时追加 |
@@ -129,6 +131,7 @@
 | 消息 — 批注 | 1:N | CASCADE |
 | 批注 — 复习项 | 1:N | CASCADE |
 | 会话 — 标签 | M:N | 关联表 CASCADE |
+| 标签 — 标签（先修） | M:N 有向，同属主，禁止自环与环路 | 任一端标签删除即 CASCADE |
 
 用户不做硬删除，使用 `is_active=false` 停用，避免破坏历史批注、复习与审计记录。
 
@@ -136,7 +139,7 @@
 
 ### 5.1 关系模式
 
-14 张表位于 `app` schema（12 张基线表 + 2 张迁移新增表）：
+15 张表位于 `app` schema（12 张基线表 + 3 张迁移新增表）：
 
 1. `users`：账号、PBKDF2 哈希、显示名、系统角色、启停状态。
 2. `courses`：课程编号、名称、学期、教师、创建者。
@@ -152,6 +155,7 @@
 12. `text2sql_log`：问题、生成 SQL、状态、耗时、行数、错误。
 13. `review_logs`：复习事件流水，`(user_id, event_id)` 唯一用于离线重放幂等；`review_item_id` 删除时 SET NULL。
 14. `api_tokens`：采集令牌，只存 SHA-256 与可读前缀，含固定窗口限流计数、最近使用与撤销时间。
+15. `tag_edges`：标签先修关系 DAG，`(from_tag_id, to_tag_id)` 唯一，触发器校验同属主与无环。
 
 完整列定义、约束与索引见 [design.md](design.md)。
 
@@ -168,11 +172,11 @@
 
 - 主键：所有表均有单列或复合主键。
 - 外键：覆盖来源、课程、会话、消息、批注、复习等所有关系；删除行为按语义选择 CASCADE / SET NULL / RESTRICT。
-- 唯一：用户名、课程 `(created_by, code, semester)`、来源 `(owner_id, platform, label)`、会话 `(source_id, external_id)`、消息 `(conversation_id, seq_no)`、标签 `(owner_id, name)`、复习项 `(user_id, annotation_id)`、令牌哈希、复习事件 `(user_id, event_id)`。
-- CHECK：角色枚举、发送者枚举、批注类型/状态、复习状态、令牌名称长度与非负窗口计数、复习事件动作/间隔、时间顺序、文件大小、SHA-256 格式、颜色格式等。
+- 唯一：用户名、课程 `(created_by, code, semester)`、来源 `(owner_id, platform, label)`、会话 `(source_id, external_id)`、消息 `(conversation_id, seq_no)`、标签 `(owner_id, name)`、复习项 `(user_id, annotation_id)`、令牌哈希、复习事件 `(user_id, event_id)`、先修边 `(from_tag_id, to_tag_id)`。
+- CHECK：角色枚举、发送者枚举、批注类型/状态、复习状态、令牌名称长度与非负窗口计数、复习事件动作/间隔、时间顺序、文件大小、SHA-256 格式、颜色格式、先修边两端不同等。
 - 部分唯一索引：`course_members(course_id) WHERE role='owner'`。
 - 延迟约束触发器：事务结束时每门课恰好一个 owner。
-- 访问触发器：打标签、批注、复习时必须具备会话或课程编辑权限。
+- 访问触发器：打标签、批注、复习时必须具备会话或课程编辑权限；写先修边时用递归 CTE 检查两端同属主且不形成环。
 
 ### 5.4 索引
 
@@ -186,6 +190,7 @@
 - `text2sql_log`：`(user_id, created_at DESC)`。
 - `review_logs`：`(user_id, created_at DESC)`、`(review_item_id, created_at DESC)`。
 - `api_tokens`：`(user_id, created_at DESC)`；令牌哈希与 `(user_id, event_id)` 由唯一约束提供索引。
+- `tag_edges`：`(to_tag_id)` 支持反向“解锁了什么”查询，`(from_tag_id, to_tag_id)` 唯一约束提供正向索引。
 
 中文检索没有使用 PostgreSQL 原生全文检索，因为其默认分词对中文不友好；改用 `pg_trgm` + `ILIKE`，并对用户输入的 `%`、`_`、`\` 做 `ESCAPE` 处理。
 
@@ -322,15 +327,36 @@ Text2SQL 页面提供示例问题、结果表格、生成的 SQL、解释和最�
 
 验收使用本地 LLM 桩验证了完整链路：按钮出现 → 建议填入摘要与标签 → 保存 → 页面显示“总结”批注与新标签；另在无 Key 实例上确认按钮不渲染、表单可用。`verify.ai.organize` 在演示库事务中覆盖标签幂等写入、摘要唯一更新与 viewer 越权拦截。
 
+### 6.12 知识先修图
+
+标签不仅用于筛选，还可以表达“先学什么、后学什么”。`/tags/graph` 把当前用户的标签组织成有向无环图：一条 `from_tag_id → to_tag_id` 的边表示前者是后者的先修知识。演示数据里有 32 条边，覆盖 SQL→索引→B+树、事务→隔离级别、进程→线程、TCP→握手等链路。
+
+3 个设计要点：
+
+1. **环由数据库拦截**。`tag_edges` 上的 BEFORE 触发器先检查两端标签属于同一用户，再用从 `to_tag_id` 出发的递归 CTE 判断 `from_tag_id` 是否已可达；若可达则抛 `check_violation`，服务层再翻译成可读提示。这样即使绕过页面直接写库，也得到同一约束。
+2. **递归闭包放在视图里**。`t2s.v_my_tag_prerequisites` 用 `WITH RECURSIVE` 先锁定当前用户的标签集合，再逐层展开先修链，并用 `DISTINCT ON` 只保留每个标签的最短深度。页面上的“完整先修链（含间接）”和 Text2SQL 的“哪些标签有三层以上先修”都读这个视图。
+3. **布局在应用层做**。服务层按最长路径给节点分层，同层纵向排列，用三次贝塞尔曲线画边；随后把连通分量按“出现次数最多的课程”合并成课程卡片，孤立标签单独列出。这样页面不会变成一张巨大的全屏图，而是六张可读的课程子图。
+
+| 验证项 | 结果 |
+| --- | --- |
+| 先修边 / 连通分量 | 32 条 / 6 组 |
+| “最短路径”的完整先修链 | 图（深度 1）→ 最短路径（深度 2） |
+| 试图添加 最短路径→图 | 被触发器拒绝（成环） |
+| 添加 BFS→Dijkstra 后闭包 | Dijkstra 新增一层，删除后恢复 |
+
+![知识先修图](screenshots/27-tag-graph.png)
+
+选中标签后，右侧（窄屏为下方）会显示直接先修、递归先修链、解锁的后续标签和关联会话，见 [detail 截图](screenshots/27b-tag-graph-detail.png)。`verify.graph.prerequisites` 在演示库事务中覆盖闭包、防环与增删。管理员没有该页面入口；所有查询天然按属主过滤。
+
 ## 7. 关键 SQL
 
-完整 20 条关键 SQL 及真实结果见 [sql-showcase.md](sql-showcase.md)，可执行脚本见 [../sql/showcase.sql](../sql/showcase.sql)。覆盖：
+完整 21 条关键 SQL 及真实结果见 [sql-showcase.md](sql-showcase.md)，可执行脚本见 [../sql/showcase.sql](../sql/showcase.sql)。覆盖：
 
 - 多表 `JOIN`、`LEFT JOIN`、`LATERAL`、`DISTINCT ON`
 - `GROUP BY` / `HAVING`、`COUNT(DISTINCT)`、`FILTER`、`CASE`
 - `generate_series` + `date_trunc` 补齐月份
 - 窗口函数 `RANK()`、`count(*) OVER()`
-- CTE、JSONB 取值、`ON CONFLICT`
+- CTE、`WITH RECURSIVE`、JSONB 取值、`ON CONFLICT`
 - `pg_trgm` GIN 索引、表达式索引、部分索引
 - `EXPLAIN (ANALYZE, BUFFERS)` 对比顺序扫描与索引扫描
 
@@ -353,11 +379,11 @@ SELECT c.code, c.name,
 Text2SQL 的风险不在“生成得对不对”，而在“生成了危险语句怎么办”。本项目采用多层防护：
 
 1. **Prompt 约束**：只提供 `t2s` 视图与列、关系说明、少样本；要求输出 JSON，只生成单条 SELECT/WITH。
-2. **SQL 守卫（AST 优先）**：`sqlglot` 以 PostgreSQL 方言解析，要求恰好一条 SELECT/WITH/UNION；遍历语法树拒绝 DDL/DML、`SELECT INTO`、`FOR UPDATE` 锁、表函数与 `pg_*`/`lo_*`/`dblink` 等危险函数，表名必须在 13 个视图或 CTE 白名单中。随后保留 `sqlparse` 单语句拆分、注释禁用和关键字黑名单作为第二层，并在检查前屏蔽字符串字面量与引用标识符，避免把正文里的 `delete` 误判为语句。
+2. **SQL 守卫（AST 优先）**：`sqlglot` 以 PostgreSQL 方言解析，要求恰好一条 SELECT/WITH/UNION；遍历语法树拒绝 DDL/DML、`SELECT INTO`、`FOR UPDATE` 锁、表函数与 `pg_*`/`lo_*`/`dblink` 等危险函数，表名必须在 15 个视图或 CTE 白名单中。随后保留 `sqlparse` 单语句拆分、注释禁用和关键字黑名单作为第二层，并在检查前屏蔽字符串字面量与引用标识符，避免把正文里的 `delete` 误判为语句。
 3. **EXPLAIN 预检**：在只读事务内用 `t2s_reader` 执行 `EXPLAIN (FORMAT JSON)`，不实际取数；总代价超过 500000 或根节点估算行数超过 200000 时直接拒绝，阈值可用 `TEXT2SQL_MAX_COST` / `TEXT2SQL_MAX_EST_ROWS` 调整，预检本身有 1 秒超时。
 4. **行数包装**：`SELECT * FROM (<sql>) q LIMIT 201`，只返回前 200 行并标记截断。
 5. **只读角色**：`t2s_reader` 只能 SELECT `t2s` 视图；对 `app` schema 无任何权限；默认只读事务、3 秒语句超时、5 秒空闲事务超时、2 秒锁超时。
-6. **行级权限视图**：13 个 `security_barrier` 视图按事务内 `app.user_id` 过滤；未设置时返回 0 行。
+6. **行级权限视图**：15 个 `security_barrier` 视图按事务内 `app.user_id` 过滤；未设置时返回 0 行。
 7. **审计**：成功、被拒绝、执行失败都写 `text2sql_log`；预检拒绝记为 `rejected`。
 
 即使 Prompt 被注入、模型生成了恶意 SQL，数据库角色与视图仍然是最后一道边界。测试覆盖了 DROP/DELETE、嵌套 DML、表函数、`FOR UPDATE`、系统表、跨用户视图、高成本预检、超时、行数上限与审计。
@@ -398,28 +424,28 @@ mock 只覆盖固定问法，Q18–Q30 的换问法、聚合与排名问题会�
 ### 10.1 自动化测试
 
 ```text
-135 unit tests
-96 integration tests
-231 total, all passed
+137 unit tests
+101 integration tests
+238 total, all passed
 ```
 
 - 单元：密码哈希/校验、CSRF、JSON/Markdown/裸文本与三种平台原生导出解析、字段校验、去重分类、Text2SQL AST 守卫（嵌套 DML、表函数、锁、字面量误伤）、EXPLAIN 预检、评测集加载/结果规范化/指标计算、RRF 融合、向量字面量/维度校验、整理建议的模式切换/标签清洗/摘要截断/Prompt 结构、mock 规则、PWA 资产、MV3 扩展契约、引导/撤销/错误页/静态缓存与性能预算。
-- 集成：schema 约束与删除行为、权限边界、导入预览/确认/幂等/损坏文件、收件箱批量归类、检索与全局搜索、pgvector 可见范围与混合排名、批注复习间隔与事件流水、新标签与摘要的创建/更新/清空及 viewer 越权、统计、管理员、采集令牌与 Bearer 入库、Text2SQL 只读/越权/审计与评测编排。
+- 集成：schema 约束与删除行为、权限边界、导入预览/确认/幂等/损坏文件、收件箱批量归类、检索与全局搜索、pgvector 可见范围与混合排名、批注复习间隔与事件流水、新标签与摘要的创建/更新/清空及 viewer 越权、知识先修图的防环/闭包/级联与视图过滤、统计、管理员、采集令牌与 Bearer 入库、Text2SQL 只读/越权/审计与评测编排。
 
 集成测试只连接以 `_test` 结尾的数据库，每个用例前 `TRUNCATE app.users RESTART IDENTITY CASCADE`。测试脚手架使用管理员连接执行 TRUNCATE，因为应用角色 `ls_app` 被刻意设计为没有 TRUNCATE 权限。
 
 ### 10.2 端到端验收
 
-`scripts/verify.py` 在演示库上执行 38 项检查，所有写操作放在外层事务中，最后主动回滚：
+`scripts/verify.py` 在演示库上执行 39 项检查，所有写操作放在外层事务中，最后主动回滚：
 
 ```text
-结果：38/38 PASS，0 FAIL，耗时约 1–4 秒
+结果：39/39 PASS，0 FAIL，耗时约 2–4 秒
 报告：data/verification/report.json
 ```
 
 检查项包括：
 
-- 14 张表、13 个视图、主外键/唯一/检查约束、索引与 4 个触发器；标签唯一索引与数据一致性
+- 15 张表、15 个视图、主外键/唯一/检查约束、索引与 6 个触发器；标签唯一索引与数据一致性
 - 演示数据规模、密码哈希、角色边界
 - 重复导入 0 新增 / 84 跳过、损坏文件拒绝、ChatGPT/Qoder/DeepSeek 原生导出适配
 - 关键词检索、课程/标签筛选、上下文与批注内联、全局搜索隔离、pgvector 混合检索与管理员 0 结果
@@ -427,13 +453,14 @@ mock 只覆盖固定问法，Q18–Q30 的换问法、聚合与排名问题会�
 - 批注 → 复习项 → 间隔 2/4 天、复习事件流水与 5 周热力图
 - 粘贴收录、重复收录幂等、收件箱批量归类
 - 整理建议：新标签幂等写入、摘要唯一更新、viewer 越权拦截
+- 知识先修图：32 条边/6 组图、最短路径闭包、成环拒绝、增删后闭包一致
 - 采集令牌哈希存储、Bearer 认证、限流与幂等入库
 - Text2SQL mock 查询、用户过滤、AST 守卫、EXPLAIN 预检拒绝高成本查询、30 题金标准评测（准确率 / 合法率 / 越权拦截）、恶意 SQL 审计、只读角色
 - 事务回滚后计数不变、`ls_app` 无 DDL 权限
 
 ### 10.3 UI 验证
 
-Playwright 脚本登录 alice / bob / admin，生成桌面 31 张（含扩展弹窗）与移动端 10 张截图，检查控制台错误与 390px 横向溢出；bob 的 403 页面是预期行为，脚本单独放行。R1 另在第二个实例上串联本地嵌入桩：无 Key 时确认“词法检索”徽标与关键词高亮，启用后确认覆盖率、补齐按钮、“混合检索”徽标和 5 条“语义相近”结果，测试结束清除桩向量并恢复演示库。R6 同样在独立实例上验证：无 Key 时按钮不渲染；配置本地 LLM 桩后点击建议，摘要与新标签填入表单，保存后页面出现“总结”批注与新标签，控制台无错误；测试结束重新播种演示库。`scripts/extension_smoke.mjs` 另用真实浏览器验证扩展提取、按钮文字清理、预览、Bearer 鉴权与发送体结构。另外用 Performance API 验证首屏 JS 8KB、请求数 2、移动端 LCP 268ms，并检查 Service Worker 缓存版本与静态资源版本参数。
+Playwright 脚本登录 alice / bob / admin，生成桌面 31 张（含扩展弹窗）与移动端 10 张截图，检查控制台错误与 390px 横向溢出；bob 的 403 页面是预期行为，脚本单独放行。知识先修图另用浏览器在 1440px 与 390px 宽度手工截图，确认 6 张课程卡片无横向溢出、控制台无错误。R1 另在第二个实例上串联本地嵌入桩：无 Key 时确认“词法检索”徽标与关键词高亮，启用后确认覆盖率、补齐按钮、“混合检索”徽标和 5 条“语义相近”结果，测试结束清除桩向量并恢复演示库。R6 同样在独立实例上验证：无 Key 时按钮不渲染；配置本地 LLM 桩后点击建议，摘要与新标签填入表单，保存后页面出现“总结”批注与新标签，控制台无错误；测试结束重新播种演示库。`scripts/extension_smoke.mjs` 另用真实浏览器验证扩展提取、按钮文字清理、预览、Bearer 鉴权与发送体结构。另外用 Performance API 验证首屏 JS 8KB、请求数 2、移动端 LCP 268ms，并检查 Service Worker 缓存版本与静态资源版本参数。
 
 截图与走查过程中发现并修复了三个问题：
 
@@ -458,6 +485,7 @@ Playwright 脚本登录 alice / bob / admin，生成桌面 31 张（含扩展弹
 - 浏览器扩展坚持“点击才读取、点击才上传”，不申请常驻 host 权限，也不做后台轮询；DOM 改版时回退到平台导出文件。
 - 平台导出适配只做字段归一，不复制一套入库逻辑，所有来源继续共享预览、查重与事务确认。
 - 测试库脚手架使用管理员连接，而不是给应用角色开放 TRUNCATE。
+- 先修图的防环放在数据库触发器里，而不是只靠应用层判断；页面按课程拆成多张小图，避免一张巨型 SVG。
 
 ## 12. 运行与演示
 
@@ -488,7 +516,7 @@ node scripts/screenshots.mjs
 
 ## 14. 结论
 
-本项目完成了一个从导入、组织、检索、批注、复习到统计导出的完整学习数据闭环，并用 Text2SQL 展示了自然语言查询关系数据的一种可控实现方式。数据库设计覆盖了 E-R 建模、范式分析、完整性约束、索引、触发器、事务与最小权限；应用层保持了 SQL 可见、权限可验证、流程可回滚。采集侧的令牌、Bearer 接口、平台适配与 MV3 扩展，以及离线阅读/复习能力，让系统在真实使用中更顺手。自动化测试与端到端验收为演示和答辩提供了可重复的证据。
+本项目完成了一个从导入、组织、检索、批注、复习到统计导出的完整学习数据闭环，并用 Text2SQL 展示了自然语言查询关系数据的一种可控实现方式。数据库设计覆盖了 E-R 建模、范式分析、完整性约束、索引、触发器、递归查询、事务与最小权限；应用层保持了 SQL 可见、权限可验证、流程可回滚。采集侧的令牌、Bearer 接口、平台适配与 MV3 扩展，离线阅读/复习能力，以及把标签连成有向无环先修图的探索，让系统在真实使用中更顺手。自动化测试与端到端验收为演示和答辩提供了可重复的证据。
 
 ---
 
@@ -505,17 +533,18 @@ node scripts/screenshots.mjs
 | 文件 | 说明 |
 | --- | --- |
 | `sql/schema.sql` | 12 张基线表、约束、索引、触发器 |
-| `sql/migrations/` | 增量迁移：复习事件流水、批注事件 ID、采集令牌 |
-| `sql/views.sql` | 13 个 t2s 权限视图 |
+| `sql/migrations/` | 增量迁移：复习事件流水、批注事件 ID、采集令牌、消息向量、标签先修边 |
+| `sql/views.sql` | 15 个 t2s 权限视图 |
 | `sql/roles.sql` | `ls_app` / `t2s_reader` 最小权限 |
-| `sql/showcase.sql` | 20 条关键 SQL |
+| `sql/showcase.sql` | 21 条关键 SQL |
 | `app/services/import_service.py` | 导入解析、预览、确认事务、Bearer 入库 |
 | `app/importers/adapters.py` | ChatGPT / Qoder / DeepSeek 原生导出归一 |
 | `app/services/token_service.py` | 采集令牌哈希、限流、认证与撤销 |
+| `app/services/tag_graph_service.py` | 先修图查询、环检测辅助、分层布局与 SVG 生成 |
 | `app/services/text2sql_service.py` | 生成、守卫、只读执行、审计 |
 | `app/permissions.py` | 课程角色与会话可见性 |
 | `extension/` | Chrome MV3 扩展、隐私说明与回退指引 |
-| `scripts/verify.py` | 38 项端到端验收 |
+| `scripts/verify.py` | 39 项端到端验收 |
 | `scripts/extension_smoke.mjs` | 扩展提取与发送契约冒烟 |
 | `docs/design.md` | 数据库设计详解 |
 | `docs/requirements.md` | R01-F01 需求拆解 |

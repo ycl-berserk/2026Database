@@ -12,7 +12,7 @@ from ..db import get_conn
 from ..errors import PermissionDenied, ValidationError
 from ..importers.base import PLATFORMS
 from ..services import import_service
-from ..web import add_flash, render
+from ..web import add_flash, form_file, form_text, form_text_list, render
 
 router = APIRouter(prefix="/imports")
 
@@ -42,10 +42,10 @@ async def import_preview(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
-    upload = form.get("file")
-    platform = (form.get("platform") or "auto").strip().lower()
-    account_label = (form.get("account_label") or "").strip()
+    verify_csrf(request, form_text(form, "csrf_token"))
+    upload = form_file(form, "file")
+    platform = (form_text(form, "platform") or "auto").strip().lower()
+    account_label = (form_text(form, "account_label") or "").strip()
 
     def fail(message: str, status_code: int = 400):
         batches = import_service.list_batches(conn, user["id"])
@@ -128,11 +128,11 @@ async def import_paste(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
-    text = (form.get("text") or "").strip()
-    title = (form.get("title") or "").strip()[:255] or None
-    platform = (form.get("platform") or "auto").strip().lower()
-    account_label = (form.get("account_label") or "").strip() or "paste"
+    verify_csrf(request, form_text(form, "csrf_token"))
+    text = (form_text(form, "text") or "").strip()
+    title = (form_text(form, "title") or "").strip()[:255] or None
+    platform = (form_text(form, "platform") or "auto").strip().lower()
+    account_label = (form_text(form, "account_label") or "").strip() or "paste"
 
     def fail(message: str):
         batches = import_service.list_batches(conn, user["id"])
@@ -206,18 +206,18 @@ async def import_confirm(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
-    token = (form.get("token") or "").strip()
+    verify_csrf(request, form_text(form, "csrf_token"))
+    token = (form_text(form, "token") or "").strip()
     if not token:
         raise ValidationError("缺少预览标识，请重新上传")
     try:
-        selected = {int(value) for value in form.getlist("selected") if str(value).isdigit()}
+        selected = {int(value) for value in form_text_list(form, "selected") if str(value).isdigit()}
     except ValueError:
         raise ValidationError("选择项格式不正确") from None
 
     course_map: dict[int, int | None] = {}
     for key, value in form.multi_items():
-        if key.startswith("course_") and str(value).strip():
+        if key.startswith("course_") and isinstance(value, str) and value.strip():
             try:
                 course_map[int(key[7:])] = int(value)
             except (ValueError, TypeError):

@@ -65,7 +65,7 @@ def test_organize_creates_new_tags_and_summary(conn, base):
 def test_organize_updates_and_clears_summary(conn, base):
     alice = _ctx(base["users"]["alice"])
     conversation_id = base["conversations"]["db-1"]
-    common = dict(course_id=str(base["courses"]["DB"]), tag_ids=[], new_tag_names=[])
+    common = {"course_id": str(base["courses"]["DB"]), "tag_ids": [], "new_tag_names": []}
 
     conversation_service.organize_conversation(
         conn, conversation_id, alice, summary="第一版摘要", **common

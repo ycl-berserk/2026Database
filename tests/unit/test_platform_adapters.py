@@ -9,10 +9,7 @@ SAMPLES = Path(__file__).resolve().parents[2] / "data" / "samples"
 
 
 def _parse_json(name: str, raw: dict | list | bytes):
-    if isinstance(raw, bytes):
-        payload = raw
-    else:
-        payload = json.dumps(raw, ensure_ascii=False).encode("utf-8")
+    payload = raw if isinstance(raw, bytes) else json.dumps(raw, ensure_ascii=False).encode("utf-8")
     return json_importer.parse(payload)
 
 
@@ -119,7 +116,7 @@ def test_deepseek_markdown_export_normalizes_headings_and_meta():
 
 
 def test_plain_markdown_without_platform_stays_unresolved():
-    body = "# 会话\n## 用户\n问题\n## 助手\n回答\n".encode("utf-8")
+    body = "# 会话\n## 用户\n问题\n## 助手\n回答\n".encode()
     result = markdown_importer.parse(body)
     assert not result.ok
     assert any("无法确定来源平台" in error for error in result.errors)

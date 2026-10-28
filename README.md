@@ -40,6 +40,7 @@
 - Python 3.12+ / FastAPI / Jinja2 服务端渲染
 - PostgreSQL 16 + pgvector（Docker Compose，`pgvector/pgvector:pg16`，宿主端口 5433）
 - psycopg 3 + psycopg_pool，手写参数化 SQL，不使用 ORM
+- uv + `uv.lock` 锁定依赖；Ruff、pyright、pre-commit 作为本地与 CI 静态检查
 - `pg_trgm` GIN 索引支持中文子串检索；`vector(1536)` + HNSW 支持可选的语义召回，RRF 融合两路排名
 - GZip 中间件 + 带版本参数的静态资源长缓存
 - Chrome MV3 浏览器扩展（原生 JS，点击发送、按需站点权限）
@@ -68,19 +69,21 @@ docker compose logs -f app
 # 1. 启动数据库（首次会拉取 pgvector/pgvector:pg16）
 docker compose up -d db
 
-# 2. 创建虚拟环境并安装依赖
-py -3.13 -m venv .venv
-.venv/Scripts/python.exe -m pip install -r requirements.txt
+# 2. 创建虚拟环境并安装依赖（二选一）
+uv sync                                        # 推荐：按 uv.lock 安装运行 + 开发依赖
+# 或：py -3.13 -m venv .venv && .venv/Scripts/python.exe -m pip install -r requirements-dev.txt
 
 # 3. 初始化演示库 + 测试库（--reset 会删除同名库后重建）
-.venv/Scripts/python.exe scripts/init_db.py --reset
+uv run python scripts/init_db.py --reset
 
 # 4. 写入演示数据（3 个账号、5 门课程、30 个会话、420 条消息）
-.venv/Scripts/python.exe scripts/seed_demo.py
+uv run python scripts/seed_demo.py
 
 # 5. 启动网站
-.venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
+
+使用 pip 时把 `uv run python` 换成 `.venv/Scripts/python.exe` 即可。
 
 > `docker-compose.yml` 为 db 服务传入 `shared_preload_libraries=pg_stat_statements`，供管理员观测页读取慢查询；扩展本身由迁移 008 在演示库与测试库中条件创建。若数据库未预加载该库，页面会显示降级提示，其余指标不受影响。
 
@@ -155,6 +158,12 @@ ls import data/samples/qoder_db.json --course-code DB --json
 # 全量测试（155 单元 + 124 集成，共 279 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest
 
+# 静态检查与提交钩子（uv sync 已安装 Ruff / pyright / pre-commit）
+uv run ruff check app scripts tests
+uv run pyright app
+uv run pre-commit install
+uv run pre-commit run --all-files
+
 # 端到端验收：42 项 PASS/FAIL，写入 data/verification/report.json
 .venv/Scripts/python.exe scripts/verify.py --json data/verification/report.json
 
@@ -193,6 +202,9 @@ learning-space/
 ├── Dockerfile               # 多阶段构建，非 root 运行
 ├── docker-compose.yml       # PostgreSQL 16 + app 一条命令启动
 ├── .dockerignore
+├── pyproject.toml           # 依赖、Ruff / pyright / pytest 配置
+├── uv.lock                  # uv 锁定的完整依赖图
+├── .pre-commit-config.yaml  # 提交前 Ruff + pyright + 配置校验
 ├── app/
 │   ├── main.py              # FastAPI 应用、异常处理、路由挂载
 │   ├── config.py            # 环境变量与上限配置

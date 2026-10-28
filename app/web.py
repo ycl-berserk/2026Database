@@ -6,11 +6,26 @@ from typing import Any
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
+from starlette.datastructures import FormData, UploadFile
 
 from .auth import ensure_csrf
 from .config import settings
 
 templates = Jinja2Templates(directory=str(settings.templates_dir))
+
+
+def form_text(form: FormData, name: str, default: str | None = None) -> str | None:
+    value = form.get(name)
+    return value if isinstance(value, str) else default
+
+
+def form_file(form: FormData, name: str) -> UploadFile | None:
+    value = form.get(name)
+    return value if isinstance(value, UploadFile) else None
+
+
+def form_text_list(form: FormData, name: str) -> list[str]:
+    return [value for value in form.getlist(name) if isinstance(value, str)]
 
 
 def _asset_version() -> str:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from psycopg.types.json import Jsonb
 
@@ -34,7 +34,7 @@ def parse_upload(
             max_messages=settings.import_max_messages,
         )
     return ImportResult(
-        platform, account or "default", None,
+        platform or "other", account or "default", None,
         errors=["仅支持 .json、.md 或 .txt 文件"],
     )
 
@@ -114,7 +114,7 @@ def save_preview(
     token = uuid.uuid4()
     payload = result.payload({"warnings": result.warnings})
     summary = result.summary()
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.preview_ttl_minutes)
+    expires_at = datetime.now(UTC) + timedelta(minutes=settings.preview_ttl_minutes)
     row = conn.execute(
         """
         INSERT INTO app.import_batches
@@ -162,7 +162,7 @@ def load_batch(conn, token: str, user_id: int) -> dict:
     try:
         uuid.UUID(token)
     except (ValueError, AttributeError):
-        raise NotFoundError("预览不存在或已失效")
+        raise NotFoundError("预览不存在或已失效") from None
     row = conn.execute(
         """
         SELECT b.*, s.platform, s.account_label
@@ -292,7 +292,7 @@ def preview_context(conn, batch: dict, user_id: int) -> dict:
         "courses": courses,
         "counts": counts,
         "warnings": warnings,
-        "expired": batch["expires_at"] <= datetime.now(timezone.utc),
+        "expired": batch["expires_at"] <= datetime.now(UTC),
         "summary": batch["summary"] or {},
     }
 
@@ -438,7 +438,7 @@ def confirm_import(
     batch = load_batch(conn, token, user["id"])
     if batch["status"] != "preview":
         raise ConflictError("该预览已处理，不能重复导入")
-    if batch["expires_at"] <= datetime.now(timezone.utc):
+    if batch["expires_at"] <= datetime.now(UTC):
         with conn.transaction():
             conn.execute(
                 "UPDATE app.import_batches SET status = 'expired' WHERE id = %s",
@@ -480,7 +480,7 @@ def confirm_import(
             ).fetchone()
             if locked["status"] != "preview":
                 raise ConflictError("该预览已被其他请求处理")
-            if locked["expires_at"] <= datetime.now(timezone.utc):
+            if locked["expires_at"] <= datetime.now(UTC):
                 raise ValidationError("预览已过期，请重新上传文件")
 
             conn.execute("SELECT pg_advisory_xact_lock(%s)", (batch["source_id"],))

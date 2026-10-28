@@ -7,7 +7,7 @@ from ..auth import require_user, verify_csrf
 from ..db import get_conn
 from ..errors import AppError, PermissionDenied
 from ..services import tag_graph_service, tag_service
-from ..web import add_flash, render
+from ..web import add_flash, form_text, render
 
 router = APIRouter(prefix="/tags")
 
@@ -33,10 +33,10 @@ def tag_graph(
 async def edge_create(request: Request, user=Depends(require_user), conn=Depends(get_conn)):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     try:
-        from_tag_id = int(form.get("from_tag_id") or 0)
-        to_tag_id = int(form.get("to_tag_id") or 0)
+        from_tag_id = int(form_text(form, "from_tag_id") or 0)
+        to_tag_id = int(form_text(form, "to_tag_id") or 0)
     except ValueError:
         add_flash(request, "请选择两个有效标签", "error")
         return RedirectResponse("/tags/graph", status_code=303)
@@ -57,7 +57,7 @@ async def edge_delete(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     try:
         tag_graph_service.delete_edge(conn, user["id"], edge_id)
     except AppError as exc:
@@ -78,13 +78,13 @@ def tag_list(request: Request, user=Depends(require_user), conn=Depends(get_conn
 async def tag_create(request: Request, user=Depends(require_user), conn=Depends(get_conn)):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     tag_service.create_tag(
         conn,
         user["id"],
-        form.get("name") or "",
-        form.get("kind") or "topic",
-        form.get("color") or None,
+        form_text(form, "name") or "",
+        form_text(form, "kind") or "topic",
+        form_text(form, "color") or None,
     )
     add_flash(request, "标签已创建", "success")
     return RedirectResponse("/tags", status_code=303)
@@ -96,14 +96,14 @@ async def tag_update(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     tag_service.update_tag(
         conn,
         tag_id,
         user["id"],
-        form.get("name") or "",
-        form.get("kind") or "topic",
-        form.get("color") or None,
+        form_text(form, "name") or "",
+        form_text(form, "kind") or "topic",
+        form_text(form, "color") or None,
     )
     add_flash(request, "标签已更新", "success")
     return RedirectResponse("/tags", status_code=303)
@@ -115,7 +115,7 @@ async def tag_delete(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     tag_service.delete_tag(conn, tag_id, user["id"])
     add_flash(request, "标签已删除，相关会话标签关联同时移除", "success")
     return RedirectResponse("/tags", status_code=303)

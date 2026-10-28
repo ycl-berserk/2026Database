@@ -8,7 +8,7 @@ import hashlib
 import json
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -63,7 +63,7 @@ class Report:
         try:
             detail = fn()
             status = "PASS"
-        except Exception as exc:  # noqa: BLE001 - 验收脚本需要收集所有失败
+        except Exception as exc:
             detail = f"{type(exc).__name__}: {exc}"
             status = "FAIL"
         elapsed = int((time.perf_counter() - started) * 1000)
@@ -135,7 +135,7 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
         )
         _ok(tables == 16, f"app 表数量应为 16，实际 {tables}")
         _ok(views == 15, f"t2s 视图数量应为 15，实际 {views}")
-        return f"16 张表（15 业务 + 1 审计）、15 个权限视图"
+        return "16 张表（15 业务 + 1 审计）、15 个权限视图"
     report.run("schema.tables", "Schema：16 张表与 15 个 t2s 视图", schema_tables)
 
     def schema_constraints():
@@ -1153,7 +1153,7 @@ def main() -> int:
             raise Rollback
     except Rollback:
         pass
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"[FAIL] 验收过程中断：{exc}", file=sys.stderr)
         report.checks.append(
             {"key": "harness", "label": "验收脚本执行", "status": "FAIL",
@@ -1172,7 +1172,7 @@ def main() -> int:
 
     total_ms = int((time.perf_counter() - started) * 1000)
     payload = {
-        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "database": database,
         "summary": {
             "total": len(report.checks),

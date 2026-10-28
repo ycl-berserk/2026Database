@@ -64,9 +64,9 @@ def parse(
             current_lines = []
             continue
         if current_title is None:
-            meta = META_LINE.match(line)
-            if meta and meta.group(1) in META_KEYS:
-                file_meta[META_KEYS[meta.group(1)]] = meta.group(2).strip()
+            meta_match = META_LINE.match(line)
+            if meta_match and meta_match.group(1) in META_KEYS:
+                file_meta[META_KEYS[meta_match.group(1)]] = meta_match.group(2).strip()
             continue
         current_lines.append(line)
     if current_title is not None:

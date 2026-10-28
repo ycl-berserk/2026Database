@@ -7,7 +7,7 @@ from ..auth import require_user, verify_csrf
 from ..db import get_conn
 from ..errors import PermissionDenied
 from ..services import course_service
-from ..web import add_flash, render
+from ..web import add_flash, form_text, render
 
 router = APIRouter(prefix="/courses")
 
@@ -34,7 +34,7 @@ def course_new(request: Request, user=Depends(require_user)):
 async def course_create(request: Request, user=Depends(require_user), conn=Depends(get_conn)):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     course_id = course_service.create_course(conn, form, user["id"])
     add_flash(request, "课程已创建", "success")
     return RedirectResponse(f"/courses/{course_id}", status_code=303)
@@ -68,7 +68,7 @@ async def course_update(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     course_service.update_course(conn, course_id, form, user)
     add_flash(request, "课程信息已更新", "success")
     return RedirectResponse(f"/courses/{course_id}", status_code=303)
@@ -80,7 +80,7 @@ async def course_delete(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     course_service.delete_course(conn, course_id, user)
     add_flash(request, "课程已删除，原有会话保留但不再属于该课程", "success")
     return RedirectResponse("/courses", status_code=303)
@@ -92,9 +92,9 @@ async def member_add(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     course_service.add_member(
-        conn, course_id, form.get("username") or "", form.get("role") or "viewer", user
+        conn, course_id, form_text(form, "username") or "", form_text(form, "role") or "viewer", user
     )
     add_flash(request, "已添加课程成员", "success")
     return RedirectResponse(f"/courses/{course_id}", status_code=303)
@@ -110,8 +110,8 @@ async def member_role(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
-    course_service.set_member_role(conn, course_id, member_id, form.get("role") or "", user)
+    verify_csrf(request, form_text(form, "csrf_token"))
+    course_service.set_member_role(conn, course_id, member_id, form_text(form, "role") or "", user)
     add_flash(request, "成员角色已更新", "success")
     return RedirectResponse(f"/courses/{course_id}", status_code=303)
 
@@ -126,7 +126,7 @@ async def member_remove(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     course_service.remove_member(conn, course_id, member_id, user)
     add_flash(request, "成员已移除", "success")
     return RedirectResponse(f"/courses/{course_id}", status_code=303)

@@ -131,7 +131,7 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 | --- | --- | --- | --- | --- | --- |
 | E1 | Dockerfile + compose 增加 app 服务（多阶段、非 root） | 答辩 | S/M | 完成 | 多阶段 `python:3.13-slim` 构建，运行用户 `app`（uid 999）；入口脚本按 `INIT_DB` / `SEED_DEMO` 自动迁移与空库播种，等 db healthy 后启动；`docker compose up -d --build` 一条命令起全栈 |
 | E2 | CI：GitHub Actions + Postgres service + pytest + verify | 答辩 | S/M | 完成 | `.github/workflows/ci.yml`：`pgvector/pgvector:pg16` 服务、Python 3.13 缓存依赖、初始化/播种、279 项测试 + 42 项验收，上传 JUnit 与验收 JSON；离线模式与 concurrency 取消旧任务 |
-| E3 | uv + lockfile、Ruff、pyright、pre-commit | 答辩 | S | 待办 | 工程质量证据 |
+| E3 | uv + lockfile、Ruff、pyright、pre-commit | 答辩 | S | 完成 | `pyproject.toml` 声明运行/开发依赖，`uv.lock` 锁定 55 个包；Ruff `E/F/I/UP/B/SIM/RUF/C4` 全绿，pyright basic 0 error；pre-commit 校验 YAML/TOML、Ruff 与 pyright；CI 用 `uv sync --frozen` 并检查锁文件 |
 | E4 | Hypothesis 属性测试（解析器 / SQL 守卫） | 答辩 | S/M | 待办 | 自动生成边界用例 |
 | E5 | Playwright E2E 进 CI | 答辩 | M | 待办 | 将截图脚本改造成带断言的用例 |
 | E6 | 备份 / 恢复 + 用户全量导出（zip） | 用户 | S | 待办 | 封装 `pg_dump`，提供自助导出 |
@@ -192,7 +192,7 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 
 **Phase 4 进度**：K2 知识先修图、A1 只读 MCP、A2 CLI、D1 迁移体系、D2 审计历史、D3 数据库观测均已完成，Phase 4 收尾。
 
-**Phase 5 进度**：E1 容器化与 E2 GitHub Actions CI 已完成；下一步 E3 工程工具链。
+**Phase 5 进度**：E1 容器化、E2 GitHub Actions CI、E3 工程工具链已完成；下一步 E4 属性测试。
 
 **Phase 4 进度**：K2 知识先修图、A1 MCP 工具接口、A2 命令行、D1 RLS 对比实验、D2 审计历史与 D3 数据库观测页已完成（16 张表、15 个视图、9 个触发器；279 项测试、42 项验收）。Phase 4 收尾。
 

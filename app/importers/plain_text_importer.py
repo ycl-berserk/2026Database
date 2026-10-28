@@ -117,10 +117,18 @@ def parse(
         heading = MSG_HEADING_RE.match(line)
         role_match = None if heading else ROLE_RE.match(line.replace("**", ""))
         if heading or role_match:
-            role_label = heading.group("role") if heading else role_match.group("role")
-            heading_time = heading.group("time") if heading else None
-            bracket = _strip_bracket(heading_time or (role_match.group("bracket") if role_match else None))
-            rest = "" if heading else role_match.group("rest").strip()
+            if heading:
+                role_label = heading.group("role")
+                heading_time = heading.group("time")
+                rest = ""
+            else:
+                assert role_match is not None
+                role_label = role_match.group("role")
+                heading_time = None
+                rest = role_match.group("rest").strip()
+            bracket = _strip_bracket(
+                heading_time or (role_match.group("bracket") if role_match else None)
+            )
             if rest:
                 leading = LEADING_TIME_RE.match(rest)
                 if leading and not bracket:

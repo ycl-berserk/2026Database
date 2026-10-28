@@ -7,7 +7,7 @@ from ..auth import require_user, verify_csrf
 from ..db import get_conn
 from ..errors import PermissionDenied
 from ..services import annotation_service
-from ..web import add_flash, render
+from ..web import add_flash, form_text, render
 
 router = APIRouter(prefix="/annotations")
 
@@ -18,7 +18,7 @@ def _require_student(user: dict) -> None:
 
 
 def _back(form) -> str:
-    value = form.get("back") or ""
+    value = form_text(form, "back") or ""
     if value.startswith("/conversations/") and "//" not in value:
         return value
     return "/annotations"
@@ -88,17 +88,17 @@ async def annotation_create(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     try:
-        message_id = int(form.get("message_id") or 0)
+        message_id = int(form_text(form, "message_id") or 0)
     except ValueError:
         message_id = 0
     annotation_service.create_annotation(
         conn,
         message_id,
         user,
-        form.get("kind") or "note",
-        form.get("content") or "",
+        form_text(form, "kind") or "note",
+        form_text(form, "content") or "",
     )
     add_flash(request, "批注已添加", "success")
     return RedirectResponse(_back(form), status_code=303)
@@ -113,14 +113,14 @@ async def annotation_update(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     annotation_service.update_annotation(
         conn,
         annotation_id,
         user,
-        form.get("kind") or "note",
-        form.get("content") or "",
-        form.get("status") or "open",
+        form_text(form, "kind") or "note",
+        form_text(form, "content") or "",
+        form_text(form, "status") or "open",
     )
     add_flash(request, "批注已更新", "success")
     return RedirectResponse(_back(form), status_code=303)
@@ -135,7 +135,7 @@ async def annotation_delete(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     annotation_service.delete_annotation(conn, annotation_id, user)
     add_flash(request, "批注已删除，对应复习项一并移除", "success")
     return RedirectResponse(_back(form), status_code=303)
@@ -150,7 +150,7 @@ async def annotation_review(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     created = annotation_service.add_to_review(conn, annotation_id, user)
     if created:
         add_flash(request, "已加入复习队列，今天到期", "success")

@@ -44,6 +44,7 @@ jobs:
       TEXT2SQL_MODE: mock
       EMBEDDING_MODE: "off"
       SUGGEST_MODE: "off"
+      UV_FROZEN: "1"
 
     steps:
       - uses: actions/checkout@v4
@@ -51,13 +52,23 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-          cache: pip
-          cache-dependency-path: requirements.txt
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.6"
+          enable-cache: true
+
+      - name: Sync locked dependencies
+        run: uv sync --frozen
+
+      - name: Check lockfile
+        run: uv lock --check
+
+      - name: Lint with Ruff
+        run: uv run ruff check app scripts tests
+
+      - name: Type check with pyright
+        run: uv run pyright app
 
       - name: Preload pg_stat_statements
         run: |
@@ -69,16 +80,16 @@ jobs:
             'until docker exec "${{ job.services.postgres.id }}" pg_isready -U postgres; do sleep 2; done'
 
       - name: Initialize demo and test databases
-        run: python scripts/init_db.py --reset
+        run: uv run python scripts/init_db.py --reset
 
       - name: Seed demo data
-        run: python scripts/seed_demo.py
+        run: uv run python scripts/seed_demo.py
 
       - name: Run unit and integration tests
-        run: python -m pytest -q --junitxml=data/verification/junit.xml
+        run: uv run pytest -q --junitxml=data/verification/junit.xml
 
       - name: Run end-to-end verification
-        run: python scripts/verify.py --json data/verification/report.json
+        run: uv run python scripts/verify.py --json data/verification/report.json
 
       - name: Upload verification artifacts
         if: always()

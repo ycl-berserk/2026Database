@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import psycopg
+from collections.abc import Mapping
+
 from psycopg import errors
 
 from ..audit import set_actor
@@ -117,13 +118,17 @@ def require_owner(conn, course_id: int, user: dict) -> None:
     require_course_role(conn, course_id, user, "owner")
 
 
-def _course_values(form: dict) -> dict:
+def _course_values(form: Mapping[str, object]) -> dict:
+    def text(key: str) -> str:
+        value = form.get(key)
+        return value.strip() if isinstance(value, str) else ""
+
     values = {
-        "code": (form.get("code") or "").strip(),
-        "name": (form.get("name") or "").strip(),
-        "semester": (form.get("semester") or "").strip(),
-        "instructor": (form.get("instructor") or "").strip() or None,
-        "description": (form.get("description") or "").strip() or None,
+        "code": text("code"),
+        "name": text("name"),
+        "semester": text("semester"),
+        "instructor": text("instructor") or None,
+        "description": text("description") or None,
     }
     if not values["code"] or not values["name"] or not values["semester"]:
         raise ValidationError("课程编号、名称和学期为必填项")
@@ -132,7 +137,7 @@ def _course_values(form: dict) -> dict:
     return values
 
 
-def create_course(conn, form: dict, user_id: int) -> int:
+def create_course(conn, form: Mapping[str, object], user_id: int) -> int:
     values = _course_values(form)
     try:
         with conn.transaction():
@@ -156,7 +161,7 @@ def create_course(conn, form: dict, user_id: int) -> int:
     return course_id
 
 
-def update_course(conn, course_id: int, form: dict, user: dict) -> None:
+def update_course(conn, course_id: int, form: Mapping[str, object], user: dict) -> None:
     require_course_role(conn, course_id, user, "owner")
     values = _course_values(form)
     try:

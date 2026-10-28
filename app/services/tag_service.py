@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 
-import psycopg
 from psycopg import errors
 
 from ..errors import ConflictError, NotFoundError, ValidationError

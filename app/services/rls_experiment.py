@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import secrets
 from collections.abc import Mapping
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from psycopg import Connection, sql
@@ -70,12 +70,12 @@ def _predicate(schema: sql.Identifier, qualifier: str | None) -> sql.Composed:
         " WHERE cm.course_id = {prefix}course_id AND cm.user_id = {uid}))"
     ).format(
         schema=schema,
-        prefix=sql.SQL(prefix),
+        prefix=sql.SQL(prefix),  # pyright: ignore[reportArgumentType] - 受限标识符片段
         uid=UID,
     )
 
 
-def _view_query() -> sql.Composed:
+def _view_query() -> sql.SQL:
     return sql.SQL(
         "SELECT conversation_id, title, course_id"
         " FROM t2s.v_my_conversations ORDER BY conversation_id"
@@ -99,7 +99,7 @@ def _rls_query(schema: sql.Identifier) -> sql.Composed:
     ).format(schema=schema)
 
 
-def _expected_query(uid: int) -> tuple[sql.Composed, tuple]:
+def _expected_query(uid: int) -> tuple[sql.SQL, tuple[int, int]]:
     query = sql.SQL(
         "SELECT conv.id FROM app.conversations conv"
         " WHERE EXISTS (SELECT 1 FROM app.sources s"
@@ -113,20 +113,22 @@ def _expected_query(uid: int) -> tuple[sql.Composed, tuple]:
 
 
 def _fetch_ids(
-    conn: Connection, query: sql.Composable, params: tuple = ()
+    conn: Connection, query: sql.SQL | sql.Composed, params: tuple = ()
 ) -> list[int]:
     with conn.cursor(row_factory=tuple_row) as cur:
         cur.execute(query, params)
         return [int(row[0]) for row in cur.fetchall()]
 
 
-def _explain(conn: Connection, query: sql.Composable) -> dict:
+def _explain(conn: Connection, query: sql.SQL | sql.Composed) -> dict:
     with conn.cursor(row_factory=tuple_row) as cur:
         cur.execute(
             sql.SQL("EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ") + query
         )
-        payload = cur.fetchone()[0]
-    return summarize_plan(payload)
+        row = cur.fetchone()
+    if row is None:
+        raise RuntimeError("EXPLAIN 未返回结果")
+    return summarize_plan(row[0])
 
 
 def _set_uid(conn: Connection, uid: int | None) -> None:
@@ -142,7 +144,7 @@ def _set_role(conn: Connection, role: str | None) -> None:
         conn.execute(sql.SQL("SET LOCAL ROLE {}").format(sql.Identifier(role)))
 
 
-def _run_mode(conn: Connection, query: sql.Composable, role: str | None) -> dict:
+def _run_mode(conn: Connection, query: sql.SQL | sql.Composed, role: str | None) -> dict:
     _set_role(conn, role)
     ids = _fetch_ids(conn, query)
     plan = _explain(conn, query)
@@ -286,7 +288,10 @@ def run_experiment(
 
     with conn.cursor(row_factory=tuple_row) as cur:
         cur.execute("SELECT current_user")
-        session_user = cur.fetchone()[0]
+        row = cur.fetchone()
+    if row is None:
+        raise RuntimeError("无法读取当前会话用户")
+    session_user = row[0]
     cleanup = {
         "schema_dropped": not _catalog_exists(conn, "schema", schema_name),
         "role_dropped": not _catalog_exists(conn, "role", role_name),
@@ -296,7 +301,7 @@ def run_experiment(
     modes = ("view", "where", "rls")
     consistent = all(item["consistent"] for item in results.values())
     return {
-        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "database": conn.info.dbname,
         "experiment_objects": {"schema": schema_name, "role": role_name},
         "users": results,

@@ -5,7 +5,15 @@
 
 ## 0. 演示前检查（不在视频中出镜）
 
-在项目根目录 `learning-space/` 执行：
+在项目根目录 `learning-space/` 执行。推荐用 Docker 一条命令起全栈（`app` 容器会自动迁移，空库时播种，以非 root 用户运行）：
+
+```bash
+docker compose up -d --build
+docker compose exec db pg_isready -U postgres
+curl -s http://127.0.0.1:8000/healthz
+```
+
+本机 Python 开发方式（便于热重载与调试）：
 
 ```bash
 docker compose up -d db

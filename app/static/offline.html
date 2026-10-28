@@ -573,23 +573,18 @@
 
       function applyLocalAction(item, action) {
         if (!queue || !queue.items) return;
-        var today = new Date();
         if (action === "mastered") {
           queue.items = queue.items.filter(function (row) { return row.id !== item.id; });
-          return;
         }
-        var next = Math.min((item.interval_days || 1) * 2, 60);
-        item.interval_days = next;
-        item.review_count = (item.review_count || 0) + 1;
-        var due = new Date(today.getTime() + next * 86400000);
-        item.due_date = due.toISOString().slice(0, 10);
+        // 复习打卡只标记待同步；具体间隔以服务端 FSRS 调度结果为准。
       }
 
-      function queueAction(item, action) {
+      function queueAction(item, action, rating) {
         var record = {
           id: newEventId(),
           review_id: item.id,
           action: action,
+          rating: rating || "good",
           scope: "active",
           csrf_token: (queue && queue.csrf_token) || "",
           created_at: new Date().toISOString()
@@ -661,7 +656,8 @@
           var action = outbox[i];
           try {
             await postJson("/api/reviews/" + action.review_id + "/" + action.action, {
-              event_id: action.id
+              event_id: action.id,
+              rating: action.rating || "good"
             }, action.csrf_token || (queue && queue.csrf_token));
             sent += 1;
             outbox.splice(i, 1);

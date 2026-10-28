@@ -55,14 +55,19 @@ async def review_done(
     form = await request.form()
     verify_csrf(request, form_text(form, "csrf_token"))
     row = review_service.review_once(
-        conn, review_id, user["id"], event_id=form_text(form, "event_id")
+        conn,
+        review_id,
+        user["id"],
+        event_id=form_text(form, "event_id"),
+        rating=form_text(form, "rating"),
     )
     if row["duplicate"]:
         add_flash(request, "这次复习已经记录过，没有重复累加", "info")
     else:
+        label = review_service.RATING_LABELS.get(row["rating"], row["rating"])
         add_flash(
             request,
-            f"本次复习已记录，下次到期 {row['due_date']}（间隔 {row['interval_days']} 天）",
+            f"已记录「{label}」，下次到期 {row['due_date']}（间隔 {row['interval_days']} 天）",
             "success",
         )
     return RedirectResponse(_back(form_text(form, "scope") or ""), status_code=303)

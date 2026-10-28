@@ -524,20 +524,24 @@ COMMIT
 
 ### 9.2 复习事务
 
-`review_once` 在事务中执行单条 `UPDATE ... RETURNING`：
+`review_once` 在事务中先 `SELECT ... FOR UPDATE` 读取复习项与 FSRS 状态，用应用层 `fsrs.schedule()` 计算稳定性、难度与新间隔，再执行单条 `UPDATE ... RETURNING`：
 
 ```sql
 UPDATE app.review_items
    SET review_count = review_count + 1,
-       interval_days = LEAST(interval_days * 2, 60),
-       due_date = current_date + LEAST(interval_days * 2, 60),
+       interval_days = %(interval)s,
+       due_date = current_date + %(interval)s,
        status = CASE WHEN status = 'pending' THEN 'reviewing' ELSE status END,
-       last_reviewed_at = now()
- WHERE id = %s AND user_id = %s
- RETURNING interval_days, due_date, review_count;
+       last_reviewed_at = now(),
+       fsrs_stability = %(stability)s,
+       fsrs_difficulty = %(difficulty)s,
+       fsrs_lapses = %(lapses)s
+ WHERE id = %(id)s AND user_id = %(user_id)s
+ RETURNING interval_days, due_date, review_count,
+           fsrs_stability, fsrs_difficulty, fsrs_lapses;
 ```
 
-PostgreSQL 的 `UPDATE` 右侧使用旧值，因此间隔按 1 → 2 → 4 → 8 … 递增，单条语句完成“读-改-写”，避免竞态。
+行锁保证同一复习项串行更新；调度结果是参数而不是 SQL 表达式，避免把浮点公式塞进数据库。`REVIEW_ALGORITHM=simple` 时仍使用旧的 `LEAST(interval_days * 2, 60)` 回退路径，便于对照。
 
 ### 9.3 验收脚本事务
 

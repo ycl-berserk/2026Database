@@ -395,7 +395,7 @@
           try {
             await api("/api/reviews/" + action.review_id + "/" + action.action, {
               method: "POST",
-              body: { event_id: action.id }
+              body: { event_id: action.id, rating: action.rating || "good" }
             });
             sent += 1;
           } catch (err) {
@@ -471,11 +471,13 @@
     }
     if (navigator.onLine || !offline.supported) return;
     event.preventDefault();
+    const data = new FormData(form);
     const action = {
       id: input.value,
       review_id: Number(form.getAttribute("data-review-id") || 0),
       action: form.getAttribute("data-review-action") || "done",
-      scope: (new FormData(form)).get("scope") || "active",
+      rating: data.get("rating") || "good",
+      scope: data.get("scope") || "active",
       csrf_token: csrf,
       created_at: new Date().toISOString()
     };

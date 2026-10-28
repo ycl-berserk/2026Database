@@ -111,6 +111,12 @@ class Settings:
     suggest_mode: str = field(
         default_factory=lambda: os.getenv("SUGGEST_MODE", "auto").lower()
     )
+    review_algorithm: str = field(
+        default_factory=lambda: os.getenv("REVIEW_ALGORITHM", "fsrs").lower()
+    )
+    review_retention: float = field(
+        default_factory=lambda: float(os.getenv("REVIEW_RETENTION", "0.9"))
+    )
 
     @property
     def is_dev(self) -> bool:

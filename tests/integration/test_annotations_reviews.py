@@ -105,7 +105,7 @@ def test_list_annotations_filters_and_pagination(conn, base):
     assert resolved["total"] == 0
 
 
-def test_review_schedule_doubles_and_resets(conn, base):
+def test_review_schedule_follows_fsrs_and_resets(conn, base):
     alice_id = base["users"]["alice"]
     review_id = conn.execute(
         "SELECT id FROM app.review_items WHERE user_id = %s", (alice_id,)
@@ -115,11 +115,12 @@ def test_review_schedule_doubles_and_resets(conn, base):
     assert first["interval_days"] == 2
     assert first["review_count"] == 1
     assert first["due_date"] == date.today() + timedelta(days=2)
+    assert first["algorithm"] == "fsrs"
     assert review_service.summary(conn, alice_id)["reviewing"] == 1
 
     second = review_service.review_once(conn, review_id, alice_id)
-    assert second["interval_days"] == 4
-    assert second["due_date"] == date.today() + timedelta(days=4)
+    assert second["interval_days"] == 7
+    assert second["due_date"] == date.today() + timedelta(days=7)
 
     review_service.mark_mastered(conn, review_id, alice_id)
     summary = review_service.summary(conn, alice_id)
@@ -130,7 +131,8 @@ def test_review_schedule_doubles_and_resets(conn, base):
 
     review_service.reset_review(conn, review_id, alice_id)
     reset = conn.execute(
-        "SELECT status, interval_days, review_count, due_date "
+        "SELECT status, interval_days, review_count, due_date, "
+        "       fsrs_stability, fsrs_difficulty, fsrs_lapses "
         "FROM app.review_items WHERE id = %s",
         (review_id,),
     ).fetchone()
@@ -138,9 +140,75 @@ def test_review_schedule_doubles_and_resets(conn, base):
     assert reset["interval_days"] == 1
     assert reset["review_count"] == 0
     assert reset["due_date"] == date.today()
+    assert reset["fsrs_stability"] == 1.0
+    assert reset["fsrs_difficulty"] == 5.0
+    assert reset["fsrs_lapses"] == 0
 
     review_service.delete_review(conn, review_id, alice_id)
     assert review_service.summary(conn, alice_id)["total"] == 0
+
+
+def test_fsrs_ratings_and_simple_fallback(conn, base):
+    alice = _student(base["users"]["alice"])
+    expected = {"again": 1, "hard": 1, "good": 2, "easy": 8}
+    review_ids = {}
+    for message_key, rating in zip(
+        ("db-1", "db-3", "db-4", "os-1"), expected, strict=True
+    ):
+        annotation = annotation_service.create_annotation(
+            conn, base["messages"][message_key], alice, "note", f"评分 {rating}"
+        )
+        assert annotation_service.add_to_review(conn, annotation["id"], alice) is True
+        review_id = conn.execute(
+            "SELECT id FROM app.review_items WHERE annotation_id = %s",
+            (annotation["id"],),
+        ).fetchone()["id"]
+        row = review_service.review_once(
+            conn, review_id, alice["id"], rating=rating
+        )
+        assert row["interval_days"] == expected[rating]
+        assert row["rating"] == rating
+        review_ids[rating] = review_id
+
+    difficulties = {
+        rating: conn.execute(
+            "SELECT fsrs_difficulty FROM app.review_items WHERE id = %s",
+            (review_ids[rating],),
+        ).fetchone()["fsrs_difficulty"]
+        for rating in expected
+    }
+    assert (
+        difficulties["again"]
+        > difficulties["hard"]
+        > difficulties["good"]
+        > difficulties["easy"]
+    )
+
+    logs = conn.execute(
+        "SELECT rating, algorithm FROM app.review_logs "
+        "WHERE user_id = %s ORDER BY id",
+        (alice["id"],),
+    ).fetchall()
+    assert [row["rating"] for row in logs] == list(expected)
+    assert all(row["algorithm"] == "fsrs" for row in logs)
+
+    with pytest.raises(ValidationError):
+        review_service.review_once(
+            conn, review_ids["good"], alice["id"], rating="perfect"
+        )
+
+    simple_id = conn.execute(
+        "SELECT id FROM app.review_items WHERE annotation_id = %s",
+        (base["annotation"],),
+    ).fetchone()["id"]
+    first = review_service.review_once(
+        conn, simple_id, alice["id"], algorithm="simple"
+    )
+    second = review_service.review_once(
+        conn, simple_id, alice["id"], algorithm="simple"
+    )
+    assert (first["interval_days"], second["interval_days"]) == (2, 4)
+    assert second["algorithm"] == "simple"
 
 
 def test_annotation_event_id_is_idempotent(conn, base):

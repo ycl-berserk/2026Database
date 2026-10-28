@@ -119,6 +119,20 @@ test("粘贴对话可预览解析结果且不直接入库", async ({ page }) => 
   expect(errors).toEqual([]);
 });
 
+test("复习页提供四档评分并推进下次到期", async ({ page }) => {
+  const errors = trackErrors(page);
+  await login(page, "alice");
+  await page.goto("/reviews");
+  const card = page.locator(".review-card").first();
+  for (const label of ["重来", "困难", "良好", "容易"]) {
+    await expect(card.getByRole("button", { name: label, exact: true })).toBeVisible();
+  }
+  await card.getByRole("button", { name: "良好", exact: true }).click();
+  await expect(page.locator(".flash-success")).toContainText("已记录「良好」");
+  await expect(page.locator(".flash-success")).toContainText("间隔");
+  expect(errors).toEqual([]);
+});
+
 test("Text2SQL 示例查询返回表格结果", async ({ page }) => {
   const errors = trackErrors(page);
   await login(page, "alice");

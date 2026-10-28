@@ -82,12 +82,17 @@
           <span class="muted">批注作者 {{ row.author_name }}</span>
 
           {% if row.status != 'mastered' %}
-            <form method="post" action="/reviews/{{ row.id }}/done" class="inline-form"
-                  data-review-id="{{ row.id }}" data-review-action="done">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <input type="hidden" name="scope" value="{{ scope }}">
-              <button class="btn btn-primary btn-sm" type="submit">复习一次</button>
-            </form>
+            <span class="muted">这次记得：</span>
+            {% for rating, label in [('again', '重来'), ('hard', '困难'), ('good', '良好'), ('easy', '容易')] %}
+              <form method="post" action="/reviews/{{ row.id }}/done" class="inline-form"
+                    data-review-id="{{ row.id }}" data-review-action="done">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="scope" value="{{ scope }}">
+                <input type="hidden" name="rating" value="{{ rating }}">
+                <button class="btn btn-sm {% if rating == 'good' %}btn-primary{% endif %}"
+                        type="submit">{{ label }}</button>
+              </form>
+            {% endfor %}
             <form method="post" action="/reviews/{{ row.id }}/mastered" class="inline-form"
                   data-review-id="{{ row.id }}" data-review-action="mastered">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

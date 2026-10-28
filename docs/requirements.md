@@ -57,13 +57,15 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | R04-F01 | 批注 CRUD 与状态 | 消息 ID、类型、内容、状态 | 新建/编辑/删除/标记解决；批注内联展示 | 无编辑权 403；空内容；非法类型 | `annotation_service.py`、`routers/annotations.py` | `tests/integration/test_annotations_reviews.py` |
 | R04-F02 | 加入复习队列 | 批注 ID | 创建 `pending` 复习项，默认 1 天后到期 | 重复加入幂等；无编辑权拒绝；同一用户+批注唯一 | `add_to_review` | `test_annotations_reviews.py`、`verify.annotation.lifecycle` |
-| R04-F03 | 复习打卡与间隔 | 复习项 ID | `review_count+1`，间隔 1→2→4→8…，到期日顺延 | 只能操作自己的复习项；上限 60 天 | `review_service.review_once` | `verify.annotation.lifecycle` |
+| R04-F03 | 复习打卡与间隔 | 复习项 ID、评分（again/hard/good/easy） | FSRS 风格调度：初始约 1/1/2/8 天，成功复习增长稳定性，重来缩短间隔并累加遗忘次数；默认「良好」，上限 365 天 | 只能操作自己的复习项；非法评分 400；`REVIEW_ALGORITHM=simple` 回退间隔翻倍 | `review_service.review_once`、`services/fsrs.py`、迁移 009 | `test_fsrs.py`、`test_annotations_reviews.py`、`verify.annotation.lifecycle` |
 | R04-F04 | 复习筛选与逾期 | active / mastered / all | 到期日排序；逾期标记；掌握/重置/删除 | 非本人 404；掌握后不再进队列 | `review_service.list_reviews`、`summary` | `test_annotations_reviews.py` |
+| R04-F05 | 评分与算法留痕 | 复习事件 | `review_logs` 记录 rating、algorithm、间隔与到期日；离线打卡按 good 补交 | 重放事件仍按 `(user_id,event_id)` 只落一次 | `review_service._log_event`、`static/app.js`、`offline.html` | `test_fsrs_ratings_and_simple_fallback`、E2E |
 
 **设计要点**
 
 - `UNIQUE (user_id, annotation_id)` 允许“多人复习同一批注”，但禁止同一人重复入队。
 - 复习更新用单条 `UPDATE ... RETURNING`，在事务内完成读改写。
+- FSRS 只实现长期调度：同一天多次复习按 1 天间隔计算，避免稳定性因 `elapsed=0` 不增长；`REVIEW_RETENTION` 控制目标保持率。
 - 部分索引 `review_items_queue_idx` 只覆盖未掌握项，减少队列扫描。
 
 ## R05 统计与导出
@@ -146,7 +148,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | R10-F01 | 会话快照 | 会话 ID | 保存到 IndexedDB；离线页可阅读与会话内搜索 | 隐私模式 IndexedDB 不可用时提示；无权限 403 | `routers/api.py`、`static/app.js`、`static/offline.html` | `tests/unit/test_offline_assets.py`、Playwright 截图 |
 | R10-F02 | 离线批注草稿 | 消息 ID、类型、正文 | 断网时暂存草稿，联网后提交 | 客户端事件 ID 幂等；权限变化时服务端拒绝 | `static/app.js`、`annotation_service.py` | `test_annotations_reviews.py`、离线走查 |
-| R10-F03 | 离线复习与 outbox | 复习项、动作 | 缓存复习队列；断网打卡进入 outbox | 同一事件重复提交只落一次；联网自动 flush | `static/app.js`、`review_service.py`、`review_logs` | `verify.review.activity`、离线走查 |
+| R10-F03 | 离线复习与 outbox | 复习项、动作、评分 | 缓存复习队列；断网打卡进入 outbox，按「良好」补交 | 同一事件重复提交只落一次；联网自动 flush | `static/app.js`、`review_service.py`、`review_logs` | `verify.review.activity`、离线走查 |
 | R10-F04 | 同步状态提示 | 在线/离线、待同步数 | 页面横幅、导航计数、离线页待同步提示 | 网络恢复自动提交并刷新 | `static/app.js`、`templates/base.html` | `tests/unit/test_offline_assets.py` |
 
 ## R11 整理建议
@@ -250,7 +252,7 @@
 | 可维护性 | 关键 SQL 可定位、无 ORM 黑盒 | `sql/` + `services/` + 本文件映射 |
 | 工程质量 | 依赖可复现、静态检查、提交钩子、随机化与浏览器测试 | `uv.lock`、Ruff、pyright、pre-commit、Hypothesis、Playwright；CI 同步执行 |
 | 可演示性 | 离线可演示、模拟数据可复现 | mock Text2SQL、`make_samples.py`、`seed_demo.py` |
-| 可验收 | 自动化测试与端到端报告 | 325 个 pytest 用例 + 11 项 Playwright E2E + 42 项 `verify.py` 检查 |
+| 可验收 | 自动化测试与端到端报告 | 334 个 pytest 用例 + 12 项 Playwright E2E + 42 项 `verify.py` 检查 |
 
 ## 需求到验收命令的映射
 

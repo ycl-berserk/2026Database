@@ -47,6 +47,21 @@
 
 前置条件：Docker Desktop 已启动；Python 3.12+；Node.js 20+（仅截图/录屏需要）。
 
+### 方式 A：Docker 一条命令（推荐演示）
+
+```bash
+# 构建并启动数据库 + 网站；首次会拉取镜像并构建
+docker compose up -d --build
+
+# 打开 http://127.0.0.1:8000
+# 容器启动时自动建库、应用迁移、创建角色；空库时写入演示数据
+docker compose logs -f app
+```
+
+`docker-compose.yml` 的 `app` 服务以非 root 用户 `app` 运行，入口脚本依次执行 `init_db.py --skip-test` 与 `seed_demo.py --if-empty`。需要接入真实大模型时，在启动前设置 `LLM_API_KEY` 等变量（Compose 会透传）；不想自动初始化或播种时设置 `INIT_DB=0` / `SEED_DEMO=0`。详细信息见 [Dockerfile](Dockerfile) 与 [scripts/docker_entrypoint.sh](scripts/docker_entrypoint.sh)。
+
+### 方式 B：本机 Python 开发
+
 ```bash
 # 1. 启动数据库（首次会拉取 pgvector/pgvector:pg16）
 docker compose up -d db
@@ -171,6 +186,9 @@ node scripts/extension_smoke.mjs
 
 ```text
 learning-space/
+├── Dockerfile               # 多阶段构建，非 root 运行
+├── docker-compose.yml       # PostgreSQL 16 + app 一条命令启动
+├── .dockerignore
 ├── app/
 │   ├── main.py              # FastAPI 应用、异常处理、路由挂载
 │   ├── config.py            # 环境变量与上限配置

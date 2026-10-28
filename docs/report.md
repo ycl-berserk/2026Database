@@ -593,6 +593,16 @@ Playwright 脚本登录 alice / bob / admin，生成桌面端 36 张（含扩展
 
 ## 12. 运行与演示
 
+一条命令起全栈（推荐演示）：
+
+```bash
+docker compose up -d --build
+# 容器启动时自动应用 schema/迁移，空库时写入演示数据
+curl -s http://127.0.0.1:8000/healthz
+```
+
+本机开发与完整验收：
+
 ```bash
 docker compose up -d db
 .venv/Scripts/python.exe scripts/init_db.py --reset

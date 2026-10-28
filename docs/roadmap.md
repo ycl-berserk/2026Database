@@ -129,7 +129,7 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 
 | # | 事项 | 价值 | 量 | 状态 | 说明 |
 | --- | --- | --- | --- | --- | --- |
-| E1 | Dockerfile + compose 增加 app 服务（多阶段、非 root） | 答辩 | S/M | 待办 | 一条命令起全栈 |
+| E1 | Dockerfile + compose 增加 app 服务（多阶段、非 root） | 答辩 | S/M | 完成 | 多阶段 `python:3.13-slim` 构建，运行用户 `app`（uid 999）；入口脚本按 `INIT_DB` / `SEED_DEMO` 自动迁移与空库播种，等 db healthy 后启动；`docker compose up -d --build` 一条命令起全栈 |
 | E2 | CI：GitHub Actions + Postgres service + pytest + verify | 答辩 | S/M | 待办 | 现有测试可直接接入 |
 | E3 | uv + lockfile、Ruff、pyright、pre-commit | 答辩 | S | 待办 | 工程质量证据 |
 | E4 | Hypothesis 属性测试（解析器 / SQL 守卫） | 答辩 | S/M | 待办 | 自动生成边界用例 |
@@ -189,6 +189,10 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 **Phase 2 进度**：K1 复习事件流水、O2 离线阅读、O3 离线批注草稿、O4 复习 outbox、U4 全局搜索、U8 离线状态提示、C3 采集令牌 / Bearer 导入接口、C5 平台导出适配器与 C4 MV3 扩展已完成；Phase 2 验收与文档已收尾。
 
 **Phase 3 进度**：T1 AST 校验、T2 EXPLAIN 预检、T5 金标准评测、R1 pgvector 混合检索、R6 自动标签/摘要建议已完成，Phase 3 收尾。
+
+**Phase 4 进度**：K2 知识先修图、A1 只读 MCP、A2 CLI、D1 迁移体系、D2 审计历史、D3 数据库观测均已完成，Phase 4 收尾。
+
+**Phase 5 进度**：E1 容器化已完成（多阶段构建 + compose app 服务 + 自动迁移/播种）；E2 CI 起按路线图继续。
 
 **Phase 4 进度**：K2 知识先修图、A1 MCP 工具接口、A2 命令行、D1 RLS 对比实验、D2 审计历史与 D3 数据库观测页已完成（16 张表、15 个视图、9 个触发器；279 项测试、42 项验收）。Phase 4 收尾。
 

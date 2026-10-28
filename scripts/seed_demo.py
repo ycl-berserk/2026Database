@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -266,9 +267,20 @@ def seed_annotations(conn, user_ids: dict[str, int]) -> tuple[int, int]:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="写入演示数据")
+    parser.add_argument(
+        "--if-empty",
+        action="store_true",
+        help="已有用户时安静退出 0，供容器启动脚本重复调用",
+    )
+    args = parser.parse_args()
+
     with psycopg.connect(settings.database_url, autocommit=False, row_factory=dict_row) as conn:
         existing = conn.execute("SELECT count(*) AS n FROM app.users").fetchone()["n"]
         if existing:
+            if args.if_empty:
+                print(f"users already exist ({existing}); skip seeding")
+                return 0
             print(f"users already exist ({existing}); aborting to avoid duplicates")
             return 1
 

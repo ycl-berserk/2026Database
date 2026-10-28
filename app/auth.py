@@ -100,6 +100,16 @@ def require_token(request: Request, conn=Depends(get_conn)) -> dict:
         "display_name": info["display_name"],
         "system_role": info["system_role"],
         "is_active": True,
+        "scopes": set(info.get("scopes") or ()),
     }
     request.state.user = user
     return user
+
+
+def require_scope(user: dict, scope: str) -> None:
+    if scope not in (user.get("scopes") or ()):
+        from .services.token_service import SCOPE_LABELS
+
+        raise PermissionDenied(
+            f"当前令牌没有{SCOPE_LABELS.get(scope, scope)}权限，请重新创建令牌"
+        )

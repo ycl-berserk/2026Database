@@ -701,6 +701,15 @@ textarea { resize: vertical; min-height: 90px; }
   gap: 12px;
 }
 .field-color input { padding: 3px; height: 38px; }
+.check-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 10px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.check-field input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--seal); }
 .col-actions { white-space: nowrap; }
 .inline-edit { display: inline-block; position: relative; }
 .inline-edit summary {

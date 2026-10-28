@@ -24,7 +24,11 @@ def _client(conn, user: dict) -> TestClient:
 
 
 def _user(base, name: str) -> dict:
-    return {"id": base["users"][name], "system_role": "student"}
+    return {
+        "id": base["users"][name],
+        "system_role": "student",
+        "scopes": {"read", "ingest"},
+    }
 
 
 def test_api_search_returns_visible_conversations(conn, base):
@@ -53,3 +57,14 @@ def test_api_search_rejects_admin_and_blank_query(conn, base):
 
     alice = _client(conn, _user(base, "alice"))
     assert alice.get("/api/search", params={"q": "   "}).status_code == 400
+
+
+def test_api_search_requires_read_scope(conn, base):
+    user = {
+        "id": base["users"]["alice"],
+        "system_role": "student",
+        "scopes": {"ingest"},
+    }
+    response = _client(conn, user).get("/api/search", params={"q": "事务"})
+    assert response.status_code == 403
+    assert "读取" in response.json()["detail"]

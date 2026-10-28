@@ -34,6 +34,7 @@ def _token_info(role: str) -> dict:
         "window_count": 1,
         "system_role": role,
         "display_name": "测试用户",
+        "scopes": ["read", "ingest"],
     }
 
 
@@ -64,6 +65,7 @@ def test_require_token_returns_student_context(monkeypatch):
     assert user["id"] == 7
     assert user["system_role"] == "student"
     assert user["display_name"] == "测试用户"
+    assert user["scopes"] == {"read", "ingest"}
 
 
 def test_ingest_and_tokens_routes_are_registered():
@@ -73,3 +75,5 @@ def test_ingest_and_tokens_routes_are_registered():
     assert "/tokens" in paths
     assert "/tokens/{token_id}/revoke" in paths
     assert "/api/ingest" in paths
+    assert "/api/mcp/search" in paths
+    assert "/api/mcp/annotations" in paths

@@ -37,7 +37,7 @@ curl -s http://127.0.0.1:8000/healthz
 | 0:35–1:15 | 登录与概览 | `/login` → `/dashboard` | Session、PBKDF2、按用户过滤 |
 | 1:15–2:00 | 课程与共享 | `/courses`、`/courses/1` | 课程成员 M:N、owner/editor/viewer |
 | 2:00–2:50 | 检索、上下文与整理 | `/conversations?q=隔离级别`、会话详情 | trgm + ILIKE、可选 pgvector + RRF、分页、seq_no 上下文；新标签 `ON CONFLICT`、摘要复用“总结”批注 |
-| 2:50–3:50 | 导入与查重 | `/imports`、预览页、`/tokens` | 解析校验、JSONB 预览、唯一键、单事务、原生导出适配、Bearer 令牌 |
+| 2:50–3:50 | 导入与查重 | `/imports`、预览页、`/tokens` | 解析校验、JSONB 预览、唯一键、单事务、原生导出适配、Bearer 令牌与作用域 |
 | 3:50–4:35 | 批注与复习 | `/annotations`、`/reviews` | 1:N、UNIQUE(user_id, annotation_id)、间隔重复 |
 | 4:35–5:05 | 知识先修图 | `/tags/graph` | DAG、触发器递归防环、递归闭包、SVG 布局 |
 | 5:05–5:45 | 统计与导出 | `/stats`、CSV / Markdown | JOIN、GROUP BY、FILTER、窗口函数、CTE |
@@ -150,7 +150,8 @@ curl -s http://127.0.0.1:8000/healthz
 4. **不点击确认**，直接返回导入页。
 5. 选择 `data/samples/broken.json`，点击「上传并解析」，展示「文件未被接受」和字段级错误。
 6. 返回导入页，展示最近 5 条已导入批次。
-7. 可选（各 15 秒）：上传 `deepseek_export.md` 展示原生 Markdown 识别；打开 `/tokens` 说明令牌只显示一次、可撤销；展示扩展弹窗截图，强调“点击才读取、点击才上传”。
+7. 可选（各 15 秒）：上传 `deepseek_export.md` 展示原生 Markdown 识别；打开 `/tokens` 说明令牌只显示一次、可撤销，作用域列默认只有 `read` / `ingest`；展示扩展弹窗截图，强调“点击才读取、点击才上传”。
+8. 可选（30 秒）：在终端用只读令牌运行 `LS_TOKEN=... .venv/Scripts/python.exe -m app.mcp_server`，输入 `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`，指出没有 `annotate` 时只列出三个只读工具。
 
 **口播**：
 
@@ -163,6 +164,8 @@ curl -s http://127.0.0.1:8000/healthz
 > 真正确认时是一个事务：先锁住来源，再 upsert 来源、会话、消息和标签；任何一步失败整体回滚，并把批次标成 failed。
 >
 > 除了文件上传，系统也能直接识别 ChatGPT、Qoder、DeepSeek 的原生导出格式；扩展和脚本则通过一次性显示的采集令牌调用同一个 Bearer 接口，复用同一套预览、查重与事务，不会出现两套入库逻辑。
+>
+> 令牌默认只有读取与导入作用域；MCP 客户端想写批注必须在创建时显式勾选 annotate，服务端会逐端点校验，客户端也会因此看不到写工具。
 
 **注意**：这一步会产生一个 preview 批次；录像结束后按第 4 节清理。
 
@@ -304,7 +307,7 @@ curl -s http://127.0.0.1:8000/healthz
 >
 > 逻辑设计上，标签、课程成员、会话标签都拆成关联表，满足 1NF；核心表用单列代理键，关联表的非键属性依赖整个复合键；会话不冗余 owner，消息不冗余课程和来源，避免传递依赖。`import_batches.payload` 是预览期的受控冗余，导入完成后清理。标签之间的先修关系单独建边表，闭包实时递归，不存冗余路径。
 >
-> 验收脚本覆盖表与约束、演示数据、登录权限、导入幂等、平台适配、检索、批注复习、整理建议、知识先修图、统计、采集令牌、Text2SQL 守卫/预检/金标准评测/拒绝与跨用户隔离、导出、混合检索和数据一致性，共 39 项。
+> 验收脚本覆盖表与约束、演示数据、登录权限、导入幂等、平台适配、检索、批注复习、整理建议、知识先修图、统计、采集令牌与作用域、Text2SQL 守卫/预检/金标准评测/拒绝与跨用户隔离、导出、混合检索和数据一致性，共 39 项。
 
 **备用画面**：`docs/screenshots/16-er-chen.png`、`docs/verification/report.json`（实际路径 `data/verification/report.json`）。
 

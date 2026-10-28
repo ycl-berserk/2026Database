@@ -42,8 +42,13 @@ async def token_create(
     _require_student(user)
     form = await request.form()
     verify_csrf(request, form.get("csrf_token"))
+    scopes = list(token_service.DEFAULT_SCOPES)
+    if form.get("allow_annotate"):
+        scopes.append("annotate")
     try:
-        created = token_service.create_token(conn, user["id"], form.get("name") or "")
+        created = token_service.create_token(
+            conn, user["id"], form.get("name") or "", scopes
+        )
     except AppError as exc:
         return _render_page(
             request, conn, user, error=exc.message, status_code=exc.status_code

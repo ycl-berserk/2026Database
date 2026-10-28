@@ -233,7 +233,7 @@ Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查�
 
 `review_items` 只保存最新聚合状态，`review_logs` 记录每一次复习动作，供热力图、留存统计与离线 outbox 幂等重放使用。`UNIQUE (user_id, event_id)` 保证同一客户端事件只落一次；普通页面操作不传 `event_id`，不受影响。
 
-### 3.14 采集令牌 `api_tokens`（迁移 003）
+### 3.14 采集令牌 `api_tokens`（迁移 003、006）
 
 | 列 | 类型 | 约束 |
 | --- | --- | --- |
@@ -242,13 +242,14 @@ Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查�
 | name | varchar(60) | 非空、去空格后 1–60 字符 |
 | token_prefix | varchar(12) | 可读前缀，便于识别 |
 | token_hash | bytea | UNIQUE；只存 SHA-256 |
+| scopes | text[] | 默认 `{read,ingest}`；CHECK 为非空且是 `read/ingest/annotate` 的子集 |
 | window_started_at | timestamptz | 当前固定窗口起点 |
 | window_count | integer | `>= 0`，每分钟最多 60 次 |
 | last_used_at | timestamptz | 可空 |
 | created_at | timestamptz | 默认 now() |
 | revoked_at | timestamptz | 可空；撤销后认证失败 |
 
-令牌明文只在创建响应中返回一次；服务端不保存可逆密文。`(user_id, created_at DESC)` 索引用于令牌管理页。
+令牌明文只在创建响应中返回一次；服务端不保存可逆密文。`(user_id, created_at DESC)` 索引用于令牌管理页。作用域由服务端逐端点校验：`read` 允许搜索与会话读取，`ingest` 允许写入统一 JSON，`annotate` 才允许 MCP 写批注；默认不授予写批注权限。
 
 ### 3.15 标签先修关系 `tag_edges`（迁移 005）
 
@@ -537,4 +538,4 @@ v1 的基线结构保存在 `sql/schema.sql`。v2 起所有结构变更以编号
 - 每个迁移在单独事务中执行，失败整体回滚且不写版本记录。
 - 初始化顺序为 `schema.sql → migrations → views.sql → roles.sql`，保证 `t2s` 视图始终基于最新结构创建。
 - 业务表仍集中在 `app` schema（15 张），迁移登记表放在独立的 `meta` schema，不参与业务计数与权限视图。
-- 当前迁移：`001_add_review_logs`（复习事件流水）、`002_add_annotation_event_id`（批注客户端事件 ID）、`003_add_api_tokens`（采集令牌）、`004_add_message_embeddings`（可选向量）、`005_add_tag_edges`（知识先修关系）。
+- 当前迁移：`001_add_review_logs`（复习事件流水）、`002_add_annotation_event_id`（批注客户端事件 ID）、`003_add_api_tokens`（采集令牌）、`004_add_message_embeddings`（可选向量）、`005_add_tag_edges`（知识先修关系）、`006_add_token_scopes`（令牌作用域）。

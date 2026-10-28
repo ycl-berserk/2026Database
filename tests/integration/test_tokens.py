@@ -56,6 +56,31 @@ def test_token_name_is_validated(conn, base):
         token_service.create_token(conn, base["users"]["alice"], "x" * 61)
 
 
+def test_token_scopes_default_and_validation(conn, base):
+    created = token_service.create_token(conn, base["users"]["alice"], "默认作用域")
+    assert created["scopes"] == ["read", "ingest"]
+    info = token_service.authenticate(conn, created["token"])
+    assert set(info["scopes"]) == {"read", "ingest"}
+
+    writer = token_service.create_token(
+        conn, base["users"]["alice"], "MCP 写批注", ["annotate", "read"]
+    )
+    assert writer["scopes"] == ["read", "annotate"]
+    assert token_service.authenticate(conn, writer["token"])["scopes"] == [
+        "read",
+        "annotate",
+    ]
+
+    listed = token_service.list_tokens(conn, base["users"]["alice"])
+    by_name = {row["name"]: row["scopes"] for row in listed}
+    assert by_name["MCP 写批注"] == ["read", "annotate"]
+
+    with pytest.raises(ValidationError):
+        token_service.create_token(conn, base["users"]["alice"], "未知作用域", ["root"])
+    with pytest.raises(ValidationError):
+        token_service.create_token(conn, base["users"]["alice"], "空作用域", [])
+
+
 def test_revoke_invalidates_token_and_respects_owner(conn, base):
     created = token_service.create_token(conn, base["users"]["alice"], "临时脚本")
     with pytest.raises(NotFoundError):

@@ -2,7 +2,7 @@
 
 《数据库系统概论》大作业 · 选题 2：围绕“与大模型的聊天记录”构建一个可查阅、可批注、可复习的课程资料库。
 
-系统把 Qoder / ChatGPT / DeepSeek 等平台的问答导出文件解析为统一结构，按课程、来源、标签整理；提供中文检索、全局搜索、会话上下文、批注、间隔复习、统计导出，并额外实现一个受只读权限视图保护的 **Text2SQL** 页面。采集侧支持平台原生导出适配、采集令牌 + Bearer 导入接口，以及一个“点击才上传”的 MV3 浏览器扩展。
+系统把 Qoder / ChatGPT / DeepSeek 等平台的问答导出文件解析为统一结构，按课程、来源、标签整理；提供中文检索、全局搜索、会话上下文、批注、间隔复习、统计导出，并额外实现一个受只读权限视图保护的 **Text2SQL** 页面。采集侧支持平台原生导出适配、采集令牌 + Bearer 导入接口，以及一个“点击才上传”的 MV3 浏览器扩展；另提供命令行与 MCP 工具接口，方便脚本和 AI 客户端复用同一套权限过滤。
 
 > 演示数据全部为围绕课程知识点生成的模拟聊天记录，不含任何真实个人信息。系统管理员只查看用户与聚合统计，不读取他人消息正文或批注。
 
@@ -22,6 +22,7 @@
 | 用户与权限 | Session 登录、PBKDF2 密码哈希、CSRF、系统角色 + 课程角色、应用层与数据库层双重防护 |
 | Text2SQL | 自然语言→SQL→AST 守卫→EXPLAIN 预检→只读执行→表格展示、解释、审计历史；无 API Key 时使用本地规则 mock |
 | 命令行 | `ls search` / `ls import`：用采集令牌调用 `/api/search` 与 `/api/ingest`，支持环境变量、课程覆盖与 `--json` 输出 |
+| MCP 接口 | stdio JSON-RPC 服务：`search`、`get_conversation`、`list_due_reviews` 只读；令牌显式授予 `annotate` 后才开放 `add_annotation` |
 | 管理 | 用户启停、系统聚合统计（不读正文） |
 | 移动端与安装 | 390px 优先的底部标签栏 / 抽屉导航、列表卡片化、专注阅读模式；PWA manifest + Service Worker 应用壳缓存、离线页、桌面安装、分享快捷方式 |
 | 离线学习 | 会话快照、离线阅读与搜索、离线批注草稿、复习打卡 outbox，恢复联网后按事件 ID 幂等同步 |
@@ -95,6 +96,34 @@ ls import data/samples/qoder_db.json --course-code DB --json
 
 `ls search` 走只读 `/api/search`，只返回令牌所属用户可见的会话、批注、课程与标签；`ls import` 复用 `/api/ingest` 的预览、查重与单事务入库，支持 `--course-code` 覆盖课程、`--platform` 覆盖来源平台。CLI 当前只接受统一 JSON；Markdown 请在网站导入页上传。
 
+令牌默认只有 `read` 与 `ingest` 作用域。若希望 MCP 客户端能写批注，请在 `/tokens` 创建时勾选“允许 MCP 写入批注（annotate）”；页面会展示每个令牌的作用域，可随时撤销。
+
+### MCP 客户端
+
+`app/mcp_server.py` 通过 stdio 提供 MCP 工具，不直接连接数据库，而是用 `LS_TOKEN` 调用本机 Bearer API。先在 `/tokens` 创建令牌，再把下面的配置放进 Claude Desktop / Cursor 的 MCP 设置：
+
+```json
+{
+  "mcpServers": {
+    "learning-space": {
+      "command": "C:/path/to/learning-space/.venv/Scripts/python.exe",
+      "args": ["-m", "app.mcp_server"],
+      "env": {
+        "LS_BASE_URL": "http://127.0.0.1:8000",
+        "LS_TOKEN": "ls_你的令牌"
+      }
+    }
+  }
+}
+```
+
+- `search`：按关键词检索会话、批注、课程和标签。
+- `get_conversation`：读取一个会话的完整消息与批注。
+- `list_due_reviews`：列出今天到期或已逾期的复习项。
+- `add_annotation`：给消息新增批注；只有 `annotate` 作用域可见，不能修改或删除既有批注。
+
+服务启动时调用 `GET /api/mcp/me` 读取作用域并隐藏无权工具；管理员令牌在认证层即被拒绝。也可以直接运行 `ls-mcp`（执行过 `pip install -e .` 后）。
+
 ## 常用命令
 
 ```bash
@@ -102,7 +131,7 @@ ls import data/samples/qoder_db.json --course-code DB --json
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（143 单元 + 104 集成，共 247 项）；集成测试需先初始化测试库
+# 全量测试（153 单元 + 111 集成，共 264 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest
 
 # 端到端验收：39 项 PASS/FAIL，写入 data/verification/report.json
@@ -141,6 +170,7 @@ learning-space/
 │   ├── db.py                # 连接池、事务、行工厂
 │   ├── auth.py              # PBKDF2、Session、CSRF
 │   ├── cli.py               # ls search / ls import 命令行客户端
+│   ├── mcp_server.py        # MCP stdio JSON-RPC 服务（四个工具）
 │   ├── migrations.py        # 迁移发现、应用与版本记录
 │   ├── permissions.py       # 课程角色 / 会话可见性判定
 │   ├── routers/             # 页面与 JSON API

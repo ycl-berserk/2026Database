@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from typing import Any
 
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_INFO = {"name": "learning-space", "version": "0.1.0"}
@@ -154,8 +156,8 @@ def _bounded(value, default: int, maximum: int) -> int:
     return max(1, min(number, maximum))
 
 
-def format_search(data: dict, limit: int) -> str:
-    mode = (data.get("retrieval") or {}).get("mode")
+def format_search(data: dict[str, Any], limit: int) -> str:
+    mode = str((data.get("retrieval") or {}).get("mode") or "")
     mode_label = {"hybrid": "混合检索", "lexical": "词法检索"}.get(mode, mode or "检索")
     rows = data.get("conversations") or []
     lines = [
@@ -402,10 +404,10 @@ def handle_line(server: McpServer, line: str) -> str | None:
 
 def main(argv=None) -> int:
     for stream in (sys.stdin, sys.stdout, sys.stderr):
-        try:
-            stream.reconfigure(encoding="utf-8")
-        except (AttributeError, ValueError):
-            pass
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure:
+            with contextlib.suppress(ValueError):
+                reconfigure(encoding="utf-8")
     token = (os.environ.get("LS_TOKEN") or "").strip()
     if not token:
         print("缺少 LS_TOKEN 环境变量", file=sys.stderr)

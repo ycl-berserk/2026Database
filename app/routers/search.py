@@ -9,7 +9,7 @@ from ..auth import require_user, verify_csrf
 from ..db import get_conn
 from ..errors import PermissionDenied
 from ..services import embedding_service, search_service
-from ..web import add_flash, render
+from ..web import add_flash, form_text, render
 
 router = APIRouter(prefix="/search")
 
@@ -44,8 +44,8 @@ async def build_embeddings(
     if user["system_role"] == "admin":
         raise PermissionDenied("管理员不参与向量索引")
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
-    q = (form.get("q") or "").strip()[:100]
+    verify_csrf(request, form_text(form, "csrf_token"))
+    q = (form_text(form, "q") or "").strip()[:100]
     target = f"/search?q={quote(q)}" if q else "/search"
     if not embedding_service.enabled():
         add_flash(request, "未配置向量模型，继续使用词法检索", "info")

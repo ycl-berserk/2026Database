@@ -7,7 +7,7 @@ from ..auth import require_user, verify_csrf
 from ..db import get_conn
 from ..permissions import require_system_admin
 from ..services import admin_service, observability_service
-from ..web import add_flash, render
+from ..web import add_flash, form_text, render
 
 router = APIRouter(prefix="/admin")
 
@@ -67,8 +67,8 @@ async def toggle_user(
 ):
     require_system_admin(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
-    active = (form.get("active") or "") == "1"
+    verify_csrf(request, form_text(form, "csrf_token"))
+    active = (form_text(form, "active") or "") == "1"
     row = admin_service.set_active(
         conn, user_id, active, acting_user_id=user["id"]
     )
@@ -88,7 +88,7 @@ async def prune_audit(
 ):
     require_system_admin(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     removed = admin_service.prune_audit(conn, 90)
     add_flash(request, f"已清理 {removed} 条超过 90 天的审计记录", "success")
     return RedirectResponse("/admin", status_code=303)

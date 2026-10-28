@@ -4,7 +4,7 @@ import asyncio
 import json
 import time
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +20,9 @@ def load_cases(path: str | Path) -> dict:
     return payload
 
 
-def _canonical(result: dict) -> list[tuple]:
+def _canonical(result: dict | None) -> list[tuple]:
+    if result is None:
+        return []
     columns = sorted(result["columns"])
     rows = [
         tuple(repr(row.get(column)) for column in columns)
@@ -50,10 +52,7 @@ def _scope_passes(result: dict, case: dict) -> bool:
     forbidden = {str(value) for value in case.get("forbidden_values", [])}
     if not forbidden:
         return True
-    for row in result["rows"]:
-        if any(str(value) in forbidden for value in row.values()):
-            return False
-    return True
+    return all(not any(str(value) in forbidden for value in row.values()) for row in result["rows"])
 
 
 def evaluate(cases: dict, main_conn, t2s_conn, provider: str = "mock") -> dict:
@@ -82,7 +81,7 @@ def evaluate(cases: dict, main_conn, t2s_conn, provider: str = "mock") -> dict:
                 gold = _run_sql(t2s_conn, case["gold_sql"], user_id)
                 gold_ok = True
                 gold_result = gold["result"]
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 item["gold_status"] = type(exc).__name__
                 item["gold_error"] = str(exc)[:300]
 
@@ -112,7 +111,7 @@ def evaluate(cases: dict, main_conn, t2s_conn, provider: str = "mock") -> dict:
                 except t2s.PreflightError as exc:
                     item["status"] = "preflight"
                     item["error"] = exc.message
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     item["status"] = "error"
                     item["error"] = f"{type(exc).__name__}: {exc}"[:300]
                 item["latency_ms"] = int(
@@ -149,7 +148,7 @@ def evaluate(cases: dict, main_conn, t2s_conn, provider: str = "mock") -> dict:
                 )
                 passed = _scope_passes(result, case)
                 detail = f"{len(result['rows'])} 行"
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 detail = f"{type(exc).__name__}: {exc}"[:200]
             scope_cases.append(
                 {
@@ -179,7 +178,7 @@ def evaluate(cases: dict, main_conn, t2s_conn, provider: str = "mock") -> dict:
         if item["latency_ms"] is not None
     ]
     return {
-        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "provider": provider,
         "modes": dict(modes),
         "questions": {

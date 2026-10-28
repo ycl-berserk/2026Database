@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Request
@@ -9,7 +10,7 @@ from ..auth import require_user, verify_csrf
 from ..db import get_conn
 from ..errors import PermissionDenied, ValidationError
 from ..services import conversation_service, import_service
-from ..web import add_flash, render
+from ..web import add_flash, form_text, form_text_list, render
 
 router = APIRouter()
 MAX_SHARE_CHARS = 200_000
@@ -44,13 +45,13 @@ async def share_target(
     _require_student(user)
     _check_origin(request)
     form = await request.form()
-    csrf = form.get("csrf_token")
+    csrf = form_text(form, "csrf_token")
     if csrf:
         verify_csrf(request, csrf)
 
-    text = _share_text(form.get("text") or "", form.get("url") or "")
-    title = (form.get("title") or "").strip()[:255] or None
-    platform = (form.get("platform") or "auto").strip().lower()
+    text = _share_text(form_text(form, "text") or "", form_text(form, "url") or "")
+    title = (form_text(form, "title") or "").strip()[:255] or None
+    platform = (form_text(form, "platform") or "auto").strip().lower()
 
     def fail(message: str):
         return render(
@@ -144,13 +145,13 @@ async def share_import(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
-    token = (form.get("token") or "").strip()
+    verify_csrf(request, form_text(form, "csrf_token"))
+    token = (form_text(form, "token") or "").strip()
     if not token:
         raise ValidationError("缺少分享预览标识，请重新分享")
 
     course_id = None
-    raw_course = (form.get("course_id") or "").strip()
+    raw_course = (form_text(form, "course_id") or "").strip()
     if raw_course and raw_course != "none":
         try:
             course_id = int(raw_course)
@@ -198,15 +199,11 @@ def inbox(
 ):
     _require_student(user)
     page = 1
-    try:
+    with contextlib.suppress(ValueError):
         page = max(1, int(request.query_params.get("page") or 1))
-    except ValueError:
-        pass
     highlight = None
-    try:
+    with contextlib.suppress(ValueError):
         highlight = int(request.query_params.get("highlight") or 0) or None
-    except ValueError:
-        pass
 
     data = conversation_service.list_conversations(
         conn, user["id"], course_id="none", page=page
@@ -232,9 +229,9 @@ async def inbox_organize(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     ids: list[int] = []
-    for value in form.getlist("selected"):
+    for value in form_text_list(form, "selected"):
         try:
             ids.append(int(value))
         except (TypeError, ValueError):
@@ -242,7 +239,7 @@ async def inbox_organize(
     if not ids:
         raise ValidationError("请先选择要归类的会话")
     try:
-        course_id = int(form.get("course_id") or "")
+        course_id = int(form_text(form, "course_id") or "")
     except (TypeError, ValueError):
         raise ValidationError("请选择目标课程") from None
 

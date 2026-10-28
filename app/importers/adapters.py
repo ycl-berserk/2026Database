@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from .base import external_id_from, normalize_tags
@@ -70,10 +70,13 @@ def normalize_json(doc: Any) -> tuple[Any, list[str]]:
         return _chatgpt_document(chatgpt_items, doc), warnings
 
     sessions = doc.get("sessions")
-    if isinstance(sessions, list) and sessions:
-        if any(isinstance(item, dict) for item in sessions):
-            warnings.append("已识别 Qoder sessions 导出格式")
-            return _sessions_document(doc, sessions), warnings
+    if (
+        isinstance(sessions, list)
+        and sessions
+        and any(isinstance(item, dict) for item in sessions)
+    ):
+        warnings.append("已识别 Qoder sessions 导出格式")
+        return _sessions_document(doc, sessions), warnings
 
     conversations = doc.get("conversations")
     if isinstance(conversations, list) and any(
@@ -107,9 +110,10 @@ def normalize_markdown(text: str) -> tuple[str, list[str]]:
     normalized = "\n".join(out)
     if converted:
         warnings.append("已识别 User / Assistant 标题格式并映射为统一 Markdown")
-    if not re.search(r"^\s*[-*]?\s*(?:平台|platform)\s*[:：]", normalized, re.IGNORECASE | re.MULTILINE):
-        if re.search(r"deepseek", normalized, re.IGNORECASE):
-            normalized = "平台: deepseek\n" + normalized
+    if not re.search(
+        r"^\s*[-*]?\s*(?:平台|platform)\s*[:：]", normalized, re.IGNORECASE | re.MULTILINE
+    ) and re.search(r"deepseek", normalized, re.IGNORECASE):
+        normalized = "平台: deepseek\n" + normalized
     return normalized, warnings
 
 
@@ -129,12 +133,7 @@ def _needs_alias(conv: dict) -> bool:
     if "name" in conv and "title" not in conv:
         return True
     messages = conv.get("messages")
-    if isinstance(messages, list) and any(
-        isinstance(msg, dict) and "text" in msg and "content" not in msg
-        for msg in messages
-    ):
-        return True
-    return False
+    return bool(isinstance(messages, list) and any(isinstance(msg, dict) and "text" in msg and "content" not in msg for msg in messages))
 
 
 def _iso(value: Any) -> str | None:
@@ -142,7 +141,7 @@ def _iso(value: Any) -> str | None:
         return None
     if isinstance(value, (int, float)):
         try:
-            return datetime.fromtimestamp(value, timezone.utc).isoformat()
+            return datetime.fromtimestamp(value, UTC).isoformat()
         except (OverflowError, OSError, ValueError):
             return None
     return str(value)
@@ -218,6 +217,7 @@ def _chatgpt_thread(item: dict) -> dict | None:
         for node in mapping.values()
         if isinstance(node, dict) and isinstance(node.get("message"), dict)
     ]
+    nodes = [node for node in nodes if isinstance(node, dict)]
     if not path:
         nodes.sort(key=lambda message: message.get("create_time") or 0)
 

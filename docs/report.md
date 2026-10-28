@@ -535,7 +535,9 @@ mock 只覆盖固定问法，Q18–Q30 的换问法、聚合与排名问题会�
 
 集成测试只连接以 `_test` 结尾的数据库，每个用例前 `TRUNCATE app.users RESTART IDENTITY CASCADE`。测试脚手架使用管理员连接执行 TRUNCATE，因为应用角色 `ls_app` 被刻意设计为没有 TRUNCATE 权限。
 
-同一套检查在 GitHub Actions 中自动执行：`.github/workflows/ci.yml` 以 `pgvector/pgvector:pg16` 启动 PostgreSQL 服务，设置与本地一致的连接串，依次运行 `init_db.py --reset`、`seed_demo.py`、`pytest` 与 `verify.py`。CI 显式关闭大模型调用（`TEXT2SQL_MODE=mock`、`EMBEDDING_MODE=off`、`SUGGEST_MODE=off`），保证离线可重复；测试 JUnit 与验收 JSON 作为构建产物上传，失败时也能回看证据。推送与 PR 都会触发，并用 concurrency 取消同一分支的旧任务。
+工程工具链同样纳入验收：运行与开发依赖写在 `pyproject.toml`，由 `uv.lock` 锁定 55 个包；Ruff 以 `E/F/I/UP/B/SIM/RUF/C4` 规则检查 `app`、`scripts`、`tests`，pyright 以 basic 模式检查 `app`，pre-commit 在提交前执行配置校验、Ruff 与 pyright。静态检查还推动了表单访问的收紧：路由不再直接调用 `FormData.get()`（其返回类型可能是 `UploadFile`），而是统一经过 `form_text` / `form_file` / `form_text_list`，避免把二进制字段误当文本处理。
+
+同一套检查在 GitHub Actions 中自动执行：`.github/workflows/ci.yml` 以 `pgvector/pgvector:pg16` 启动 PostgreSQL 服务，并用 `uv sync --frozen` 安装锁定依赖；随后运行 `uv lock --check`、Ruff、pyright、`init_db.py --reset`、`seed_demo.py`、`pytest` 与 `verify.py`。CI 显式关闭大模型调用（`TEXT2SQL_MODE=mock`、`EMBEDDING_MODE=off`、`SUGGEST_MODE=off`），保证离线可重复；测试 JUnit 与验收 JSON 作为构建产物上传，失败时也能回看证据。推送与 PR 都会触发，并用 concurrency 取消同一分支的旧任务。
 
 ### 10.2 端到端验收
 

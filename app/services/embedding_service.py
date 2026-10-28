@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from functools import lru_cache
-from typing import Iterable
 
 import httpx
 
@@ -143,7 +143,7 @@ def backfill(conn, user_id: int, limit: int = 64) -> dict:
         return {"embedded": 0, "model": settings.embedding_model}
     vectors = embed_texts([row["content"] for row in rows])
     with conn.transaction():
-        for row, vector in zip(rows, vectors):
+        for row, vector in zip(rows, vectors, strict=False):
             conn.execute(
                 """
                 UPDATE app.messages

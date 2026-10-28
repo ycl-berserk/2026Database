@@ -6,7 +6,7 @@ from fastapi.responses import RedirectResponse
 from ..auth import ensure_csrf, require_user, verify_csrf
 from ..db import get_conn
 from ..services.auth_service import authenticate
-from ..web import add_flash, render
+from ..web import add_flash, form_text, render
 
 router = APIRouter()
 
@@ -31,10 +31,10 @@ def login_page(request: Request, conn=Depends(get_conn)):
 @router.post("/login")
 async def login_submit(request: Request, conn=Depends(get_conn)):
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
-    username = (form.get("username") or "").strip()
-    password = form.get("password") or ""
-    next_url = safe_next(form.get("next"))
+    verify_csrf(request, form_text(form, "csrf_token"))
+    username = (form_text(form, "username") or "").strip()
+    password = form_text(form, "password") or ""
+    next_url = safe_next(form_text(form, "next"))
 
     user = authenticate(conn, username, password)
     if user is None:
@@ -58,6 +58,6 @@ async def login_submit(request: Request, conn=Depends(get_conn)):
 @router.post("/logout")
 async def logout(request: Request, user=Depends(require_user)):
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     request.session.clear()
     return RedirectResponse("/login", status_code=303)

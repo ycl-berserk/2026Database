@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.encoders import jsonable_encoder
@@ -64,7 +64,7 @@ def offline_conversation(
     data = conversation_service.conversation_detail(conn, conversation_id, user)
     conversation = data["conversation"]
     payload = {
-        "saved_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "saved_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "conversation": {
             "id": conversation["id"],
             "title": conversation["title"],
@@ -93,7 +93,7 @@ def offline_reviews(
     _require_student(user)
     items = review_service.list_reviews(conn, user["id"], "active")[:60]
     payload = {
-        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "csrf_token": ensure_csrf(request),
         "items": jsonable_encoder(items),
     }

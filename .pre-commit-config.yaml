@@ -1,0 +1,25 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.3
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^(app|scripts|tests)/
+
+  - repo: local
+    hooks:
+      - id: pyright
+        name: pyright (app)
+        entry: pyright app
+        language: python
+        additional_dependencies: ["pyright==1.1.414"]
+        pass_filenames: false
+        files: ^app/
+        types: [python]

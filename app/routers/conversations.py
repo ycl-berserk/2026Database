@@ -10,7 +10,7 @@ from ..auth import require_user, verify_csrf
 from ..db import get_conn
 from ..errors import PermissionDenied
 from ..services import ai_service, conversation_service
-from ..web import add_flash, render
+from ..web import add_flash, form_text, form_text_list, render
 
 router = APIRouter(prefix="/conversations")
 
@@ -104,26 +104,26 @@ async def conversation_organize(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     tag_ids: list[int] = []
-    for value in form.getlist("tag_ids"):
+    for value in form_text_list(form, "tag_ids"):
         try:
             tag_ids.append(int(value))
         except (TypeError, ValueError):
             continue
     new_tags = [
         part.strip()
-        for part in re.split(r"[,，\n]+", str(form.get("new_tags") or ""))
+        for part in re.split(r"[,，\n]+", str(form_text(form, "new_tags") or ""))
         if part.strip()
     ]
     conversation_service.organize_conversation(
         conn,
         conversation_id,
         user,
-        course_id=form.get("course_id"),
+        course_id=form_text(form, "course_id"),
         tag_ids=tag_ids,
         new_tag_names=new_tags,
-        summary=str(form.get("summary") or ""),
+        summary=str(form_text(form, "summary") or ""),
     )
     add_flash(request, "归类、标签与摘要已保存", "success")
     return RedirectResponse(f"/conversations/{conversation_id}", status_code=303)

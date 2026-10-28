@@ -196,6 +196,7 @@ def list_conversations(
     total = 0
 
     if hybrid:
+        assert q is not None and query_vector is not None
         lexical_ids, vector_ids = _hybrid_candidates(
             conn, filters_sql, params, q, query_vector
         )
@@ -214,6 +215,7 @@ def list_conversations(
         rows = []
         if page_ids:
             params["page_ids"] = page_ids
+            assert query_vector is not None
             rows = conn.execute(
                 f"""
                 SELECT v.id, v.title, v.course_id, v.started_at, v.is_archived,
@@ -535,7 +537,7 @@ def conversation_detail(
     sender = sender if sender in SENDERS else None
     q = (q or "").strip()[:100] or None
 
-    params = [conversation_id]
+    params: list[int | str] = [conversation_id]
     sender_clause = ""
     if sender:
         sender_clause = " AND m.sender = %s"

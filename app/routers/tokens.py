@@ -7,7 +7,7 @@ from ..auth import require_user, verify_csrf
 from ..db import get_conn
 from ..errors import AppError, PermissionDenied
 from ..services import token_service
-from ..web import add_flash, render
+from ..web import add_flash, form_text, render
 
 router = APIRouter(prefix="/tokens")
 
@@ -41,13 +41,13 @@ async def token_create(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     scopes = list(token_service.DEFAULT_SCOPES)
-    if form.get("allow_annotate"):
+    if form_text(form, "allow_annotate"):
         scopes.append("annotate")
     try:
         created = token_service.create_token(
-            conn, user["id"], form.get("name") or "", scopes
+            conn, user["id"], form_text(form, "name") or "", scopes
         )
     except AppError as exc:
         return _render_page(
@@ -67,7 +67,7 @@ async def token_revoke(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     token_service.revoke_token(conn, token_id, user["id"])
     add_flash(request, "令牌已撤销，正在使用它的脚本或扩展会立即失效", "success")
     return RedirectResponse("/tokens", status_code=303)

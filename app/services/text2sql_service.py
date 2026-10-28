@@ -493,7 +493,7 @@ async def generate_sql(question: str) -> tuple[str, str, str]:
     try:
         sql, explanation = await _llm_sql(question)
         return sql, explanation, "llm"
-    except Exception as exc:  # noqa: BLE001 - 回退到本地规则，保证离线可用
+    except Exception as exc:
         sql, explanation = _mock_sql(question)
         return sql, f"{explanation}（大模型调用失败，已回退本地规则：{exc.__class__.__name__}）", "mock-fallback"
 
@@ -503,7 +503,7 @@ async def run(question: str, user_id: int, t2s_conn, main_conn) -> dict:
     sql = None
     try:
         sql, explanation, mode = await generate_sql(question)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         latency = int((time.perf_counter() - started) * 1000)
         record_log(
             main_conn,
@@ -545,7 +545,7 @@ async def run(question: str, user_id: int, t2s_conn, main_conn) -> dict:
             error_message=exc.message,
         )
         raise
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         latency = int((time.perf_counter() - started) * 1000)
         record_log(
             main_conn,
@@ -560,7 +560,7 @@ async def run(question: str, user_id: int, t2s_conn, main_conn) -> dict:
 
     try:
         result = execute_query(t2s_conn, safe_sql, user_id)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         latency = int((time.perf_counter() - started) * 1000)
         record_log(
             main_conn,

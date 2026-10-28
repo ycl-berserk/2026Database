@@ -7,8 +7,8 @@ from ..errors import AuthRequired, NotFoundError, RateLimited, ValidationError
 
 RATE_LIMIT_PER_MINUTE = 60
 
-SCOPES = ("read", "ingest", "annotate")
-DEFAULT_SCOPES = ("read", "ingest")
+SCOPES: tuple[str, ...] = ("read", "ingest", "annotate")
+DEFAULT_SCOPES: tuple[str, ...] = ("read", "ingest")
 SCOPE_LABELS = {"read": "读取", "ingest": "导入", "annotate": "批注"}
 
 

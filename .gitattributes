@@ -5,3 +5,5 @@ Dockerfile text eol=lf
 *.yaml text eol=lf
 *.sql text eol=lf
 *.py text eol=lf
+uv.lock text eol=lf
+requirements*.txt text eol=lf

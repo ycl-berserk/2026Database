@@ -7,7 +7,7 @@ from ..auth import require_user, verify_csrf
 from ..db import get_conn
 from ..errors import PermissionDenied
 from ..services import review_service
-from ..web import add_flash, render
+from ..web import add_flash, form_text, render
 
 router = APIRouter(prefix="/reviews")
 
@@ -53,9 +53,9 @@ async def review_done(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     row = review_service.review_once(
-        conn, review_id, user["id"], event_id=form.get("event_id")
+        conn, review_id, user["id"], event_id=form_text(form, "event_id")
     )
     if row["duplicate"]:
         add_flash(request, "这次复习已经记录过，没有重复累加", "info")
@@ -65,7 +65,7 @@ async def review_done(
             f"本次复习已记录，下次到期 {row['due_date']}（间隔 {row['interval_days']} 天）",
             "success",
         )
-    return RedirectResponse(_back(form.get("scope") or ""), status_code=303)
+    return RedirectResponse(_back(form_text(form, "scope") or ""), status_code=303)
 
 
 @router.post("/{review_id}/mastered")
@@ -77,15 +77,15 @@ async def review_mastered(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     row = review_service.mark_mastered(
-        conn, review_id, user["id"], event_id=form.get("event_id")
+        conn, review_id, user["id"], event_id=form_text(form, "event_id")
     )
     if row["duplicate"]:
         add_flash(request, "这次操作已经记录过，没有重复提交", "info")
     else:
         add_flash(request, "已标记为掌握，转入「已掌握」列表", "success")
-    return RedirectResponse(_back(form.get("scope") or ""), status_code=303)
+    return RedirectResponse(_back(form_text(form, "scope") or ""), status_code=303)
 
 
 @router.post("/{review_id}/reset")
@@ -97,15 +97,15 @@ async def review_reset(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     row = review_service.reset_review(
-        conn, review_id, user["id"], event_id=form.get("event_id")
+        conn, review_id, user["id"], event_id=form_text(form, "event_id")
     )
     if row["duplicate"]:
         add_flash(request, "这次操作已经记录过，没有重复提交", "info")
     else:
         add_flash(request, "复习进度已重置，今天重新开始", "success")
-    return RedirectResponse(_back(form.get("scope") or ""), status_code=303)
+    return RedirectResponse(_back(form_text(form, "scope") or ""), status_code=303)
 
 
 @router.post("/{review_id}/delete")
@@ -117,7 +117,7 @@ async def review_delete(
 ):
     _require_student(user)
     form = await request.form()
-    verify_csrf(request, form.get("csrf_token"))
+    verify_csrf(request, form_text(form, "csrf_token"))
     review_service.delete_review(conn, review_id, user["id"])
     add_flash(request, "复习项已移出队列，原批注保留", "success")
-    return RedirectResponse(_back(form.get("scope") or ""), status_code=303)
+    return RedirectResponse(_back(form_text(form, "scope") or ""), status_code=303)

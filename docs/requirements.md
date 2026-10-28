@@ -175,6 +175,14 @@
 - 闭包不落表：`v_my_tag_prerequisites` 每次实时递归，避免“边变了闭包没更新”的冗余一致性问题。
 - 布局不引入图库：服务层按最长路径给节点分层，SVG 直接输出，保持零前端依赖且可截图。
 
+## R13 命令行客户端
+
+| ID | 功能 | 输入 | 输出 / 行为 | 异常与边界 | 实现位置 | 验收 |
+| --- | --- | --- | --- | --- | --- | --- |
+| R13-F01 | 令牌搜索 | `ls search 关键词 [--limit] [--json]` | 调用 `GET /api/search`，输出会话、批注、课程、标签；默认中文摘要，`--json` 原样输出 | 缺少令牌退出 1；空关键词 400；管理员 403；结果按令牌用户过滤 | `app/cli.py`、`routers/api.py` | `tests/unit/test_cli.py`、`tests/integration/test_api_search.py` |
+| R13-F02 | 令牌导入 | `ls import 文件.json [--course-code] [--platform] [--json]` | 覆盖课程/平台后调用 `POST /api/ingest`，复用预览、查重与单事务入库 | 非 JSON/缺字段本地拒绝；服务端校验失败退出 1；Markdown 引导到网页导入 | `app/cli.py`、`services/import_service.ingest_json` | `test_cli.py`、`test_tokens.py` |
+| R13-F03 | 配置与输出 | `--base-url` / `LS_BASE_URL`、`--token` / `LS_TOKEN` | 不打印令牌；两个子命令都支持 `--json` | `LS_TOKEN` 缺失时给出明确错误；连接失败输出原因 | `app/cli.py`、`pyproject.toml` | `test_cli.py`、CLI 冒烟 |
+
 ## 非功能需求
 
 | 类别 | 要求 | 实现 |
@@ -184,12 +192,12 @@
 | 性能 | 列表分页、关键查询有索引、统计实时但规模可控 | 索引设计、`LIMIT/OFFSET`、部分索引、trgm、HNSW |
 | 可维护性 | 关键 SQL 可定位、无 ORM 黑盒 | `sql/` + `services/` + 本文件映射 |
 | 可演示性 | 离线可演示、模拟数据可复现 | mock Text2SQL、`make_samples.py`、`seed_demo.py` |
-| 可验收 | 自动化测试与端到端报告 | 238 个 pytest 用例 + 39 项 `verify.py` 检查 |
+| 可验收 | 自动化测试与端到端报告 | 247 个 pytest 用例 + 39 项 `verify.py` 检查 |
 
 ## 需求到验收命令的映射
 
 ```bash
-# R01–R12 的主要回归
+# R01–R13 的主要回归
 .venv/Scripts/python.exe -m pytest -q
 
 # 端到端 PASS/FAIL（含权限、导入、检索、统计、导出、Text2SQL、事务）

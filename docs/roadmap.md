@@ -1,6 +1,6 @@
 # v2 改进路线图
 
-> 状态：Phase 1、Phase 2、Phase 3 已完成，Phase 4 的 K2 已完成（T1、T2、T5、R1、R6、K2）。当前基线为 238 项测试（137 单元 + 101 集成）与 39 项端到端验收，本路线图的任何后续项都不得破坏这些基线。
+> 状态：Phase 1、Phase 2、Phase 3 已完成，Phase 4 的 K2、A2 已完成（T1、T2、T5、R1、R6、K2、A2）。当前基线为 247 项测试（143 单元 + 104 集成）与 39 项端到端验收，本路线图的任何后续项都不得破坏这些基线。
 >
 > 面向对象：课程小组全体成员。每项都有编号，可据此开 Issue、分任务、写周报。
 
@@ -123,7 +123,7 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 | # | 事项 | 价值 | 量 | 状态 | 说明 |
 | --- | --- | --- | --- | --- | --- |
 | A1 | 只读 MCP Server：search / get_conversation / list_due_reviews / add_annotation | 答辩 + 用户 | M | 待办 | Token 作用域，默认不授予写权限 |
-| A2 | CLI：`ls search` / `ls import` | 用户 | S | 待办 | 复用现有 API |
+| A2 | CLI：`ls search` / `ls import` | 用户 | S | 完成 | `app/cli.py` 通过采集令牌调用 `GET /api/search` 与 `POST /api/ingest`；`--course-code` 覆盖课程、`--platform` 覆盖平台，支持 `LS_BASE_URL` / `LS_TOKEN` 与 `--json`；`pyproject.toml` 注册 `ls` 入口。新增 6 项单元 + 3 项集成测试，并完成真实服务冒烟 |
 
 ### 7. 工程与部署
 
@@ -190,7 +190,7 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 
 **Phase 3 进度**：T1 AST 校验、T2 EXPLAIN 预检、T5 金标准评测、R1 pgvector 混合检索、R6 自动标签/摘要建议已完成，Phase 3 收尾。
 
-**Phase 4 进度**：K2 知识先修图已完成（15 张表、15 个视图、6 个触发器；238 项测试、39 项验收）。下一步 A2 命令行、A1 只读 MCP，然后 D1 RLS 对比、D2 审计历史、D3 观测页。
+**Phase 4 进度**：K2 知识先修图与 A2 命令行已完成（15 张表、15 个视图、6 个触发器；247 项测试、39 项验收）。下一步 A1 只读 MCP，然后 D1 RLS 对比、D2 审计历史、D3 观测页。
 
 每个阶段的统一验收：
 

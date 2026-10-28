@@ -17,6 +17,7 @@ from ..services import (
     conversation_service,
     import_service,
     review_service,
+    search_service,
 )
 
 router = APIRouter(prefix="/api")
@@ -97,6 +98,21 @@ def offline_reviews(
         "items": jsonable_encoder(items),
     }
     return JSONResponse(payload)
+
+
+@router.get("/search")
+def search(
+    q: str = "",
+    user=Depends(require_token),
+    conn=Depends(get_conn),
+):
+    """采集令牌可读的全局搜索，供命令行与外部只读客户端调用。"""
+    _require_student(user)
+    query = (q or "").strip()
+    if not query:
+        raise ValidationError("请输入搜索关键词")
+    data = search_service.global_search(conn, user, query)
+    return JSONResponse(jsonable_encoder(data))
 
 
 @router.post("/ingest")

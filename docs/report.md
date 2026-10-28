@@ -12,7 +12,7 @@
 
 本项目实现了一个以“聊天记录”为核心的关系数据库应用系统。系统把 Qoder、ChatGPT、DeepSeek 等平台的问答导出文件解析为统一格式，按课程、来源、标签组织；支持中文检索、会话上下文、批注、间隔复习、统计导出，并额外实现了受数据库只读权限视图保护的 Text2SQL 页面。
 
-数据库包含 16 张表（15 张业务表 + 1 张审计表）、15 个权限视图、9 个触发器、多组唯一/检查/外键约束；应用层使用参数化 SQL 与显式事务，不依赖 ORM。导入流水线采用“解析 → 校验 → 持久化预览 → 单事务确认 → 查重”的结构，并在文件导入之外提供平台原生导出适配、采集令牌 + Bearer 接口与 MV3 浏览器扩展。标签之间还维护一张有向无环的先修关系图，用递归 CTE 做环检测、闭包与最短路径查询；另在隔离事务中用 RLS 与应用层 WHERE、`security_barrier` 视图做同规则对比实验。审计触发器只记录对象、主键与变更列名，不保存字段值，消息与批注表不开启审计；管理员观测页只展示 PostgreSQL 统计视图与白名单执行计划，不提供任意 SQL 输入。系统通过 307 个自动化测试与 42 项端到端验收检查，覆盖 schema、权限、导入幂等、中文检索、全局搜索、统计、批注复习、整理建议、知识先修图、离线同步、导出、Text2SQL 安全、命令行与 MCP 接口、令牌作用域、RLS 隔离一致性、审计元数据边界、数据库观测与事务回滚。
+数据库包含 16 张表（15 张业务表 + 1 张审计表）、15 个权限视图、9 个触发器、多组唯一/检查/外键约束；应用层使用参数化 SQL 与显式事务，不依赖 ORM。导入流水线采用“解析 → 校验 → 持久化预览 → 单事务确认 → 查重”的结构，并在文件导入之外提供平台原生导出适配、采集令牌 + Bearer 接口与 MV3 浏览器扩展。标签之间还维护一张有向无环的先修关系图，用递归 CTE 做环检测、闭包与最短路径查询；另在隔离事务中用 RLS 与应用层 WHERE、`security_barrier` 视图做同规则对比实验。审计触发器只记录对象、主键与变更列名，不保存字段值，消息与批注表不开启审计；管理员观测页只展示 PostgreSQL 统计视图与白名单执行计划，不提供任意 SQL 输入。系统通过 307 个自动化测试、9 项浏览器 E2E 与 42 项端到端验收检查，覆盖 schema、权限、导入幂等、中文检索、全局搜索、统计、批注复习、整理建议、知识先修图、离线同步、导出、Text2SQL 安全、命令行与 MCP 接口、令牌作用域、RLS 隔离一致性、审计元数据边界、数据库观测与事务回滚。
 
 ---
 
@@ -539,6 +539,8 @@ mock 只覆盖固定问法，Q18–Q30 的换问法、聚合与排名问题会�
 工程工具链同样纳入验收：运行与开发依赖写在 `pyproject.toml`，由 `uv.lock` 锁定完整依赖图（当前 57 个包）；Ruff 以 `E/F/I/UP/B/SIM/RUF/C4` 规则检查 `app`、`scripts`、`tests`，pyright 以 basic 模式检查 `app`，pre-commit 在提交前执行配置校验、Ruff 与 pyright。静态检查还推动了表单访问的收紧：路由不再直接调用 `FormData.get()`（其返回类型可能是 `UploadFile`），而是统一经过 `form_text` / `form_file` / `form_text_list`，避免把二进制字段误当文本处理。
 
 同一套检查在 GitHub Actions 中自动执行：`.github/workflows/ci.yml` 以 `pgvector/pgvector:pg16` 启动 PostgreSQL 服务，并用 `uv sync --frozen` 安装锁定依赖；随后运行 `uv lock --check`、Ruff、pyright、`init_db.py --reset`、`seed_demo.py`、`pytest` 与 `verify.py`。CI 显式关闭大模型调用（`TEXT2SQL_MODE=mock`、`EMBEDDING_MODE=off`、`SUGGEST_MODE=off`），保证离线可重复；测试 JUnit 与验收 JSON 作为构建产物上传，失败时也能回看证据。推送与 PR 都会触发，并用 concurrency 取消同一分支的旧任务。
+
+浏览器 E2E 使用 `@playwright/test`，配置见 `playwright.config.mjs`，用例在 `tests/e2e/app.spec.mjs`：匿名访问跳转登录、学生概览与会话、课程成员、会话阅读与 `Ctrl+K` 全局搜索、粘贴预览不直接入库、Text2SQL 示例查询、只读成员 403 说明页、管理员观测与执行计划切换、390px 手机端无横向溢出且注册 manifest。每个用例收集控制台错误与页面异常（bob 的 403 资源错误单独放行），失败时保留 trace 与截图。CI 在验收之后安装 Chromium，启动 `uvicorn` 并轮询 `/healthz`，再执行 `npx playwright test`，JUnit 随构件上传；应用日志在失败时输出。
 
 ### 10.2 端到端验收
 

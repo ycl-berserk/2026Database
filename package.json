@@ -2,13 +2,15 @@
   "name": "learning-space-capture",
   "private": true,
   "type": "module",
-  "description": "Playwright scripts for screenshots and demo recording of the 学习空间 demo.",
+  "description": "Playwright E2E tests, screenshots and demo recording for the 学习空间 demo.",
   "scripts": {
+    "e2e": "playwright test",
     "screenshots": "node scripts/screenshots.mjs",
     "record": "node scripts/screenshots.mjs --record",
     "extension": "node scripts/extension_smoke.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "playwright": "^1.49.0"
   }
 }

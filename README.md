@@ -155,7 +155,7 @@ ls import data/samples/qoder_db.json --course-code DB --json
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（183 单元 + 124 集成，共 307 项）；集成测试需先初始化测试库
+# 全量测试（183 单元 + 125 集成，共 308 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest
 
 # 静态检查与提交钩子（uv sync 已安装 Ruff / pyright / pre-commit）
@@ -169,6 +169,9 @@ uv run pre-commit run --all-files
 
 # RLS / 视图 / 应用层 WHERE 隔离对比实验（全部回滚，输出 JSON）
 .venv/Scripts/python.exe scripts/rls_experiment.py
+
+# 物化视图统计实验：实时聚合 vs 物化视图耗时、陈旧与刷新（全部回滚）
+.venv/Scripts/python.exe scripts/stats_experiment.py
 
 # 为已配置向量模型的用户补齐消息向量（未配置时命令会提示并退出）
 .venv/Scripts/python.exe scripts/embed_messages.py --user alice --limit 512
@@ -197,7 +200,7 @@ node scripts/screenshots.mjs
 node scripts/extension_smoke.mjs
 ```
 
-> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、307 项测试、42 项验收与 9 项 Playwright E2E，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
+> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、308 项测试、42 项验收与 9 项 Playwright E2E，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
 
 ## 目录结构
 

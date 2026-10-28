@@ -91,6 +91,9 @@ jobs:
       - name: Run end-to-end verification
         run: uv run python scripts/verify.py --json data/verification/report.json
 
+      - name: Materialized view experiment
+        run: uv run python scripts/stats_experiment.py --json data/verification/stats-experiment.json
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -120,4 +123,5 @@ jobs:
             data/verification/report.json
             data/verification/junit.xml
             data/verification/e2e-junit.xml
+            data/verification/stats-experiment.json
           if-no-files-found: warn

@@ -30,6 +30,7 @@ from app.permissions import get_course_role, require_conversation_edit
 from app.services import (
     annotation_service,
     conversation_service,
+    embedding_service,
     export_service,
     import_service,
     review_service,
@@ -189,6 +190,30 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
         _ok(not missing_trg, f"缺少触发器：{sorted(missing_trg)}")
         return "唯一键、CHECK、部分唯一索引与 5 个触发器齐全"
     report.run("schema.constraints", "Schema：主外键、唯一/检查约束、索引与触发器", schema_constraints)
+
+    def index_health():
+        conn.execute("SET LOCAL enable_seqscan = off")
+        try:
+            rows = conn.execute("SELECT id, owner_id, name FROM app.tags ORDER BY id").fetchall()
+            missing = []
+            for row in rows:
+                found = {
+                    hit["id"]
+                    for hit in conn.execute(
+                        "SELECT id FROM app.tags WHERE owner_id = %s AND name = %s",
+                        (row["owner_id"], row["name"]),
+                    ).fetchall()
+                }
+                if row["id"] not in found:
+                    missing.append(row["name"])
+        finally:
+            conn.execute("SET LOCAL enable_seqscan = on")
+        _ok(
+            not missing,
+            f"唯一索引与实际数据不一致（常见于镜像/libc 排序规则变更）：{missing[:5]}",
+        )
+        return f"{len(rows)} 个标签均可通过 tags_owner_name_unique 命中"
+    report.run("schema.index_health", "Schema：索引与数据一致性（排序规则变更防护）", index_health)
 
     def demo_counts():
         expected = {
@@ -370,6 +395,75 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
         return "课程筛选 6 个会话，标签筛选正常"
     report.run("search.filters", "检索：课程 / 标签筛选", filters)
 
+    def hybrid_search():
+        extension = conn.execute(
+            "SELECT extversion FROM pg_extension WHERE extname = 'vector'"
+        ).fetchone()
+        _ok(extension is not None, "pgvector 扩展未安装")
+        index = conn.execute(
+            "SELECT 1 FROM pg_indexes WHERE schemaname = 'app' "
+            "AND indexname = 'messages_embedding_hnsw'"
+        ).fetchone()
+        _ok(index is not None, "缺少 messages_embedding_hnsw 索引")
+
+        rows = conn.execute(
+            """
+            SELECT DISTINCT ON (v.id) v.id AS conversation_id, m.id AS message_id
+              FROM app.conversations v
+              JOIN app.sources s ON s.id = v.source_id
+              JOIN app.messages m ON m.conversation_id = v.id
+             WHERE s.owner_id = %s
+             ORDER BY v.id, m.id
+            """,
+            (alice["id"],),
+        ).fetchall()
+        _ok(len(rows) >= 2, "演示数据不足以测试混合检索")
+        first, second = rows[0], rows[1]
+        dimension = settings.embedding_dim
+        vectors = []
+        for index_value in (0, 1):
+            vector = [0.0] * dimension
+            vector[index_value] = 1.0
+            vectors.append(vector)
+
+        def store(row, vector):
+            conn.execute(
+                """
+                UPDATE app.messages
+                   SET embedding = %s::vector, embedding_model = %s, embedded_at = now()
+                 WHERE id = %s
+                """,
+                (embedding_service.vector_literal(vector), settings.embedding_model,
+                 row["message_id"]),
+            )
+
+        try:
+            store(first, vectors[0])
+            store(second, vectors[1])
+            query = "zzz_hybrid_probe_不存在的关键词"
+            result = conversation_service.list_conversations(
+                conn, alice["id"], q=query, query_vector=vectors[0]
+            )
+            _ok(result["retrieval"]["mode"] == "hybrid", "混合检索未启用")
+            _ok(result["total"] >= 2, f"向量候选过少：{result['total']}")
+            _ok(
+                result["rows"][0]["id"] == first["conversation_id"],
+                "最近向量会话未排在首位",
+            )
+            _ok(result["rows"][0]["hit_mode"] == "vector", "命中未标记为向量")
+            admin_result = conversation_service.list_conversations(
+                conn, admin["id"], q=query, query_vector=vectors[0]
+            )
+            _ok(admin_result["total"] == 0, "管理员不应检索到他人向量结果")
+        finally:
+            conn.execute(
+                "UPDATE app.messages SET embedding = NULL, embedding_model = NULL, "
+                "embedded_at = NULL WHERE id = ANY(%s)",
+                ([first["message_id"], second["message_id"]],),
+            )
+        return "pgvector + HNSW 生效，RRF 命中向量会话，管理员 0 结果"
+    report.run("search.hybrid", "搜索：pgvector 混合检索与范围隔离", hybrid_search)
+
     def context_reading():
         conversation_id = conn.execute(
             "SELECT v.id FROM app.conversations v JOIN app.courses c ON c.id = v.course_id "
@@ -392,7 +486,7 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
         _ok(overview["conversation_count"] == 30, "会话数统计错误")
         _ok(overview["message_count"] == 420, "消息数统计错误")
         _ok(overview["annotation_count"] == 66, "批注数统计错误")
-        _ok(overview["tag_count"] == 59, "标签数统计错误")
+        _ok(overview["tag_count"] == 59, f"标签数统计错误：{overview['tag_count']}")
         summary = stats["review_summary"]
         _ok(summary["total"] == 35 and summary["mastered"] == 7, f"复习统计错误：{summary}")
         _ok(len(stats["courses"]) == 5, "课程统计行数错误")

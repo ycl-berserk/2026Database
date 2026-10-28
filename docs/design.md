@@ -142,8 +142,10 @@ Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查�
 | sender | varchar(10) | `user` / `assistant` / `system` |
 | content | text | 去空格后非空 |
 | created_at | timestamptz | 默认 now() |
+| embedding | vector(1536) | 可空；迁移 004 新增，仅混合检索启用时写入 |
+| embedding_model / embedded_at | text / timestamptz | 可空；记录向量来源与时间，便于重算 |
 
-`UNIQUE (conversation_id, seq_no)`：会话内消息序号唯一；重复导入时 `ON CONFLICT DO NOTHING`。
+`UNIQUE (conversation_id, seq_no)`：会话内消息序号唯一；重复导入时 `ON CONFLICT DO NOTHING`。向量列是派生数据，不属于业务范式讨论；它不参与任何唯一键，删除后可由 `scripts/embed_messages.py` 重新生成。
 
 ### 3.8 标签 `tags`
 
@@ -334,6 +336,7 @@ Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查�
 | `messages_content_trgm` | GIN `content gin_trgm_ops` | 中文正文子串检索 |
 | `messages_content_md5_idx` | 表达式 `md5(content)` | 跨会话重复内容检测 |
 | `messages_conversation_seq_idx` | `(conversation_id, seq_no)` | 会话上下文顺序读取 |
+| `messages_embedding_hnsw` | HNSW `(embedding vector_cosine_ops)` | 可选语义召回；仅在存在向量时参与查询 |
 | `conversation_tags_tag_idx` | `tag_id` | 按标签反查会话 |
 | `annotations_user_status_idx` | `(user_id, status)` | 我的批注 / 待解决筛选 |
 | `review_items_queue_idx` | `(user_id, status, due_date) WHERE status <> 'mastered'` | 复习队列部分索引 |
@@ -350,6 +353,18 @@ PostgreSQL 内置的 `to_tsvector` 对中文没有词典分词，直接把整段
 - `pg_trgm` 三元组 GIN 索引 + `ILIKE '%关键词%'`；
 - 查询串中的 `%`、`_`、`\` 通过 `ESCAPE '\'` 转义，避免用户输入变成通配符；
 - 1–2 个汉字的查询选择性较差，规划器可能选择顺序扫描；演示数据 420 条时顺序扫描反而更快，索引能力通过强制关闭顺序扫描的计划验证。
+
+### 6.2 可选混合检索
+
+`pg_trgm` 解决“字面相同”，但问“并发控制怎么保证一致性”时不一定命中讲锁与隔离级别的段落。因此增加可选向量通道：
+
+- 迁移 004 引入 `vector` 扩展、`messages.embedding vector(1536)` 与 HNSW cosine 索引；
+- 词法候选：标题/正文 `ILIKE` + 时间排序，最多 100 个会话；
+- 向量候选：按会话取与查询向量最相似的消息，`GROUP BY` 后最多 100 个会话；
+- RRF 融合：每个候选得分 `Σ 1/(60 + rank)`，两路都出现的会话自然靠前；
+- 两路候选共用同一段可见性条件（本人来源或课程成员），向量列永不出现在 `t2s` 视图中。
+
+阈值和模型都可配置：`EMBEDDING_MODEL`、`EMBEDDING_DIM`、`HYBRID_SEARCH`。维度不符、未配置 Key、调用失败都会退回词法，不阻塞搜索。切换镜像、升级 libc 或重建排序规则后，需要对数据库执行 `REINDEX DATABASE`；`verify.schema.index_health` 会用索引查找逐项核对标签数据。
 
 ## 7. 权限模型
 
@@ -467,7 +482,8 @@ PostgreSQL 的 `UPDATE` 右侧使用旧值，因此间隔按 1 → 2 → 4 → 8
 | 取舍 | 选择 | 原因 |
 | --- | --- | --- |
 | ORM vs 手写 SQL | 手写参数化 SQL | 课程要求关键 SQL 可定位；避免 ORM 生成 SQL 的黑盒 |
-| 中文全文检索 | `pg_trgm` + `ILIKE` | PostgreSQL 中文分词弱；trgm 对短中文子串更实用 |
+| 中文全文检索 | `pg_trgm` + `ILIKE`；可选向量 + RRF | PostgreSQL 中文分词弱；trgm 保底、向量补语义、RRF 免调权重 |
+| 向量能力开关 | 默认关闭，配置 Key 才启用 | 不新增强制外部依赖；无模型时行为与 v1 一致 |
 | 会话所有者 | 通过来源关联，不冗余 | 避免传递依赖；所有者变更时无需批量更新 |
 | 内容指纹 | 表达式索引 `md5(content)` | 避免生成列带来的传递依赖 |
 | 预览状态 | 持久化到 `import_batches` | 多 worker / 重启后仍可继续预览；带 TTL 与所有权校验 |

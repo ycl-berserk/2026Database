@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+from ..config import settings
 from ..errors import NotFoundError, PermissionDenied, ValidationError
 from ..permissions import get_course_role
+from . import embedding_service
 
 PAGE_SIZE = 10
 SENDERS = ("user", "assistant", "system")
@@ -63,6 +65,59 @@ def filter_options(conn, user_id: int) -> dict:
     return {"courses": courses, "tags": tags}
 
 
+def rrf_fuse(rank_lists: list[list[int]], k: int | None = None) -> list[int]:
+    k = settings.hybrid_rrf_k if k is None else k
+    scores: dict[int, float] = {}
+    for ids in rank_lists:
+        for rank, conversation_id in enumerate(ids, start=1):
+            scores[conversation_id] = scores.get(conversation_id, 0.0) + 1.0 / (k + rank)
+    return sorted(scores, key=lambda conversation_id: (-scores[conversation_id], conversation_id))
+
+
+def _hybrid_candidates(conn, filters_sql: str, params: dict, q: str, vector: list[float]):
+    lexical = conn.execute(
+        f"""
+        SELECT v.id
+          FROM app.conversations v
+          JOIN app.sources s ON s.id = v.source_id
+          LEFT JOIN app.courses c ON c.id = v.course_id
+         WHERE {filters_sql}
+           AND (
+                v.title ILIKE %(pattern)s ESCAPE '\\'
+                OR EXISTS (
+                    SELECT 1 FROM app.messages mq
+                     WHERE mq.conversation_id = v.id
+                       AND mq.content ILIKE %(pattern)s ESCAPE '\\'
+                )
+           )
+         ORDER BY coalesce(
+                      (SELECT max(m.created_at) FROM app.messages m
+                        WHERE m.conversation_id = v.id),
+                      v.started_at, v.created_at
+                  ) DESC NULLS LAST,
+                  v.id DESC
+         LIMIT %(candidate_limit)s
+        """,
+        params,
+    ).fetchall()
+    vector_rows = conn.execute(
+        f"""
+        SELECT m.conversation_id AS id
+          FROM app.messages m
+          JOIN app.conversations v ON v.id = m.conversation_id
+          JOIN app.sources s ON s.id = v.source_id
+          LEFT JOIN app.courses c ON c.id = v.course_id
+         WHERE m.embedding IS NOT NULL
+           AND {filters_sql}
+         GROUP BY m.conversation_id
+         ORDER BY min(m.embedding <=> %(vector)s::vector)
+         LIMIT %(candidate_limit)s
+        """,
+        {**params, "vector": embedding_service.vector_literal(vector)},
+    ).fetchall()
+    return [row["id"] for row in lexical], [row["id"] for row in vector_rows]
+
+
 def list_conversations(
     conn,
     user_id: int,
@@ -73,10 +128,16 @@ def list_conversations(
     date_from: str | None = None,
     date_to: str | None = None,
     page: int = 1,
+    query_vector: list[float] | None = None,
 ) -> dict:
     q = (q or "").strip()[:100] or None
     pattern = _like(q) if q else None
-    params: dict = {"uid": user_id, "pattern": pattern, "limit": PAGE_SIZE}
+    params: dict = {
+        "uid": user_id,
+        "pattern": pattern,
+        "limit": PAGE_SIZE,
+        "candidate_limit": settings.hybrid_candidate_limit,
+    }
 
     clauses = [
         """(
@@ -110,9 +171,11 @@ def list_conversations(
         clauses.append("coalesce(v.started_at, v.created_at) < %(date_to)s")
         params["date_to"] = end + timedelta(days=1)
 
+    filters_sql = " AND ".join(clauses)
+    query_sql = filters_sql
     if pattern:
-        clauses.append(
-            """(
+        query_sql += (
+            """ AND (
                 v.title ILIKE %(pattern)s ESCAPE '\\'
                 OR EXISTS (
                     SELECT 1 FROM app.messages mq
@@ -122,49 +185,134 @@ def list_conversations(
             )"""
         )
 
-    where_sql = " AND ".join(clauses)
+    if q and query_vector is None:
+        query_vector = embedding_service.embed_query(q)
+    hybrid = bool(q and query_vector and settings.hybrid_search_enabled)
+
     page = max(1, page)
     params["offset"] = (page - 1) * PAGE_SIZE
+    retrieval = {"mode": "lexical", "rrf_k": settings.hybrid_rrf_k, "candidates": None}
+    page_ids: list[int] | None = None
+    total = 0
 
-    rows = conn.execute(
-        f"""
-        SELECT v.id, v.title, v.course_id, v.started_at, v.is_archived,
-               c.name AS course_name, c.code AS course_code,
-               s.platform, s.account_label,
-               (SELECT count(*) FROM app.messages m WHERE m.conversation_id = v.id) AS message_count,
-               (SELECT max(m.created_at) FROM app.messages m WHERE m.conversation_id = v.id) AS last_message_at,
-               (SELECT coalesce(array_agg(t.name ORDER BY t.name), '{{}}')
-                  FROM app.conversation_tags ct
-                  JOIN app.tags t ON t.id = ct.tag_id
-                 WHERE ct.conversation_id = v.id) AS tag_names,
-               hit.seq_no AS hit_seq,
-               hit.sender AS hit_sender,
-               hit.content AS hit_content,
-               count(*) OVER() AS total
-          FROM app.conversations v
-          JOIN app.sources s ON s.id = v.source_id
-          LEFT JOIN app.courses c ON c.id = v.course_id
-          LEFT JOIN LATERAL (
-              SELECT m.seq_no, m.sender, m.content
-                FROM app.messages m
-               WHERE m.conversation_id = v.id
-                 AND (%(pattern)s::text IS NULL OR m.content ILIKE %(pattern)s ESCAPE '\\')
-               ORDER BY m.seq_no
-               LIMIT 1
-          ) hit ON true
-         WHERE {where_sql}
-         ORDER BY coalesce(
-                    (SELECT max(m.created_at) FROM app.messages m WHERE m.conversation_id = v.id),
-                    v.started_at, v.created_at
-                  ) DESC NULLS LAST,
-                  v.id DESC
-         LIMIT %(limit)s OFFSET %(offset)s
-        """,
-        params,
-    ).fetchall()
+    if hybrid:
+        lexical_ids, vector_ids = _hybrid_candidates(
+            conn, filters_sql, params, q, query_vector
+        )
+        fused = rrf_fuse([lexical_ids, vector_ids])
+        total = len(fused)
+        page_ids = fused[params["offset"] : params["offset"] + PAGE_SIZE]
+        retrieval = {
+            "mode": "hybrid",
+            "rrf_k": settings.hybrid_rrf_k,
+            "candidates": {
+                "lexical": len(lexical_ids),
+                "vector": len(vector_ids),
+                "fused": total,
+            },
+        }
+        rows = []
+        if page_ids:
+            params["page_ids"] = page_ids
+            rows = conn.execute(
+                f"""
+                SELECT v.id, v.title, v.course_id, v.started_at, v.is_archived,
+                       c.name AS course_name, c.code AS course_code,
+                       s.platform, s.account_label,
+                       (SELECT count(*) FROM app.messages m WHERE m.conversation_id = v.id) AS message_count,
+                       (SELECT max(m.created_at) FROM app.messages m WHERE m.conversation_id = v.id) AS last_message_at,
+                       (SELECT coalesce(array_agg(t.name ORDER BY t.name), '{{}}')
+                          FROM app.conversation_tags ct
+                          JOIN app.tags t ON t.id = ct.tag_id
+                         WHERE ct.conversation_id = v.id) AS tag_names,
+                       hit.seq_no AS hit_seq,
+                       hit.sender AS hit_sender,
+                       hit.content AS hit_content
+                  FROM app.conversations v
+                  JOIN app.sources s ON s.id = v.source_id
+                  LEFT JOIN app.courses c ON c.id = v.course_id
+                  LEFT JOIN LATERAL (
+                      SELECT m.seq_no, m.sender, m.content
+                        FROM app.messages m
+                       WHERE m.conversation_id = v.id
+                         AND (
+                              (%(pattern)s::text IS NOT NULL
+                               AND m.content ILIKE %(pattern)s ESCAPE '\\')
+                              OR (%(embedding)s::text IS NOT NULL
+                                  AND m.embedding IS NOT NULL)
+                         )
+                       ORDER BY
+                         CASE WHEN %(pattern)s::text IS NOT NULL
+                                   AND m.content ILIKE %(pattern)s ESCAPE '\\'
+                              THEN 0 ELSE 1 END,
+                         CASE WHEN %(embedding)s::text IS NOT NULL
+                              THEN m.embedding <=> %(embedding)s::vector
+                              ELSE m.seq_no END
+                       LIMIT 1
+                  ) hit ON true
+                 WHERE {filters_sql} AND v.id = ANY(%(page_ids)s)
+                 ORDER BY coalesce(
+                              (SELECT max(m.created_at) FROM app.messages m
+                                WHERE m.conversation_id = v.id),
+                              v.started_at, v.created_at
+                          ) DESC NULLS LAST,
+                          v.id DESC
+                """,
+                {**params, "embedding": embedding_service.vector_literal(query_vector)},
+            ).fetchall()
+            order = {conversation_id: index for index, conversation_id in enumerate(page_ids)}
+            rows.sort(key=lambda row: order[row["id"]])
+    else:
+        params["embedding"] = None
+        rows = conn.execute(
+            f"""
+            SELECT v.id, v.title, v.course_id, v.started_at, v.is_archived,
+                   c.name AS course_name, c.code AS course_code,
+                   s.platform, s.account_label,
+                   (SELECT count(*) FROM app.messages m WHERE m.conversation_id = v.id) AS message_count,
+                   (SELECT max(m.created_at) FROM app.messages m WHERE m.conversation_id = v.id) AS last_message_at,
+                   (SELECT coalesce(array_agg(t.name ORDER BY t.name), '{{}}')
+                      FROM app.conversation_tags ct
+                      JOIN app.tags t ON t.id = ct.tag_id
+                     WHERE ct.conversation_id = v.id) AS tag_names,
+                   hit.seq_no AS hit_seq,
+                   hit.sender AS hit_sender,
+                   hit.content AS hit_content,
+                   count(*) OVER() AS total
+              FROM app.conversations v
+              JOIN app.sources s ON s.id = v.source_id
+              LEFT JOIN app.courses c ON c.id = v.course_id
+              LEFT JOIN LATERAL (
+                  SELECT m.seq_no, m.sender, m.content
+                    FROM app.messages m
+                   WHERE m.conversation_id = v.id
+                     AND (%(pattern)s::text IS NULL
+                          OR m.content ILIKE %(pattern)s ESCAPE '\\')
+                   ORDER BY m.seq_no
+                   LIMIT 1
+              ) hit ON true
+             WHERE {query_sql}
+             ORDER BY coalesce(
+                        (SELECT max(m.created_at) FROM app.messages m
+                          WHERE m.conversation_id = v.id),
+                        v.started_at, v.created_at
+                      ) DESC NULLS LAST,
+                      v.id DESC
+             LIMIT %(limit)s OFFSET %(offset)s
+            """,
+            params,
+        ).fetchall()
+        total = rows[0]["total"] if rows else 0
 
-    total = rows[0]["total"] if rows else 0
+    needle = (q or "").lower()
     for row in rows:
+        content = row["hit_content"] or ""
+        if needle and needle in content.lower():
+            row["hit_mode"] = "lexical"
+        elif hybrid and row["hit_content"]:
+            row["hit_mode"] = "vector"
+        else:
+            row["hit_mode"] = "none"
         row["snippet"] = make_snippet(row["hit_content"], q)
     return {
         "rows": rows,
@@ -177,6 +325,7 @@ def list_conversations(
         "page_size": PAGE_SIZE,
         "total": total,
         "total_pages": (total + PAGE_SIZE - 1) // PAGE_SIZE if total else 0,
+        "retrieval": retrieval,
     }
 
 

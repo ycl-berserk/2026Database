@@ -68,6 +68,30 @@ class Settings:
         default_factory=lambda: int(os.getenv("TEXT2SQL_MAX_EST_ROWS", "200000"))
     )
 
+    embedding_mode: str = field(
+        default_factory=lambda: os.getenv("EMBEDDING_MODE", "auto").lower()
+    )
+    embedding_base_url: str = field(
+        default_factory=lambda: os.getenv("EMBEDDING_BASE_URL")
+        or os.getenv("LLM_BASE_URL", "https://api.deepseek.com/v1")
+    )
+    embedding_api_key: str = field(
+        default_factory=lambda: os.getenv("EMBEDDING_API_KEY")
+        or os.getenv("LLM_API_KEY", "")
+    )
+    embedding_model: str = field(
+        default_factory=lambda: os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
+    )
+    embedding_dim: int = field(
+        default_factory=lambda: int(os.getenv("EMBEDDING_DIM", "1536"))
+    )
+    hybrid_search_enabled: bool = field(
+        default_factory=lambda: os.getenv("HYBRID_SEARCH", "1").lower()
+        not in ("0", "false", "off")
+    )
+    hybrid_rrf_k: int = 60
+    hybrid_candidate_limit: int = 100
+
     @property
     def is_dev(self) -> bool:
         return self.app_env != "production"

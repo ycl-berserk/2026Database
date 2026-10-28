@@ -12,6 +12,7 @@ def global_search(conn, user: dict, q: str) -> dict:
             "annotations": [],
             "courses": [],
             "tags": [],
+            "retrieval": {"mode": "lexical", "candidates": None},
         }
     pattern = _like(q)
     uid = user["id"]
@@ -82,4 +83,5 @@ def global_search(conn, user: dict, q: str) -> dict:
         "annotations": annotations,
         "courses": courses,
         "tags": tags,
+        "retrieval": conversations["retrieval"],
     }

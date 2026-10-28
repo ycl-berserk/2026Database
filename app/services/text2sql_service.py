@@ -11,7 +11,7 @@ import httpx
 import sqlglot
 import sqlparse
 from sqlglot import exp
-from sqlglot.errors import ParseError
+from sqlglot.errors import SqlglotError
 
 from ..config import settings
 from ..errors import ValidationError
@@ -141,7 +141,7 @@ def _clean_sql_text(raw: str) -> str:
 def _parse_single(text: str):
     try:
         parsed = sqlglot.parse(text, read="postgres")
-    except ParseError as exc:
+    except SqlglotError as exc:
         raise GuardError(f"SQL 无法解析：{exc}") from exc
     parsed = [statement for statement in parsed if statement is not None]
     if len(parsed) != 1:

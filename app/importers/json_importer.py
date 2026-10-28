@@ -50,10 +50,10 @@ def parse(
     else:
         return ImportResult("", "", None, errors=["JSON 根节点必须是对象或数组"])
 
-    platform = (platform_override or doc.get("platform") or "").strip().lower()
+    platform = str(platform_override or doc.get("platform") or "").strip().lower()
     if platform not in PLATFORMS:
         errors.append(f"平台必须是 {', '.join(PLATFORMS)} 之一")
-    account_label = (
+    account_label = str(
         account_override or doc.get("account_label") or doc.get("account") or "default"
     ).strip()[:100] or "default"
     exported_at = parse_timestamp(doc.get("exported_at"), "导出时间", errors, "文件头")

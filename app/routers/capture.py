@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import contextlib
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
@@ -198,27 +198,34 @@ def inbox(
     request: Request, user=Depends(require_user), conn=Depends(get_conn)
 ):
     _require_student(user)
-    page = 1
-    with contextlib.suppress(ValueError):
-        page = max(1, int(request.query_params.get("page") or 1))
+    after = request.query_params.get("after")
+    before = request.query_params.get("before")
     highlight = None
     with contextlib.suppress(ValueError):
         highlight = int(request.query_params.get("highlight") or 0) or None
 
     data = conversation_service.list_conversations(
-        conn, user["id"], course_id="none", page=page
+        conn,
+        user["id"],
+        course_id="none",
+        cursor=before or after,
+        direction="before" if before else "after",
     )
     courses = conversation_service.editable_courses(conn, user["id"])
-    pages = [
-        {"n": number, "active": number == data["page"]}
-        for number in range(1, data["total_pages"] + 1)
-    ]
+
+    def cursor_url(name: str, value: str | None) -> str | None:
+        if not value:
+            return None
+        pairs = [("highlight", str(highlight))] if highlight else []
+        return "/inbox?" + urlencode([*pairs, (name, value)])
+
     return render(
         request,
         "inbox.html",
         **data,
         courses=courses,
-        pages=pages,
+        prev_url=cursor_url("before", data["prev_cursor"]),
+        next_url=cursor_url("after", data["next_cursor"]),
         highlight=highlight,
     )
 

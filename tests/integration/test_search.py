@@ -76,6 +76,57 @@ def test_pagination(conn, base):
     assert second["rows"][0]["title"] == "事务与隔离级别"
 
 
+def test_keyset_cursor_pagination(conn, base):
+    source_id = conn.execute(
+        "SELECT source_id FROM app.conversations WHERE id = %s",
+        (base["conversations"]["db-1"],),
+    ).fetchone()["source_id"]
+    for index in range(8):
+        conn.execute(
+            "INSERT INTO app.conversations (source_id, external_id, title) "
+            "VALUES (%s, %s, %s)",
+            (source_id, f"cursor-{index}", f"游标会话 {index}"),
+        )
+    alice = base["users"]["alice"]
+
+    first = conversation_service.list_conversations(conn, alice)
+    assert len(first["rows"]) == 10
+    assert first["total"] == 11
+    assert first["prev_cursor"] is None
+    assert first["next_cursor"]
+
+    second = conversation_service.list_conversations(
+        conn, alice, cursor=first["next_cursor"]
+    )
+    assert len(second["rows"]) == 1
+    assert second["total"] == 11
+    assert second["next_cursor"] is None
+    assert second["prev_cursor"]
+
+    seen = [row["id"] for row in first["rows"] + second["rows"]]
+    assert len(seen) == len(set(seen)) == 11
+
+    back = conversation_service.list_conversations(
+        conn, alice, cursor=second["prev_cursor"], direction="before"
+    )
+    assert [row["id"] for row in back["rows"]] == [
+        row["id"] for row in first["rows"]
+    ]
+    assert back["prev_cursor"] is None
+    assert back["next_cursor"]
+    forward = conversation_service.list_conversations(
+        conn, alice, cursor=back["next_cursor"]
+    )
+    assert [row["id"] for row in forward["rows"]] == [
+        row["id"] for row in second["rows"]
+    ]
+
+    invalid = conversation_service.list_conversations(conn, alice, cursor="not-a-cursor")
+    assert [row["id"] for row in invalid["rows"]] == [
+        row["id"] for row in first["rows"]
+    ]
+
+
 def test_filter_options_respect_access(conn, base):
     alice = conversation_service.filter_options(conn, base["users"]["alice"])
     assert {course["code"] for course in alice["courses"]} == {"DB", "OS"}

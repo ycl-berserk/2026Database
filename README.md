@@ -1,5 +1,7 @@
 # 个人学习空间（Learning Space）
 
+[![CI](https://github.com/ycl-berserk/2026Database/actions/workflows/ci.yml/badge.svg)](https://github.com/ycl-berserk/2026Database/actions/workflows/ci.yml)
+
 《数据库系统概论》大作业 · 选题 2：围绕“与大模型的聊天记录”构建一个可查阅、可批注、可复习的课程资料库。
 
 系统把 Qoder / ChatGPT / DeepSeek 等平台的问答导出文件解析为统一结构，按课程、来源、标签整理；提供中文检索、全局搜索、会话上下文、批注、间隔复习、统计导出，并额外实现一个受只读权限视图保护的 **Text2SQL** 页面。采集侧支持平台原生导出适配、采集令牌 + Bearer 导入接口，以及一个“点击才上传”的 MV3 浏览器扩展；另提供命令行与 MCP 工具接口，方便脚本和 AI 客户端复用同一套权限过滤。
@@ -181,6 +183,8 @@ node scripts/screenshots.mjs
 # 浏览器扩展冒烟：内容提取、预览、Bearer 发送（无需启动网站）
 node scripts/extension_smoke.mjs
 ```
+
+> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、279 项测试与 42 项验收，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
 
 ## 目录结构
 

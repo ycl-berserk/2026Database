@@ -535,6 +535,8 @@ mock 只覆盖固定问法，Q18–Q30 的换问法、聚合与排名问题会�
 
 集成测试只连接以 `_test` 结尾的数据库，每个用例前 `TRUNCATE app.users RESTART IDENTITY CASCADE`。测试脚手架使用管理员连接执行 TRUNCATE，因为应用角色 `ls_app` 被刻意设计为没有 TRUNCATE 权限。
 
+同一套检查在 GitHub Actions 中自动执行：`.github/workflows/ci.yml` 以 `pgvector/pgvector:pg16` 启动 PostgreSQL 服务，设置与本地一致的连接串，依次运行 `init_db.py --reset`、`seed_demo.py`、`pytest` 与 `verify.py`。CI 显式关闭大模型调用（`TEXT2SQL_MODE=mock`、`EMBEDDING_MODE=off`、`SUGGEST_MODE=off`），保证离线可重复；测试 JUnit 与验收 JSON 作为构建产物上传，失败时也能回看证据。推送与 PR 都会触发，并用 concurrency 取消同一分支的旧任务。
+
 ### 10.2 端到端验收
 
 `scripts/verify.py` 在演示库上执行 42 项检查，所有写操作放在外层事务中，最后主动回滚：

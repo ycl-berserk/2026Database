@@ -1307,7 +1307,20 @@ mark { background: #f7e3a8; color: inherit; padding: 0 1px; border-radius: 2px; 
 .field-tags { flex: 1; min-width: 280px; }
 .tag-checks { display: flex; flex-wrap: wrap; gap: 8px 14px; padding: 8px 0 2px; }
 .tag-checks .tag-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.organize-form .field-full { flex: 1 0 100%; }
+.organize-form .field-full textarea { min-height: 76px; }
 .organize-form .btn { margin-bottom: 1px; }
+.ai-suggest {
+  margin: 10px 0 14px;
+  padding: 12px 14px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--paper-2);
+}
+.ai-suggest-status { margin: 0; font-size: 13px; color: var(--ink-2); line-height: 1.65; white-space: pre-line; }
+.ai-suggest[data-state="error"] { border-color: #e2c4b8; background: var(--seal-soft); }
+.ai-suggest[data-state="error"] .ai-suggest-status { color: #7d2f1f; }
+.ai-suggest-note { margin: 4px 0 0; font-size: 12px; }
 
 /* ---------- text2sql ---------- */
 .t2s-form { display: flex; gap: 12px; align-items: flex-end; }

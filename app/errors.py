@@ -40,3 +40,8 @@ class ConflictError(AppError):
 class RateLimited(AppError):
     status_code = 429
     title = "请求过于频繁"
+
+
+class SuggestError(AppError):
+    status_code = 502
+    title = "AI 建议不可用"

@@ -11,8 +11,7 @@ from ..config import settings
 from ..errors import ConflictError, NotFoundError, ValidationError
 from ..importers import json_importer, markdown_importer, plain_text_importer
 from ..importers.base import PLATFORMS, ImportResult
-
-TAG_COLORS = ["#2f5d4e", "#a8432c", "#a6771f", "#4a6fa5", "#7a5b8f", "#5b7d3a", "#3d7a7a"]
+from . import tag_service
 
 
 def parse_upload(
@@ -298,21 +297,6 @@ def preview_context(conn, batch: dict, user_id: int) -> dict:
     }
 
 
-def _get_or_create_tag(conn, user_id: int, name: str) -> tuple[int, bool]:
-    color = TAG_COLORS[sum(name.encode("utf-8")) % len(TAG_COLORS)]
-    row = conn.execute(
-        """
-        INSERT INTO app.tags (owner_id, name, kind, color)
-        VALUES (%s, %s, 'topic', %s)
-        ON CONFLICT (owner_id, name)
-        DO UPDATE SET name = EXCLUDED.name
-        RETURNING id, (xmax = 0) AS is_new
-        """,
-        (user_id, name[:40], color),
-    ).fetchone()
-    return row["id"], bool(row["is_new"])
-
-
 def ingest_plain_text(
     conn,
     *,
@@ -587,7 +571,7 @@ def confirm_import(
                         counts["messages_new"] += 1
 
                 for tag_name in conv.get("tags") or []:
-                    tag_id, created = _get_or_create_tag(conn, user["id"], tag_name)
+                    tag_id, created = tag_service.get_or_create_tag(conn, user["id"], tag_name)
                     if created:
                         counts["tags_new"] += 1
                     linked = conn.execute(

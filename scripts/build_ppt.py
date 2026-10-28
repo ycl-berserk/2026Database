@@ -268,7 +268,7 @@ def slide_scope(prs):
         ["ID", "能力", "关键数据库点"],
         ["R01", "记录导入", "JSONB 预览、唯一键、单事务"],
         ["R02", "课程与标签", "M:N、部分唯一索引、触发器"],
-        ["R03", "检索阅读", "trgm + ILIKE、全局搜索、上下文"],
+        ["R03", "检索与整理", "trgm + ILIKE、RRF、建议回填"],
         ["R04", "批注复习", "1:N、复合唯一键、事件流水"],
         ["R05", "统计导出", "JOIN、FILTER、窗口函数、CTE"],
         ["R06", "用户权限", "应用层 + SQL 作用域 + DB 角色"],
@@ -455,6 +455,7 @@ def slide_search(prs):
         "SQL 侧截取命中片段，避免传输整段长回答",
         "打开会话按 seq_no 排序，保留完整上下文",
         "关键词在标题和正文中高亮显示",
+        "可选 AI 建议：摘要与标签只回填，确认后入库",
     ], size=14, gap=10)
     code_block(slide, 0.72, 5.55, 5.3, 1.2,
                "SELECT ..., count(*) OVER() AS total\n"
@@ -462,7 +463,7 @@ def slide_search(prs):
                "WHERE m.content ILIKE %(kw)s ESCAPE '\\'\n"
                "ORDER BY m.conversation_id, m.seq_no;", size=9)
     picture_fit(slide, "05-conversation-detail.png", 6.3, 1.55, 6.3, 5.2)
-    notes(slide, "35 秒：搜索“隔离级别”进入会话详情；说明无模型时纯词法，配置后自动混合检索。")
+    notes(slide, "35 秒：搜索“隔离级别”进入会话详情；说明无模型时纯词法，配置后自动混合检索；AI 建议只回填表单，保存后才写库。")
 
 
 def slide_review(prs):
@@ -577,9 +578,9 @@ def slide_permissions(prs):
 
 def slide_tests(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "13 / 测试与验收", "220 项测试与 37 项端到端验收全部通过", 14)
+    header(slide, "13 / 测试与验收", "231 项测试与 38 项端到端验收全部通过", 14)
 
-    stats = [("220", "自动化测试"), ("37", "端到端检查"), ("0", "失败项")]
+    stats = [("231", "自动化测试"), ("38", "端到端检查"), ("0", "失败项")]
     for index, (value, label) in enumerate(stats):
         x = 0.72 + index * 2.15
         rect(slide, x, 1.62, 1.95, 1.35, WHITE, radius=True, line=LINE, width=0.7)
@@ -588,17 +589,17 @@ def slide_tests(prs):
 
     code_block(slide, 0.72, 3.3, 6.0, 2.4,
                ".venv/Scripts/python.exe -m pytest -q\n"
-               "# 128 unit + 92 integration\n\n"
+               "# 135 unit + 96 integration\n\n"
                ".venv/Scripts/python.exe scripts/verify.py \\\n"
                "  --json data/verification/report.json", size=10.5)
     text(slide, 0.9, 5.78, 5.6, 0.75,
-         "输出：37/37 PASS，0 FAIL，约 1–4 秒\n所有写入检查在结束时整体回滚。", size=11.5, color=GREEN)
+         "输出：38/38 PASS，0 FAIL，约 1–4 秒\n所有写入检查在结束时整体回滚。", size=11.5, color=GREEN)
 
     right = [
         "Schema：表、FK、UNIQUE、CHECK、索引、触发器",
         "权限：alice / bob / viewer / admin 边界",
         "导入：幂等、重复、损坏文件、平台适配",
-        "检索：关键词、课程、标签、全局搜索、混合检索",
+        "检索：关键词、课程、标签、全局搜索、混合检索、AI 建议",
         "统计：种子数据下的计数与排名",
         "采集：令牌哈希、限流、Bearer 幂等入库",
         "Text2SQL：AST / 预检 / 金标准评测",
@@ -622,6 +623,7 @@ def slide_ai(prs):
         ["生成列存 content_hash", "md5 表达式索引", "避免 3NF 争议"],
         ["仅按 annotation_id 唯一", "(user_id, annotation_id)", "多人可各自复习"],
         ["只靠 prompt 保护 T2SQL", "只读角色 + 视图", "数据库层兜底"],
+        ["AI 建议直接入库", "人工确认 + 复用总结批注", "避免污染与重复表"],
         ["中文全文检索", "pg_trgm + ILIKE", "中文分词不可靠"],
     ]
     table(slide, 0.72, 1.62, 8.1, 3.7, rows, [3.25, 2.65, 2.2], font_size=10, header_size=10)
@@ -648,7 +650,7 @@ def slide_end(prs):
         "导入、检索、批注、复习、统计、导出的闭环",
         "令牌 + 扩展 + 平台导出，离线也可读可复习",
         "Text2SQL 由只读视图与角色做最终兜底",
-        "220 项测试 + 37 项验收，全部通过",
+        "231 项测试 + 38 项验收，全部通过",
         "README 五条命令从零复现",
     ]
     bullets(slide, 0.85, 3.15, 6.4, 2.4, left, size=14, color=RGBColor(0xE8, 0xE3, 0xD3), gap=8,

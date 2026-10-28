@@ -14,6 +14,7 @@
 | 快速采集 | PWA Share Target、裸文本粘贴、ChatGPT `conversations.json` / Qoder 会话 / DeepSeek Markdown 原生导出适配；采集令牌 + Bearer `POST /api/ingest`；MV3 扩展仅在点击发送时读取当前会话 |
 | 收件箱 | 未归类会话队列、批量归类到课程、分享落地页与高亮定位 |
 | 课程与标签 | 课程 CRUD、成员共享（owner / editor / viewer）、标签 CRUD、会话归类与打标签 |
+| 整理建议 | 配置大模型后可一键生成“会话摘要 + 标签建议”，只填入整理表单；用户检查并点击保存后才写入数据库。新标签按用户去重，摘要复用已有“总结”批注更新而非重复插入；无 Key 时按钮隐藏，表单仍可手动填写 |
 | 检索阅读 | 全局搜索（`/` 或 `Ctrl/Cmd+K`）、课程 / 标签 / 日期 / 关键词筛选、分页、消息上下文、关键词高亮、命中片段；配置向量模型后启用 pgvector + RRF 混合检索，否则自动退回词法检索 |
 | 批注与复习 | 笔记 / 疑问 / 纠错 / 总结四类批注、解决状态、加入复习队列、间隔 1→2→4→8… 天、逾期提示、掌握/重置、近 5 周复习热力图 |
 | 统计与导出 | 概览、课程排名、月度活跃补零、标签 TopN、批注解决率、复习状态、重复内容检测；统计 CSV、单会话 Markdown |
@@ -80,10 +81,10 @@ py -3.13 -m venv .venv
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（128 单元 + 92 集成，共 220 项）；集成测试需先初始化测试库
+# 全量测试（135 单元 + 96 集成，共 231 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest
 
-# 端到端验收：37 项 PASS/FAIL，写入 data/verification/report.json
+# 端到端验收：38 项 PASS/FAIL，写入 data/verification/report.json
 .venv/Scripts/python.exe scripts/verify.py --json data/verification/report.json
 
 # 为已配置向量模型的用户补齐消息向量（未配置时命令会提示并退出）
@@ -152,6 +153,7 @@ learning-space/
 - **数据库角色**：`ls_app` 只有 `app` schema 的 DML 权限，无 DDL；`t2s_reader` 只能 `SELECT` `t2s` 视图，默认只读事务、3 秒语句超时。
 - **管理边界**：管理员看不到课程 / 会话页面，也不能读取他人消息正文、批注或复习内容。
 - **混合检索与隐私**：向量能力默认关闭。只有部署方配置 `EMBEDDING_API_KEY` 后，系统才会把可见消息正文发送到该嵌入服务；未配置时检索完全在本地数据库内完成。向量只用于本人可见范围，管理员没有向量召回入口。
+- **整理建议与隐私**：`SUGGEST_MODE=auto`（默认）下，只有配置了 `LLM_API_KEY` 且具备会话编辑权的用户点击「生成 AI 建议」时，系统才会把该会话前 40 条消息的节选发送到大模型；建议只回填表单，不自动写入。未配置 Key 时按钮隐藏，可手动填写标签与摘要。管理员没有该入口。
 
 ## Text2SQL 两种模式
 
@@ -160,6 +162,14 @@ learning-space/
 - `TEXT2SQL_MODE=llm`：强制真实模型；失败时返回错误并写审计日志。
 
 SQL 先经 `sqlglot` PostgreSQL 方言 AST 校验（单条 SELECT/WITH、拒绝嵌套 DML/表函数/锁/危险函数、视图与 CTE 白名单），再经关键字黑名单、注释禁用与 200 行包装，最终由 `t2s_reader` 在只读事务中执行。完整的表结构说明见 `docs/design.md`，验收与演示说明见 `docs/report.md` 与 `docs/demo-script.md`。
+
+### 整理建议模式
+
+- `SUGGEST_MODE=auto`（默认）：配置 `LLM_API_KEY` 时显示「生成 AI 建议」，否则隐藏按钮并保留手动整理。
+- `SUGGEST_MODE=off`：强制关闭，适合演示时避免任何外部调用。
+- `SUGGEST_MODE=llm`：强制启用（仍需 Key 才能调用成功）。
+
+接口 `POST /api/conversations/{id}/suggest` 会先检查会话编辑权，再把前 40 条消息（每条最多 800 字、总计 6000 字）发给 OpenAI 兼容接口，要求返回 `{summary, tags}`。服务端清洗标签（最多 3 个）、复用同名标签、限制摘要 500 字；结果只回填页面表单，保存动作仍走原有归类事务。
 
 ### 金标准评测
 
@@ -181,7 +191,7 @@ v1 已定稿并推送。下一阶段的方向与验收标准统一记录在 [`do
 | --- | --- | --- |
 | Phase 1 | 迁移机制、移动端信息架构、空状态引导、导入向导、PWA 安装、Share Target、粘贴导入、收件箱、静态资源优化 | 手机上可安装、可分享导入、导入有向导、列表不空转 |
 | Phase 2 | 离线阅读与复习 outbox、复习事件表、Ingest Token、浏览器扩展、平台导出适配器、全局搜索 | 断网可读可复习、采集更省事、找会话更快 |
-| Phase 3 | pgvector 混合检索、自动标签建议、AST 校验、EXPLAIN 预检、Text2SQL 评测集（T1 / T2 / T5 / R1 已完成） | 检索更准，Text2SQL 可证明 |
+| Phase 3 | pgvector 混合检索、自动标签/摘要建议、AST 校验、EXPLAIN 预检、Text2SQL 评测集（T1 / T2 / T5 / R1 / R6 已完成） | 检索更准，整理更省事，Text2SQL 可证明 |
 | Phase 4 | 知识先修图、只读 MCP Server、CLI、RLS 对比、审计历史、SQL 观测页 | 从“记录库”变成“学习空间”，并有对外接口 |
 | Phase 5 | Dockerfile、CI、Ruff/pyright、E2E，PG18/PG19 实验分支、FSRS | 可部署、可回归、有前沿实验 |
 
@@ -195,3 +205,4 @@ v1 已定稿并推送。下一阶段的方向与验收标准统一记录在 [`do
 - PostgreSQL 原生全文检索对中文分词支持有限，因此默认使用 `pg_trgm` + `ILIKE`；配置向量模型后叠加 HNSW 语义召回，并用 RRF 融合两路排名。无模型、调用失败或维度不符时都会退回词法检索，页面上会标注当前模式。在 420 条消息的演示规模下，规划器通常选择顺序扫描，索引能力通过 `SET enable_seqscan = off` 的对比计划验证。
 - 模拟数据中多个会话共享常用追问句，因此“重复消息检测”会命中这些模板句；这是刻意保留的查重演示素材，不代表真实用户行为。
 - Playwright 截图脚本会临时创建一个导入预览批次和一条 Text2SQL 审计记录；演示库验收前可用 `scripts/verify.py` 的事务回滚检查，截图后可按需清理这两类演示痕迹。
+- 整理建议的输出由外部模型决定，同样的问题不保证每次一致；服务端只做 JSON 解析、去重与长度限制，并在 25 秒超时后返回可读错误。建议永远不会自动落库，必须由用户点击保存。

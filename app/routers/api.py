@@ -12,6 +12,7 @@ from ..config import settings
 from ..db import get_conn
 from ..errors import NotFoundError, PermissionDenied, ValidationError
 from ..services import (
+    ai_service,
     annotation_service,
     conversation_service,
     import_service,
@@ -36,6 +37,19 @@ async def _json_body(request: Request) -> dict:
     if not isinstance(payload, dict):
         raise ValidationError("请求体必须是 JSON 对象")
     return payload
+
+
+@router.post("/conversations/{conversation_id}/suggest")
+async def suggest_conversation(
+    conversation_id: int,
+    request: Request,
+    user=Depends(require_user),
+    conn=Depends(get_conn),
+):
+    _require_student(user)
+    verify_csrf(request, request.headers.get("X-CSRF-Token"))
+    data = await ai_service.suggest(conn, conversation_id, user)
+    return JSONResponse(data)
 
 
 @router.get("/conversations/{conversation_id}/offline")

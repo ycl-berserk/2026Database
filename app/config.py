@@ -92,6 +92,10 @@ class Settings:
     hybrid_rrf_k: int = 60
     hybrid_candidate_limit: int = 100
 
+    suggest_mode: str = field(
+        default_factory=lambda: os.getenv("SUGGEST_MODE", "auto").lower()
+    )
+
     @property
     def is_dev(self) -> bool:
         return self.app_env != "production"

@@ -56,7 +56,17 @@
   <div class="panel-head">
     <h2>归类与标签</h2>
     <span class="muted">课程归类、个人标签都只影响自己的整理方式</span>
+    {% if ai_enabled %}
+      <button class="btn btn-ghost btn-sm" type="button"
+              data-ai-suggest="{{ conversation.id }}">生成 AI 建议</button>
+    {% endif %}
   </div>
+  {% if ai_enabled %}
+    <div class="ai-suggest" data-ai-panel hidden>
+      <p class="ai-suggest-status" data-ai-status></p>
+      <p class="muted ai-suggest-note">建议只会填入下方表单，点击保存后才会写入数据库。</p>
+    </div>
+  {% endif %}
   <form method="post" action="/conversations/{{ conversation.id }}/organize" class="organize-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label class="field">
@@ -77,16 +87,27 @@
           {% for tag in my_tags %}
             <label class="checkline">
               <input type="checkbox" name="tag_ids" value="{{ tag.id }}"
+                     data-tag-name="{{ tag.name }}"
                      {% if tag.id in selected_tag_ids %}checked{% endif %}>
               <span class="tag-dot" style="background: {{ tag.color or '#2f5d4e' }}"></span>{{ tag.name }}
             </label>
           {% endfor %}
         </div>
       {% else %}
-        <p class="muted">还没有标签，先到 <a class="link" href="/tags">标签页</a>创建。</p>
+        <p class="muted">还没有标签，先到 <a class="link" href="/tags">标签页</a>创建，或在下方向 AI 建议。</p>
       {% endif %}
     </div>
-    <button class="btn" type="submit">保存归类</button>
+    <label class="field">
+      <span>新标签</span>
+      <input name="new_tags" maxlength="200" placeholder="多个标签用逗号分隔，例如：事务，锁">
+    </label>
+    <label class="field field-full">
+      <span>会话摘要</span>
+      <textarea name="summary" maxlength="4000" rows="3"
+                placeholder="用自己的话概括这段对话；留空则删除已有摘要">{{ summary_text }}</textarea>
+      <small class="muted">摘要保存为“总结”批注，附在最后一条回答下；留空并保存会删除已有摘要。</small>
+    </label>
+    <button class="btn" type="submit">保存归类与摘要</button>
   </form>
 </section>
 {% endif %}
@@ -160,4 +181,10 @@
     <p class="empty">该筛选条件下没有消息。</p>
   {% endif %}
 </section>
+{% endblock %}
+
+{% block scripts %}
+  {% if ai_enabled %}
+    <script src="/static/conversation-ai.js?v={{ asset_version }}"></script>
+  {% endif %}
 {% endblock %}

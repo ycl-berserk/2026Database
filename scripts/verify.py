@@ -834,6 +834,82 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
         return "未归类会话批量归入 DB 课程"
     report.run("inbox.organize", "收件箱：批量归入课程", inbox_bulk)
 
+    def ai_organize_apply():
+        conversation_id = state.get("db_conversation")
+        _ok(conversation_id is not None, "缺少会话上下文")
+        course_id = conn.execute(
+            "SELECT course_id FROM app.conversations WHERE id = %s",
+            (conversation_id,),
+        ).fetchone()["course_id"]
+        target = str(course_id) if course_id else "none"
+        tag_name = "AI建议验收标签"
+
+        conversation_service.organize_conversation(
+            conn,
+            conversation_id,
+            alice_ctx,
+            course_id=target,
+            tag_ids=[],
+            new_tag_names=[tag_name, tag_name],
+            summary="  AI 建议验收摘要  ",
+        )
+        tag = conn.execute(
+            "SELECT id FROM app.tags WHERE owner_id = %s AND name = %s",
+            (alice["id"], tag_name),
+        ).fetchone()
+        _ok(tag is not None, "新标签未创建")
+        linked = _count(
+            conn,
+            "SELECT count(*) AS n FROM app.conversation_tags "
+            "WHERE conversation_id = %s AND tag_id = %s",
+            (conversation_id, tag["id"]),
+        )
+        _ok(linked == 1, f"新标签关联数应为 1，实际 {linked}")
+
+        def summaries():
+            return conn.execute(
+                """
+                SELECT a.id, a.content
+                  FROM app.annotations a
+                  JOIN app.messages m ON m.id = a.message_id
+                 WHERE m.conversation_id = %s AND a.user_id = %s AND a.kind = 'summary'
+                """,
+                (conversation_id, alice["id"]),
+            ).fetchall()
+
+        first = summaries()
+        _ok(len(first) == 1 and first[0]["content"] == "AI 建议验收摘要", "摘要未按预期创建")
+
+        conversation_service.organize_conversation(
+            conn,
+            conversation_id,
+            alice_ctx,
+            course_id=target,
+            tag_ids=[],
+            new_tag_names=[],
+            summary="AI 建议验收摘要（更新）",
+        )
+        updated = summaries()
+        _ok(len(updated) == 1, f"重复保存应更新同一条摘要，实际 {len(updated)} 条")
+        _ok(updated[0]["content"] == "AI 建议验收摘要（更新）", "摘要内容未更新")
+
+        try:
+            conversation_service.organize_conversation(
+                conn,
+                conversation_id,
+                bob_ctx,
+                course_id=target,
+                tag_ids=[],
+                new_tag_names=["越权标签"],
+                summary="越权摘要",
+            )
+        except PermissionDenied:
+            pass
+        else:
+            raise AssertionError("viewer 不应能写入标签或摘要")
+        return "新标签幂等创建、摘要唯一更新、viewer 越权被拒"
+    report.run("ai.organize", "整理建议：标签幂等写入、摘要更新与越权拦截", ai_organize_apply)
+
     def rollback_savepoint():
         before = _count(conn, "SELECT count(*) AS n FROM app.tags")
         try:

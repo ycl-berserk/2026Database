@@ -146,6 +146,20 @@
 | R10-F03 | 离线复习与 outbox | 复习项、动作 | 缓存复习队列；断网打卡进入 outbox | 同一事件重复提交只落一次；联网自动 flush | `static/app.js`、`review_service.py`、`review_logs` | `verify.review.activity`、离线走查 |
 | R10-F04 | 同步状态提示 | 在线/离线、待同步数 | 页面横幅、导航计数、离线页待同步提示 | 网络恢复自动提交并刷新 | `static/app.js`、`templates/base.html` | `tests/unit/test_offline_assets.py` |
 
+## R11 整理建议
+
+| ID | 功能 | 输入 | 输出 / 行为 | 异常与边界 | 实现位置 | 验收 |
+| --- | --- | --- | --- | --- | --- | --- |
+| R11-F01 | 摘要与标签建议 | 会话 ID、当前用户、LLM Key | `POST /api/conversations/{id}/suggest` 返回 `{summary, tags, model}`；只回填页面表单，不自动写入 | 无 Key / `SUGGEST_MODE=off` 时按钮隐藏且接口拒绝；无编辑权 403；模型超时/非 JSON/空建议返回 502；管理员无入口 | `ai_service.py`、`routers/api.py`、`conversation-ai.js` | `tests/unit/test_ai_suggest.py`、浏览器走查 |
+| R11-F02 | 新标签与摘要保存 | 勾选标签、逗号分隔新标签、摘要文本 | 新标签 `get_or_create_tag` 去重；摘要保存为该用户在此会话的最新“总结”批注；留空删除 | 标签最多 5 个、去空白、每标签 40 字；摘要 4000 字上限；无编辑权 403 | `conversation_service.organize_conversation`、`_apply_summary`、`tag_service.get_or_create_tag` | `tests/integration/test_ai_summary_tags.py`、`verify.ai.organize` |
+| R11-F03 | 无模型降级 | — | 未配置 LLM Key 时隐藏建议按钮，整理表单仍可手动填写课程、标签与摘要 | 任何外部调用失败都不影响手动保存路径 | `templates/conversations/detail.html`、`ai_service.enabled` | 浏览器走查（无 Key 时无按钮） |
+
+**设计要点**
+
+- 建议是“草稿”：服务端只做字段清洗（标签去重、最多 3 个、摘要 500 字）和同名标签复用，最终写入必须经过用户点击保存的原归类事务。
+- 摘要复用现有批注模型（`kind='summary'`），不新增表；同一用户在同一会话只保留一条总结，重复保存执行 UPDATE，清空则 DELETE，避免重复内容。
+- Prompt 明确把对话内容当作数据、要求只输出 JSON，并要求优先复用用户已有标签；这只降低提示注入风险，真正的权限边界仍在服务端与数据库。
+
 ## 非功能需求
 
 | 类别 | 要求 | 实现 |
@@ -155,12 +169,12 @@
 | 性能 | 列表分页、关键查询有索引、统计实时但规模可控 | 索引设计、`LIMIT/OFFSET`、部分索引、trgm、HNSW |
 | 可维护性 | 关键 SQL 可定位、无 ORM 黑盒 | `sql/` + `services/` + 本文件映射 |
 | 可演示性 | 离线可演示、模拟数据可复现 | mock Text2SQL、`make_samples.py`、`seed_demo.py` |
-| 可验收 | 自动化测试与端到端报告 | 220 个 pytest 用例 + 37 项 `verify.py` 检查 |
+| 可验收 | 自动化测试与端到端报告 | 231 个 pytest 用例 + 38 项 `verify.py` 检查 |
 
 ## 需求到验收命令的映射
 
 ```bash
-# R01–R10 的主要回归
+# R01–R11 的主要回归
 .venv/Scripts/python.exe -m pytest -q
 
 # 端到端 PASS/FAIL（含权限、导入、检索、统计、导出、Text2SQL、事务）
@@ -170,4 +184,4 @@
 .venv/Scripts/python.exe scripts/eval_text2sql.py
 ```
 
-验收输出示例见 `data/verification/report.json`：37/37 PASS，0 FAIL。
+验收输出示例见 `data/verification/report.json`：38/38 PASS，0 FAIL。

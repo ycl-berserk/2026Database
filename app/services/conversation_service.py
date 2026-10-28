@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from ..config import settings
 from ..errors import NotFoundError, PermissionDenied, ValidationError
 from ..permissions import get_course_role
-from . import embedding_service
+from . import embedding_service, tag_service
 
 PAGE_SIZE = 10
 SENDERS = ("user", "assistant", "system")
@@ -393,6 +393,60 @@ def own_tags(conn, user_id: int) -> list[dict]:
     ).fetchall()
 
 
+def _summary_annotation(conn, conversation_id: int, user_id: int) -> dict | None:
+    return conn.execute(
+        """
+        SELECT a.id, a.content
+          FROM app.annotations a
+          JOIN app.messages m ON m.id = a.message_id
+         WHERE m.conversation_id = %s
+           AND a.user_id = %s
+           AND a.kind = 'summary'
+         ORDER BY a.updated_at DESC
+         LIMIT 1
+        """,
+        (conversation_id, user_id),
+    ).fetchone()
+
+
+def _apply_summary(conn, conversation_id: int, user_id: int, content: str | None) -> None:
+    if content is None:
+        return
+    text = content.strip()
+    if len(text) > 4000:
+        raise ValidationError("摘要不能超过 4000 字符")
+    existing = _summary_annotation(conn, conversation_id, user_id)
+    if not text:
+        if existing is not None:
+            conn.execute("DELETE FROM app.annotations WHERE id = %s", (existing["id"],))
+        return
+    if existing is not None:
+        conn.execute(
+            "UPDATE app.annotations SET content = %s WHERE id = %s",
+            (text, existing["id"]),
+        )
+        return
+    message = conn.execute(
+        """
+        SELECT id
+          FROM app.messages
+         WHERE conversation_id = %s
+         ORDER BY CASE WHEN sender = 'assistant' THEN 0 ELSE 1 END, seq_no DESC
+         LIMIT 1
+        """,
+        (conversation_id,),
+    ).fetchone()
+    if message is None:
+        return
+    conn.execute(
+        """
+        INSERT INTO app.annotations (message_id, user_id, kind, content)
+        VALUES (%s, %s, 'summary', %s)
+        """,
+        (message["id"], user_id, text),
+    )
+
+
 def organize_conversation(
     conn,
     conversation_id: int,
@@ -400,6 +454,8 @@ def organize_conversation(
     *,
     course_id: str | None,
     tag_ids: list[int],
+    new_tag_names: list[str] | None = None,
+    summary: str | None = None,
 ) -> None:
     conversation = get_conversation(conn, conversation_id, user)
     if not can_edit_conversation(conn, conversation, user):
@@ -417,12 +473,16 @@ def organize_conversation(
 
     owned = {row["id"] for row in own_tags(conn, user["id"])}
     selected = set(tag_ids) & owned
+    names = [name for name in (new_tag_names or []) if name.strip()][:5]
 
     with conn.transaction():
         conn.execute(
             "UPDATE app.conversations SET course_id = %s WHERE id = %s",
             (target_course, conversation_id),
         )
+        for name in names:
+            tag_id, _ = tag_service.get_or_create_tag(conn, user["id"], name)
+            selected.add(tag_id)
         conn.execute(
             "DELETE FROM app.conversation_tags "
             "WHERE conversation_id = %s AND created_by = %s",
@@ -437,6 +497,7 @@ def organize_conversation(
                 """,
                 (conversation_id, tag_id, user["id"]),
             )
+        _apply_summary(conn, conversation_id, user["id"], summary)
 
 
 def bulk_organize_inbox(
@@ -552,4 +613,9 @@ def conversation_detail(
         "selected_tag_ids": {
             tag["id"] for tag in tags if tag["owner_id"] == user["id"]
         },
+        "summary_text": (
+            (_summary_annotation(conn, conversation_id, user["id"]) or {}).get("content", "")
+            if can_edit
+            else ""
+        ),
     }

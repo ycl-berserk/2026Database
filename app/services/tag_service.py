@@ -9,7 +9,7 @@ from ..errors import ConflictError, NotFoundError, ValidationError
 
 KINDS = ("knowledge_point", "topic", "custom")
 COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
-DEFAULT_COLORS = ["#2f5d4e", "#a8432c", "#a6771f", "#4a6fa5", "#7a5b8f", "#5b7d3a"]
+DEFAULT_COLORS = ["#2f5d4e", "#a8432c", "#a6771f", "#4a6fa5", "#7a5b8f", "#5b7d3a", "#3d7a7a"]
 
 
 def list_tags(conn, user_id: int) -> list[dict]:
@@ -48,6 +48,24 @@ def _validate(name: str, kind: str, color: str | None) -> tuple[str, str, str | 
     if color and not COLOR_RE.match(color):
         raise ValidationError("颜色必须是 #RRGGBB 格式")
     return name, kind, color
+
+
+def get_or_create_tag(conn, user_id: int, name: str) -> tuple[int, bool]:
+    name = " ".join((name or "").split())[:40]
+    if not name:
+        raise ValidationError("标签名称不能为空")
+    color = DEFAULT_COLORS[sum(name.encode("utf-8")) % len(DEFAULT_COLORS)]
+    row = conn.execute(
+        """
+        INSERT INTO app.tags (owner_id, name, kind, color)
+        VALUES (%s, %s, 'topic', %s)
+        ON CONFLICT (owner_id, name)
+        DO UPDATE SET name = EXCLUDED.name
+        RETURNING id, (xmax = 0) AS is_new
+        """,
+        (user_id, name, color),
+    ).fetchone()
+    return row["id"], bool(row["is_new"])
 
 
 def create_tag(conn, user_id: int, name: str, kind: str, color: str | None) -> int:

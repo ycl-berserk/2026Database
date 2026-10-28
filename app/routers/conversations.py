@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Request
@@ -8,7 +9,7 @@ from fastapi.responses import RedirectResponse
 from ..auth import require_user, verify_csrf
 from ..db import get_conn
 from ..errors import PermissionDenied
-from ..services import conversation_service
+from ..services import ai_service, conversation_service
 from ..web import add_flash, render
 
 router = APIRouter(prefix="/conversations")
@@ -86,7 +87,12 @@ def conversation_detail(
         sender=request.query_params.get("sender"),
         q=request.query_params.get("q"),
     )
-    return render(request, "conversations/detail.html", **data)
+    return render(
+        request,
+        "conversations/detail.html",
+        **data,
+        ai_enabled=ai_service.enabled(),
+    )
 
 
 @router.post("/{conversation_id}/organize")
@@ -105,12 +111,19 @@ async def conversation_organize(
             tag_ids.append(int(value))
         except (TypeError, ValueError):
             continue
+    new_tags = [
+        part.strip()
+        for part in re.split(r"[,，\n]+", str(form.get("new_tags") or ""))
+        if part.strip()
+    ]
     conversation_service.organize_conversation(
         conn,
         conversation_id,
         user,
         course_id=form.get("course_id"),
         tag_ids=tag_ids,
+        new_tag_names=new_tags,
+        summary=str(form.get("summary") or ""),
     )
-    add_flash(request, "会话归类与标签已更新", "success")
+    add_flash(request, "归类、标签与摘要已保存", "success")
     return RedirectResponse(f"/conversations/{conversation_id}", status_code=303)

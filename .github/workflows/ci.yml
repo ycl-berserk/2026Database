@@ -91,6 +91,26 @@ jobs:
       - name: Run end-to-end verification
         run: uv run python scripts/verify.py --json data/verification/report.json
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install Playwright
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run Playwright E2E
+        run: |
+          uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/uvicorn.log 2>&1 &
+          timeout 60 sh -c 'until curl -sf http://127.0.0.1:8000/healthz >/dev/null; do sleep 1; done'
+          npx playwright test
+
+      - name: Show application log
+        if: failure()
+        run: tail -n 200 /tmp/uvicorn.log
+
       - name: Upload verification artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -99,4 +119,5 @@ jobs:
           path: |
             data/verification/report.json
             data/verification/junit.xml
+            data/verification/e2e-junit.xml
           if-no-files-found: warn

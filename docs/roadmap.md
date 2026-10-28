@@ -133,7 +133,7 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 | E2 | CI：GitHub Actions + Postgres service + pytest + verify | 答辩 | S/M | 完成 | `.github/workflows/ci.yml`：`pgvector/pgvector:pg16` 服务、Python 3.13 缓存依赖、初始化/播种、307 项测试 + 42 项验收，上传 JUnit 与验收 JSON；离线模式与 concurrency 取消旧任务 |
 | E3 | uv + lockfile、Ruff、pyright、pre-commit | 答辩 | S | 完成 | `pyproject.toml` 声明运行/开发依赖，`uv.lock` 锁定完整依赖图（当前 57 个包）；Ruff `E/F/I/UP/B/SIM/RUF/C4` 全绿，pyright basic 0 error；pre-commit 校验 YAML/TOML、Ruff 与 pyright；CI 用 `uv sync --frozen` 并检查锁文件 |
 | E4 | Hypothesis 属性测试（解析器 / SQL 守卫） | 答辩 | S/M | 完成 | `tests/unit/test_properties.py` 随机生成 JSON/字节/文本与 SQL，验证解析器不抛异常、导入结果不变量、守卫拒绝集合与幂等、字面量掩码与行数上限；新增 28 项测试，并修复随机化暴露的非字符串字段、混合时间戳、非字典节点/作者与词法错误泄漏 |
-| E5 | Playwright E2E 进 CI | 答辩 | M | 待办 | 将截图脚本改造成带断言的用例 |
+| E5 | Playwright E2E 进 CI | 答辩 | M | 完成 | `playwright.config.mjs` + `tests/e2e/app.spec.mjs`：9 项带断言的用例（匿名跳转、学生/管理员/只读权限、会话与全局搜索、粘贴预览、Text2SQL、手机端溢出与 manifest），收集控制台错误、失败保留 trace；CI 安装 Chromium、启动 uvicorn 并上传 JUnit |
 | E6 | 备份 / 恢复 + 用户全量导出（zip） | 用户 | S | 待办 | 封装 `pg_dump`，提供自助导出 |
 | E7 | 登录限流、会话轮换、生产 Cookie 标志 | 答辩 | S | 待办 | 补齐安全清单 |
 | E8 | Gzip / Brotli + 静态缓存 + 字体子集 | 用户 | S | 完成 | GZip 中间件；`?v=` 版本化静态资源一年 immutable 缓存，无版本参数 5 分钟；页面 HTML `no-store`；未引入 Web 字体，使用系统字体栈 |
@@ -192,7 +192,7 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 
 **Phase 4 进度**：K2 知识先修图、A1 只读 MCP、A2 CLI、D1 迁移体系、D2 审计历史、D3 数据库观测均已完成，Phase 4 收尾。
 
-**Phase 5 进度**：E1 容器化、E2 GitHub Actions CI、E3 工程工具链、E4 属性测试已完成；下一步 E5 Playwright E2E 进 CI。
+**Phase 5 进度**：E1 容器化、E2 GitHub Actions CI、E3 工程工具链、E4 属性测试、E5 Playwright E2E 已完成；下一步 E9 游标分页。
 
 **Phase 4 进度**：K2 知识先修图、A1 MCP 工具接口、A2 命令行、D1 RLS 对比实验、D2 审计历史与 D3 数据库观测页已完成（16 张表、15 个视图、9 个触发器；307 项测试、42 项验收）。Phase 4 收尾。
 

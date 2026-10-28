@@ -44,11 +44,11 @@
 - `pg_trgm` GIN 索引支持中文子串检索；`vector(1536)` + HNSW 支持可选的语义召回，RRF 融合两路排名
 - GZip 中间件 + 带版本参数的静态资源长缓存
 - Chrome MV3 浏览器扩展（原生 JS，点击发送、按需站点权限）
-- Playwright（可选）用于页面截图、扩展冒烟与演示录屏
+- Playwright 用于带断言的页面 E2E、截图、扩展冒烟与演示录屏
 
 ## 快速开始
 
-前置条件：Docker Desktop 已启动；Python 3.12+；Node.js 20+（仅截图/录屏需要）。
+前置条件：Docker Desktop 已启动；Python 3.12+；Node.js 20+（仅 E2E、截图与录屏需要）。
 
 ### 方式 A：Docker 一条命令（推荐演示）
 
@@ -182,9 +182,13 @@ uv run pre-commit run --all-files
 # 生成 Chen 记法 E-R 图（SVG）与 Mermaid ER
 .venv/Scripts/python.exe scripts/render_er.py
 
-# 安装 Playwright（截图与扩展冒烟共用）
+# 安装 Playwright（E2E、截图与扩展冒烟共用）
 npm install
 npx playwright install chromium
+
+# 页面 E2E（9 项断言用例，需要先启动网站；默认 http://127.0.0.1:8000）
+npm run e2e
+# 或指定地址：BASE_URL=http://127.0.0.1:8000 npm run e2e
 
 # 页面截图（需要先启动网站；可选 --record 录制 docs/demo.webm）
 node scripts/screenshots.mjs
@@ -193,7 +197,7 @@ node scripts/screenshots.mjs
 node scripts/extension_smoke.mjs
 ```
 
-> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、307 项测试与 42 项验收，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
+> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、307 项测试、42 项验收与 9 项 Playwright E2E，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
 
 ## 目录结构
 
@@ -205,6 +209,7 @@ learning-space/
 ├── pyproject.toml           # 依赖、Ruff / pyright / pytest 配置
 ├── uv.lock                  # uv 锁定的完整依赖图
 ├── .pre-commit-config.yaml  # 提交前 Ruff + pyright + 配置校验
+├── playwright.config.mjs    # Playwright E2E 配置与 JUnit 报告
 ├── app/
 │   ├── main.py              # FastAPI 应用、异常处理、路由挂载
 │   ├── config.py            # 环境变量与上限配置
@@ -229,7 +234,7 @@ learning-space/
 ├── extension/               # Chrome MV3 扩展：内容脚本、弹窗、隐私与回退说明
 ├── scripts/                 # 初始化、迁移、种子、样例、验收、E-R、截图、扩展冒烟
 ├── data/samples/            # 模拟导入样例（含三种平台原生导出）
-├── tests/unit|integration/  # 单元与集成测试
+├── tests/unit|integration|e2e/  # 单元、集成与浏览器 E2E 测试
 └── docs/                    # 报告、设计、需求、SQL 展示、桌面与移动端截图
 ```
 
@@ -300,5 +305,5 @@ v1 已定稿并推送。下一阶段的方向与验收标准统一记录在 [`do
 - 单机课程项目，未做分布式部署与高并发压测；并发导入依靠唯一键与 `pg_advisory_xact_lock` 保证正确性。
 - PostgreSQL 原生全文检索对中文分词支持有限，因此默认使用 `pg_trgm` + `ILIKE`；配置向量模型后叠加 HNSW 语义召回，并用 RRF 融合两路排名。无模型、调用失败或维度不符时都会退回词法检索，页面上会标注当前模式。在 420 条消息的演示规模下，规划器通常选择顺序扫描，索引能力通过 `SET enable_seqscan = off` 的对比计划验证。
 - 模拟数据中多个会话共享常用追问句，因此“重复消息检测”会命中这些模板句；这是刻意保留的查重演示素材，不代表真实用户行为。
-- Playwright 截图脚本会临时创建两个导入预览批次、一条采集令牌和一条 Text2SQL 审计记录；演示库验收前可用 `scripts/verify.py` 的事务回滚检查，截图后可按需清理这些演示痕迹。
+- Playwright E2E 与截图脚本会临时创建导入预览批次、采集令牌和 Text2SQL 审计记录；演示库验收前可用 `scripts/verify.py` 的事务回滚检查，运行后可按需清理这些演示痕迹。
 - 整理建议的输出由外部模型决定，同样的问题不保证每次一致；服务端只做 JSON 解析、去重与长度限制，并在 25 秒超时后返回可读错误。建议永远不会自动落库，必须由用户点击保存。

@@ -19,7 +19,7 @@
 | 知识先修图 | 用 `tag_edges` 维护标签之间的先修关系（有向无环图），数据库触发器校验同属主与无环；按课程分组渲染 SVG，支持递归查询全部先修链、查看后继与相关会话 |
 | 整理建议 | 配置大模型后可一键生成“会话摘要 + 标签建议”，只填入整理表单；用户检查并点击保存后才写入数据库。新标签按用户去重，摘要复用已有“总结”批注更新而非重复插入；无 Key 时按钮隐藏，表单仍可手动填写 |
 | 检索阅读 | 全局搜索（`/` 或 `Ctrl/Cmd+K`）、课程 / 标签 / 日期 / 关键词筛选、游标分页、消息上下文、关键词高亮、命中片段；配置向量模型后启用 pgvector + RRF 混合检索，否则自动退回词法检索 |
-| 批注与复习 | 笔记 / 疑问 / 纠错 / 总结四类批注、解决状态、加入复习队列、间隔 1→2→4→8… 天、逾期提示、掌握/重置、近 5 周复习热力图 |
+| 批注与复习 | 笔记 / 疑问 / 纠错 / 总结四类批注、解决状态、加入复习队列、FSRS 风格四档评分调度（重来/困难/良好/容易）、逾期提示、掌握/重置、近 5 周复习热力图 |
 | 统计与导出 | 概览、课程排名、月度活跃补零、标签 TopN、批注解决率、复习状态、重复内容检测；统计 CSV、单会话 Markdown |
 | 用户与权限 | Session 登录、PBKDF2 密码哈希、CSRF、系统角色 + 课程角色、应用层与数据库层双重防护 |
 | 数据库隔离实验 | 在只读演示库的临时事务中对比 `security_barrier` 视图、应用层 WHERE 与 RLS；结果与实验对象全部回滚 |
@@ -155,7 +155,7 @@ ls import data/samples/qoder_db.json --course-code DB --json
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（196 单元 + 129 集成，共 325 项）；集成测试需先初始化测试库
+# 全量测试（204 单元 + 130 集成，共 334 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest
 
 # 静态检查与提交钩子（uv sync 已安装 Ruff / pyright / pre-commit）
@@ -204,7 +204,7 @@ node scripts/screenshots.mjs
 node scripts/extension_smoke.mjs
 ```
 
-> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、325 项测试、42 项验收与 11 项 Playwright E2E，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
+> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、334 项测试、42 项验收与 12 项 Playwright E2E，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
 
 ## 目录结构
 
@@ -245,7 +245,7 @@ learning-space/
 └── docs/                    # 报告、设计、需求、SQL 展示、桌面与移动端截图
 ```
 
-> 数据库共 16 张表：`schema.sql` 的 12 张基线表 + 迁移新增的 `review_logs`（复习事件流水）、`api_tokens`（采集令牌，仅存 SHA-256）、`tag_edges`（知识先修关系）与 `audit_log`（结构变更审计，只记元数据）。
+> 数据库共 16 张表：`schema.sql` 的 12 张基线表 + 迁移新增的 `review_logs`（复习事件流水，含评分与算法）、`api_tokens`（采集令牌，仅存 SHA-256）、`tag_edges`（知识先修关系）与 `audit_log`（结构变更审计，只记元数据）。复习项在迁移 009 中增加 FSRS 稳定性/难度/遗忘次数。
 
 ## 数据与安全说明
 
@@ -254,7 +254,8 @@ learning-space/
 - **采集令牌**：`/tokens` 创建的令牌形如 `ls_…`，明文只显示一次，服务端仅存 SHA-256 与可读前缀；每令牌每分钟最多 60 次请求，可随时撤销。管理员无法读取令牌，令牌也应只放在本机脚本或扩展中，不要提交到仓库。
 - **浏览器扩展**：`extension/` 使用 MV3，固定权限只有 `activeTab` 与 `storage`；仅当用户在弹窗点击「发送到学习空间」时读取当前标签页并调用 `/api/ingest`，令牌保存在 `chrome.storage.local`。平台 DOM 改版时回退到平台导出文件。
 - **分享采集**：`POST /share` 复用 `import_batches` 暂存解析结果（30 分钟有效），不把长文本写入 Cookie；最终保存仍需登录会话与 CSRF Token，并校验批次所有权。
-- **离线同步**：会话快照、批注草稿与复习打卡保存在浏览器 IndexedDB；联网后按客户端事件 ID 幂等提交，避免重复写入。
+- **离线同步**：会话快照、批注草稿与复习打卡保存在浏览器 IndexedDB；联网后按客户端事件 ID 幂等提交，避免重复写入。离线打卡没有评分选项，统一按「良好」补交。
+- **复习调度**：`REVIEW_ALGORITHM=fsrs`（默认）使用 FSRS-6 风格稳定性/难度模型，按「重来/困难/良好/容易」四档评分计算下次间隔；`REVIEW_RETENTION` 可调目标保持率。设为 `simple` 时回退到旧的间隔翻倍，便于对照实验。
 - **登录防护**：同一 IP + 账号 15 分钟内连续失败 5 次即暂时锁定，单 IP 另有 20 次上限，返回 429 与 `Retry-After`；登录成功会清空该账号计数。Session 登录时重建并写入签发时间，超过 7 天自动失效；生产环境 Cookie 强制 `Secure`，并发送 HSTS、`nosniff`、`DENY` 与 Referrer/Permissions 限制；若 `APP_ENV=production` 仍使用仓库默认 `SESSION_SECRET`，应用拒绝启动。
 - **权限三层**：页面/服务层角色检查 → SQL 作用域过滤 → 数据库约束与触发器；Text2SQL 额外使用只读角色与 `security_barrier` 视图。
 - **数据库角色**：`ls_app` 只有 `app` schema 的 DML 权限，无 DDL；`t2s_reader` 只能 `SELECT` `t2s` 视图，默认只读事务、3 秒语句超时。

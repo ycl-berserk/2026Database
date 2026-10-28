@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 
+from ..config import settings
 from ..errors import NotFoundError, ValidationError
+from . import fsrs
 from .conversation_service import make_snippet
+
+RATING_LABELS = {"again": "重来", "hard": "困难", "good": "良好", "easy": "容易"}
+ALGORITHMS = ("fsrs", "simple")
 
 
 def summary(conn, user_id: int) -> dict:
@@ -89,6 +94,38 @@ def _existing_event(conn, user_id: int, event_id: str | None) -> dict | None:
     ).fetchone()
 
 
+def _algorithm(value: str | None) -> str:
+    name = (value or settings.review_algorithm or "fsrs").strip().lower()
+    return name if name in ALGORITHMS else "fsrs"
+
+
+def _rating(value: str | None) -> str:
+    try:
+        return fsrs.normalize_rating(value)
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+
+
+def _fsrs_state(row: dict) -> fsrs.MemoryState:
+    return fsrs.MemoryState(
+        stability=float(row["fsrs_stability"] or 1.0),
+        difficulty=float(row["fsrs_difficulty"] or 5.0),
+        lapses=int(row["fsrs_lapses"] or 0),
+    )
+
+
+def _elapsed_days(last_reviewed_at) -> int:
+    if isinstance(last_reviewed_at, str):
+        try:
+            last_reviewed_at = datetime.fromisoformat(last_reviewed_at)
+        except ValueError:
+            return 1
+    if not isinstance(last_reviewed_at, datetime):
+        return 0
+    # 同一天多次复习按 1 天计，避免稳定性因 elapsed=0 而完全不增长。
+    return max(1, (date.today() - last_reviewed_at.date()).days)
+
+
 def _log_event(
     conn,
     *,
@@ -99,31 +136,41 @@ def _log_event(
     interval_days: int,
     due_date,
     review_count: int,
+    rating: str | None = None,
+    algorithm: str | None = None,
 ) -> None:
     conn.execute(
         """
         INSERT INTO app.review_logs
             (user_id, review_item_id, action, event_id,
-             interval_days, due_date, review_count)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+             interval_days, due_date, review_count, rating, algorithm)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (user_id, event_id) DO NOTHING
         """,
         (
             user_id, review_id, action, event_id,
-            interval_days, due_date, review_count,
+            interval_days, due_date, review_count, rating, algorithm,
         ),
     )
 
 
 def review_once(
-    conn, review_id: int, user_id: int, event_id: str | None = None
+    conn,
+    review_id: int,
+    user_id: int,
+    event_id: str | None = None,
+    rating: str | None = None,
+    algorithm: str | None = None,
 ) -> dict:
     """记录一次复习；同一 event_id 重放时返回当前状态且不重复累加。"""
     event = _parse_event_id(event_id)
+    grade = _rating(rating)
+    mode = _algorithm(algorithm)
     with conn.transaction():
         current = conn.execute(
             """
-            SELECT id, status, interval_days, due_date, review_count
+            SELECT id, status, interval_days, due_date, review_count,
+                   last_reviewed_at, fsrs_stability, fsrs_difficulty, fsrs_lapses
               FROM app.review_items
              WHERE id = %s AND user_id = %s
              FOR UPDATE
@@ -133,20 +180,50 @@ def review_once(
         if current is None:
             raise NotFoundError("复习项不存在")
         if _existing_event(conn, user_id, event) is not None:
-            return {**current, "duplicate": True}
+            return {**current, "duplicate": True, "rating": grade, "algorithm": mode}
+
+        if mode == "fsrs":
+            state = _fsrs_state(current) if current["review_count"] > 0 else None
+            next_state, interval = fsrs.schedule(
+                state,
+                grade,
+                _elapsed_days(current["last_reviewed_at"]),
+                settings.review_retention,
+            )
+            values = {
+                "stability": next_state.stability,
+                "difficulty": next_state.difficulty,
+                "lapses": next_state.lapses,
+            }
+        else:
+            interval = min(int(current["interval_days"]) * 2, 60)
+            values = {
+                "stability": float(interval),
+                "difficulty": float(current["fsrs_difficulty"] or 5.0),
+                "lapses": int(current["fsrs_lapses"] or 0),
+            }
 
         row = conn.execute(
             """
             UPDATE app.review_items
                SET review_count = review_count + 1,
-                   interval_days = LEAST(interval_days * 2, 60),
-                   due_date = current_date + LEAST(interval_days * 2, 60),
+                   interval_days = %(interval)s,
+                   due_date = current_date + %(interval)s,
                    status = CASE WHEN status = 'pending' THEN 'reviewing' ELSE status END,
-                   last_reviewed_at = now()
-             WHERE id = %s AND user_id = %s
-             RETURNING status, interval_days, due_date, review_count
+                   last_reviewed_at = now(),
+                   fsrs_stability = COALESCE(%(stability)s, fsrs_stability),
+                   fsrs_difficulty = COALESCE(%(difficulty)s, fsrs_difficulty),
+                   fsrs_lapses = COALESCE(%(lapses)s, fsrs_lapses)
+             WHERE id = %(id)s AND user_id = %(user_id)s
+             RETURNING status, interval_days, due_date, review_count,
+                       fsrs_stability, fsrs_difficulty, fsrs_lapses
             """,
-            (review_id, user_id),
+            {
+                "interval": interval,
+                "id": review_id,
+                "user_id": user_id,
+                **values,
+            },
         ).fetchone()
         _log_event(
             conn,
@@ -157,8 +234,10 @@ def review_once(
             interval_days=row["interval_days"],
             due_date=row["due_date"],
             review_count=row["review_count"],
+            rating=grade,
+            algorithm=mode,
         )
-    return {**row, "duplicate": False}
+    return {**row, "duplicate": False, "rating": grade, "algorithm": mode}
 
 
 def mark_mastered(
@@ -215,7 +294,8 @@ def reset_review(
             """
             UPDATE app.review_items
                SET status = 'pending', interval_days = 1, review_count = 0,
-                   due_date = current_date, last_reviewed_at = NULL
+                   due_date = current_date, last_reviewed_at = NULL,
+                   fsrs_stability = 1.0, fsrs_difficulty = 5.0, fsrs_lapses = 0
              WHERE id = %s AND user_id = %s
              RETURNING status, interval_days, due_date, review_count
             """,

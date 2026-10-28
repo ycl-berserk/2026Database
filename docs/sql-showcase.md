@@ -374,29 +374,36 @@ INSERT 0 0
 
 事务结束后 `ROLLBACK`，演示库标题保持不变。实际导入服务还会计数 `messages_skipped` 与内容冲突 `conflicts`。
 
-## 15. 复习间隔：1 → 2 天
+## 15. 复习间隔：FSRS 稳定性与四档评分
 
 ```sql
 BEGIN;
-SELECT id, interval_days, due_date, review_count, status
-  FROM app.review_items WHERE id = 17;  -- 1 天，待复习，已复习 1 次
+SELECT id, interval_days, due_date, review_count, status,
+       fsrs_stability, fsrs_difficulty, fsrs_lapses
+  FROM app.review_items WHERE id = 17 FOR UPDATE;  -- 2 天，已复习 1 次
+-- 应用层按评分 good 调用 fsrs.schedule()，得到：
+--   interval = 7, stability = 6.7513, difficulty = 2.1170, lapses = 0
 UPDATE app.review_items
    SET review_count = review_count + 1,
-       interval_days = LEAST(interval_days * 2, 60),
-       due_date = current_date + LEAST(interval_days * 2, 60),
+       interval_days = :interval,
+       due_date = current_date + :interval,
        status = CASE WHEN status = 'pending' THEN 'reviewing' ELSE status END,
-       last_reviewed_at = now()
+       last_reviewed_at = now(),
+       fsrs_stability = :stability,
+       fsrs_difficulty = :difficulty,
+       fsrs_lapses = :lapses
  WHERE id = 17 AND user_id = :uid
- RETURNING interval_days, due_date, review_count, status;
+ RETURNING interval_days, due_date, review_count, status,
+           fsrs_stability, fsrs_difficulty, fsrs_lapses;
 ROLLBACK;
 ```
 
-| 阶段 | interval_days | due_date | review_count | status |
-| --- | ---: | --- | ---: | --- |
-| 更新前 | 1 | 2026-10-26 | 1 | pending |
-| 更新后 | 2 | 2026-10-29 | 2 | reviewing |
+| 阶段 | interval_days | due_date | review_count | status | stability |
+| --- | ---: | --- | ---: | --- | ---: |
+| 更新前 | 2 | 2026-10-30 | 1 | reviewing | 2.3065 |
+| 更新后 | 7 | 2026-11-04 | 2 | reviewing | 6.7513 |
 
-`UPDATE` 右侧使用旧值，所以一条语句同时完成“间隔翻倍、到期日顺延、计数 +1、状态迁移”。
+调度在应用层完成，数据库只保存结果；同一复习项先用 `FOR UPDATE` 加锁，避免并发打卡时稳定性被覆盖。
 
 ## 16. 中文检索执行计划
 

@@ -195,7 +195,9 @@ async def submit_review_action(
     payload = await _json_body(request)
     event_id = payload.get("event_id")
     if action == "done":
-        row = review_service.review_once(conn, review_id, user["id"], event_id)
+        row = review_service.review_once(
+            conn, review_id, user["id"], event_id, rating=payload.get("rating")
+        )
     elif action == "mastered":
         row = review_service.mark_mastered(conn, review_id, user["id"], event_id)
     else:

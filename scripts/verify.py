@@ -558,15 +558,19 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
         _ok(replay["duplicate"] is True, "离线事件重放未被识别为幂等")
         _ok(replay["review_count"] == first["review_count"], "重放事件重复累加复习次数")
         second = review_service.review_once(conn, review["id"], alice["id"])
-        _ok(second["interval_days"] == 4, f"第二次复习间隔应为 4 天，实际 {second['interval_days']}")
+        expected = 7 if second["algorithm"] == "fsrs" else 4
+        _ok(
+            second["interval_days"] == expected,
+            f"第二次复习间隔应为 {expected} 天，实际 {second['interval_days']}",
+        )
         log_count = _count(
             conn,
             "SELECT count(*) AS n FROM app.review_logs WHERE review_item_id = %s",
             (review["id"],),
         )
         _ok(log_count == 2, f"复习事件应为 2 条（重放不落库），实际 {log_count}")
-        return "批注 → 复习项 → 间隔 2/4 天递增，事件幂等落库"
-    report.run("annotation.lifecycle", "批注与复习：创建、入队、间隔翻倍", annotation_lifecycle)
+        return f"批注 → 复习项 → {second['algorithm']} 间隔 2/{expected} 天递增，事件幂等落库"
+    report.run("annotation.lifecycle", "批注与复习：创建、入队、算法调度", annotation_lifecycle)
 
     def review_activity():
         activity = review_service.activity(conn, alice["id"], days=35)

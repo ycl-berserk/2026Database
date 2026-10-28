@@ -14,7 +14,7 @@
 | 快速采集 | PWA Share Target、裸文本粘贴、ChatGPT `conversations.json` / Qoder 会话 / DeepSeek Markdown 原生导出适配；采集令牌 + Bearer `POST /api/ingest`；MV3 扩展仅在点击发送时读取当前会话 |
 | 收件箱 | 未归类会话队列、批量归类到课程、分享落地页与高亮定位 |
 | 课程与标签 | 课程 CRUD、成员共享（owner / editor / viewer）、标签 CRUD、会话归类与打标签 |
-| 检索阅读 | 全局搜索（`/` 或 `Ctrl/Cmd+K`）、课程 / 标签 / 日期 / 关键词筛选、分页、消息上下文、关键词高亮、命中片段 |
+| 检索阅读 | 全局搜索（`/` 或 `Ctrl/Cmd+K`）、课程 / 标签 / 日期 / 关键词筛选、分页、消息上下文、关键词高亮、命中片段；配置向量模型后启用 pgvector + RRF 混合检索，否则自动退回词法检索 |
 | 批注与复习 | 笔记 / 疑问 / 纠错 / 总结四类批注、解决状态、加入复习队列、间隔 1→2→4→8… 天、逾期提示、掌握/重置、近 5 周复习热力图 |
 | 统计与导出 | 概览、课程排名、月度活跃补零、标签 TopN、批注解决率、复习状态、重复内容检测；统计 CSV、单会话 Markdown |
 | 用户与权限 | Session 登录、PBKDF2 密码哈希、CSRF、系统角色 + 课程角色、应用层与数据库层双重防护 |
@@ -30,9 +30,9 @@
 ## 技术栈
 
 - Python 3.12+ / FastAPI / Jinja2 服务端渲染
-- PostgreSQL 16（Docker Compose，宿主端口 5433）
+- PostgreSQL 16 + pgvector（Docker Compose，`pgvector/pgvector:pg16`，宿主端口 5433）
 - psycopg 3 + psycopg_pool，手写参数化 SQL，不使用 ORM
-- `pg_trgm` GIN 索引支持中文子串检索
+- `pg_trgm` GIN 索引支持中文子串检索；`vector(1536)` + HNSW 支持可选的语义召回，RRF 融合两路排名
 - GZip 中间件 + 带版本参数的静态资源长缓存
 - Chrome MV3 浏览器扩展（原生 JS，点击发送、按需站点权限）
 - Playwright（可选）用于页面截图、扩展冒烟与演示录屏
@@ -42,7 +42,7 @@
 前置条件：Docker Desktop 已启动；Python 3.12+；Node.js 20+（仅截图/录屏需要）。
 
 ```bash
-# 1. 启动数据库（首次会拉取 postgres:16-alpine）
+# 1. 启动数据库（首次会拉取 pgvector/pgvector:pg16）
 docker compose up -d db
 
 # 2. 创建虚拟环境并安装依赖
@@ -58,6 +58,8 @@ py -3.13 -m venv .venv
 # 5. 启动网站
 .venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
+
+> 如果本地已有旧 `postgres:16-alpine` 数据卷：不同基础镜像的 libc 排序规则不同，切换镜像后需执行 `REINDEX DATABASE learning_space;`（或 `init_db.py --reset` 重建演示库），否则唯一索引可能查不到部分中英文混合标签。`verify.py` 的“索引与数据一致性”检查会提示该问题。
 
 打开 <http://127.0.0.1:8000>，使用下方演示账号登录。
 
@@ -78,11 +80,14 @@ py -3.13 -m venv .venv
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（121 单元 + 87 集成，共 208 项）；集成测试需先初始化测试库
-.venv/Scripts/python.exe -m pytest -q
+# 全量测试（128 单元 + 92 集成，共 220 项）；集成测试需先初始化测试库
+.venv/Scripts/python.exe -m pytest
 
-# 端到端验收：35 项 PASS/FAIL，写入 data/verification/report.json
+# 端到端验收：37 项 PASS/FAIL，写入 data/verification/report.json
 .venv/Scripts/python.exe scripts/verify.py --json data/verification/report.json
+
+# 为已配置向量模型的用户补齐消息向量（未配置时命令会提示并退出）
+.venv/Scripts/python.exe scripts/embed_messages.py --user alice --limit 512
 
 # Text2SQL 金标准评测：30 题 + 10 条恶意 SQL + 2 条跨用户用例
 .venv/Scripts/python.exe scripts/eval_text2sql.py
@@ -146,6 +151,7 @@ learning-space/
 - **权限三层**：页面/服务层角色检查 → SQL 作用域过滤 → 数据库约束与触发器；Text2SQL 额外使用只读角色与 `security_barrier` 视图。
 - **数据库角色**：`ls_app` 只有 `app` schema 的 DML 权限，无 DDL；`t2s_reader` 只能 `SELECT` `t2s` 视图，默认只读事务、3 秒语句超时。
 - **管理边界**：管理员看不到课程 / 会话页面，也不能读取他人消息正文、批注或复习内容。
+- **混合检索与隐私**：向量能力默认关闭。只有部署方配置 `EMBEDDING_API_KEY` 后，系统才会把可见消息正文发送到该嵌入服务；未配置时检索完全在本地数据库内完成。向量只用于本人可见范围，管理员没有向量召回入口。
 
 ## Text2SQL 两种模式
 
@@ -175,7 +181,7 @@ v1 已定稿并推送。下一阶段的方向与验收标准统一记录在 [`do
 | --- | --- | --- |
 | Phase 1 | 迁移机制、移动端信息架构、空状态引导、导入向导、PWA 安装、Share Target、粘贴导入、收件箱、静态资源优化 | 手机上可安装、可分享导入、导入有向导、列表不空转 |
 | Phase 2 | 离线阅读与复习 outbox、复习事件表、Ingest Token、浏览器扩展、平台导出适配器、全局搜索 | 断网可读可复习、采集更省事、找会话更快 |
-| Phase 3 | pgvector 混合检索、自动标签建议、AST 校验、EXPLAIN 预检、Text2SQL 评测集 | 检索更准，Text2SQL 可证明 |
+| Phase 3 | pgvector 混合检索、自动标签建议、AST 校验、EXPLAIN 预检、Text2SQL 评测集（T1 / T2 / T5 / R1 已完成） | 检索更准，Text2SQL 可证明 |
 | Phase 4 | 知识先修图、只读 MCP Server、CLI、RLS 对比、审计历史、SQL 观测页 | 从“记录库”变成“学习空间”，并有对外接口 |
 | Phase 5 | Dockerfile、CI、Ruff/pyright、E2E，PG18/PG19 实验分支、FSRS | 可部署、可回归、有前沿实验 |
 
@@ -186,6 +192,6 @@ v1 已定稿并推送。下一阶段的方向与验收标准统一记录在 [`do
 ## 已知限制
 
 - 单机课程项目，未做分布式部署与高并发压测；并发导入依靠唯一键与 `pg_advisory_xact_lock` 保证正确性。
-- PostgreSQL 原生全文检索对中文分词支持有限，因此使用 `pg_trgm` + `ILIKE`；在 420 条消息的演示规模下，规划器通常选择顺序扫描，索引能力通过 `SET enable_seqscan = off` 的对比计划验证。
+- PostgreSQL 原生全文检索对中文分词支持有限，因此默认使用 `pg_trgm` + `ILIKE`；配置向量模型后叠加 HNSW 语义召回，并用 RRF 融合两路排名。无模型、调用失败或维度不符时都会退回词法检索，页面上会标注当前模式。在 420 条消息的演示规模下，规划器通常选择顺序扫描，索引能力通过 `SET enable_seqscan = off` 的对比计划验证。
 - 模拟数据中多个会话共享常用追问句，因此“重复消息检测”会命中这些模板句；这是刻意保留的查重演示素材，不代表真实用户行为。
 - Playwright 截图脚本会临时创建一个导入预览批次和一条 Text2SQL 审计记录；演示库验收前可用 `scripts/verify.py` 的事务回滚检查，截图后可按需清理这两类演示痕迹。

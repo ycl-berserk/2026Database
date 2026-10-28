@@ -450,6 +450,7 @@ def slide_search(prs):
     bullets(slide, 0.72, 1.62, 5.3, 3.8, [
         "标题与消息正文联合匹配，课程 / 标签 / 日期筛选",
         "pg_trgm GIN + ILIKE ESCAPE，参数化查询",
+        "可选 pgvector + HNSW，RRF 融合词法与语义",
         "count(*) OVER() 一次查询拿到分页总数",
         "SQL 侧截取命中片段，避免传输整段长回答",
         "打开会话按 seq_no 排序，保留完整上下文",
@@ -461,7 +462,7 @@ def slide_search(prs):
                "WHERE m.content ILIKE %(kw)s ESCAPE '\\'\n"
                "ORDER BY m.conversation_id, m.seq_no;", size=9)
     picture_fit(slide, "05-conversation-detail.png", 6.3, 1.55, 6.3, 5.2)
-    notes(slide, "35 秒：搜索“隔离级别”进入会话详情，讲 trgm、分页和上下文。")
+    notes(slide, "35 秒：搜索“隔离级别”进入会话详情；说明无模型时纯词法，配置后自动混合检索。")
 
 
 def slide_review(prs):
@@ -576,9 +577,9 @@ def slide_permissions(prs):
 
 def slide_tests(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "13 / 测试与验收", "208 项测试与 35 项端到端验收全部通过", 14)
+    header(slide, "13 / 测试与验收", "220 项测试与 37 项端到端验收全部通过", 14)
 
-    stats = [("208", "自动化测试"), ("35", "端到端检查"), ("0", "失败项")]
+    stats = [("220", "自动化测试"), ("37", "端到端检查"), ("0", "失败项")]
     for index, (value, label) in enumerate(stats):
         x = 0.72 + index * 2.15
         rect(slide, x, 1.62, 1.95, 1.35, WHITE, radius=True, line=LINE, width=0.7)
@@ -587,17 +588,17 @@ def slide_tests(prs):
 
     code_block(slide, 0.72, 3.3, 6.0, 2.4,
                ".venv/Scripts/python.exe -m pytest -q\n"
-               "# 121 unit + 87 integration\n\n"
+               "# 128 unit + 92 integration\n\n"
                ".venv/Scripts/python.exe scripts/verify.py \\\n"
                "  --json data/verification/report.json", size=10.5)
     text(slide, 0.9, 5.78, 5.6, 0.75,
-         "输出：35/35 PASS，0 FAIL，约 1.4 秒\n所有写入检查在结束时整体回滚。", size=11.5, color=GREEN)
+         "输出：37/37 PASS，0 FAIL，约 1–4 秒\n所有写入检查在结束时整体回滚。", size=11.5, color=GREEN)
 
     right = [
         "Schema：表、FK、UNIQUE、CHECK、索引、触发器",
         "权限：alice / bob / viewer / admin 边界",
         "导入：幂等、重复、损坏文件、平台适配",
-        "检索：关键词、课程、标签、全局搜索",
+        "检索：关键词、课程、标签、全局搜索、混合检索",
         "统计：种子数据下的计数与排名",
         "采集：令牌哈希、限流、Bearer 幂等入库",
         "Text2SQL：AST / 预检 / 金标准评测",
@@ -616,7 +617,7 @@ def slide_ai(prs):
 
     rows = [
         ["被否方案", "最终选择", "原因"],
-        ["复用 ReviewMate 向量模型", "经典关系模型", "作业要求实体、联系、SQL"],
+        ["把向量检索作为核心", "经典关系模型 + 可选向量", "作业要求实体、联系、SQL"],
         ["会话冗余 owner_id", "经 source 追溯", "避免传递依赖"],
         ["生成列存 content_hash", "md5 表达式索引", "避免 3NF 争议"],
         ["仅按 annotation_id 唯一", "(user_id, annotation_id)", "多人可各自复习"],
@@ -647,7 +648,7 @@ def slide_end(prs):
         "导入、检索、批注、复习、统计、导出的闭环",
         "令牌 + 扩展 + 平台导出，离线也可读可复习",
         "Text2SQL 由只读视图与角色做最终兜底",
-        "208 项测试 + 35 项验收，全部通过",
+        "220 项测试 + 37 项验收，全部通过",
         "README 五条命令从零复现",
     ]
     bullets(slide, 0.85, 3.15, 6.4, 2.4, left, size=14, color=RGBColor(0xE8, 0xE3, 0xD3), gap=8,

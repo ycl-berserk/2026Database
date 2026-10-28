@@ -12,7 +12,7 @@
 
 本项目实现了一个以“聊天记录”为核心的关系数据库应用系统。系统把 Qoder、ChatGPT、DeepSeek 等平台的问答导出文件解析为统一格式，按课程、来源、标签组织；支持中文检索、会话上下文、批注、间隔复习、统计导出，并额外实现了受数据库只读权限视图保护的 Text2SQL 页面。
 
-数据库包含 14 张业务表、13 个权限视图、4 个触发器、多组唯一/检查/外键约束；应用层使用参数化 SQL 与显式事务，不依赖 ORM。导入流水线采用“解析 → 校验 → 持久化预览 → 单事务确认 → 查重”的结构，并在文件导入之外提供平台原生导出适配、采集令牌 + Bearer 接口与 MV3 浏览器扩展。系统通过 208 个自动化测试与 35 项端到端验收检查，覆盖 schema、权限、导入幂等、中文检索、全局搜索、统计、批注复习、离线同步、导出、Text2SQL 安全与事务回滚。
+数据库包含 14 张业务表、13 个权限视图、4 个触发器、多组唯一/检查/外键约束；应用层使用参数化 SQL 与显式事务，不依赖 ORM。导入流水线采用“解析 → 校验 → 持久化预览 → 单事务确认 → 查重”的结构，并在文件导入之外提供平台原生导出适配、采集令牌 + Bearer 接口与 MV3 浏览器扩展。系统通过 220 个自动化测试与 37 项端到端验收检查，覆盖 schema、权限、导入幂等、中文检索、全局搜索、统计、批注复习、离线同步、导出、Text2SQL 安全与事务回滚。
 
 ---
 
@@ -178,7 +178,7 @@
 
 重点索引：
 
-- `messages`：`(conversation_id, seq_no)` 唯一 B-tree、`content` GIN trgm、`md5(content)` 表达式索引。
+- `messages`：`(conversation_id, seq_no)` 唯一 B-tree、`content` GIN trgm、`md5(content)` 表达式索引；可选 `embedding vector(1536)` 上的 HNSW cosine 索引（`m=16`、`ef_construction=64`）。
 - `conversations`：`(course_id, started_at DESC)`、`source_id`、标题 GIN trgm。
 - `review_items`：`(user_id, status, due_date) WHERE status <> 'mastered'` 部分索引。
 - `annotations`：`(message_id)`、`(user_id, status)`。
@@ -188,6 +188,10 @@
 - `api_tokens`：`(user_id, created_at DESC)`；令牌哈希与 `(user_id, event_id)` 由唯一约束提供索引。
 
 中文检索没有使用 PostgreSQL 原生全文检索，因为其默认分词对中文不友好；改用 `pg_trgm` + `ILIKE`，并对用户输入的 `%`、`_`、`\` 做 `ESCAPE` 处理。
+
+向量检索是可选增强：迁移 `004_add_message_embeddings.sql` 增加 `embedding`、`embedding_model`、`embedded_at` 三列与 HNSW 索引，`EMBEDDING_API_KEY` 未配置时不会写入任何向量，检索保持纯词法。启用后，词法候选与向量候选各取 100 条，按 `1/(60+rank)` 做 Reciprocal Rank Fusion；两路候选都复用同一段“本人来源或共享课程”的作用域 SQL，管理员没有任何向量入口。搜索页展示当前模式（混合 / 词法）与向量覆盖率，并允许每次补齐 64 条可见消息。部署方需注意：启用后消息正文会发送到所配置的嵌入服务。
+
+> 运行层面还有一个与镜像有关的完整性细节：从 `postgres:16-alpine` 切换到 `pgvector/pgvector:pg16` 时，基础镜像的 libc 排序规则不同，旧数据目录中的文本唯一索引可能查不到部分中英文混合值。系统通过 `verify.schema.index_health` 对每个标签执行索引查找来发现该问题，修复方式是对演示库与测试库执行 `REINDEX DATABASE`。
 
 ## 6. 功能实现
 
@@ -210,6 +214,8 @@
 ### 6.3 检索与阅读
 
 会话列表支持关键词、课程、标签、日期范围筛选与分页；关键词命中标题或消息正文，列表展示命中片段、消息数、平台与标签。会话详情按 `seq_no` 展示消息，支持按发送者过滤、关键词高亮、内联批注、所属课程与标签编辑。
+
+配置向量模型后，关键词检索自动升级为混合检索：词法候选与向量候选分别排序，再用 RRF 融合成统一的会话排名；纯语义命中的会话会显示“语义相近”标记，搜索摘要处标注“混合检索”。未配置模型或嵌入调用失败时，页面标注“词法检索”，结果不受影响。验收时用本地嵌入桩验证了完整 UI 路径：补齐 64/420 条向量、混合检索徽标、5 条纯语义命中，以及默认无 Key 时的词法退化。
 
 ![会话列表](screenshots/04-conversations.png)
 
@@ -384,31 +390,31 @@ mock 只覆盖固定问法，Q18–Q30 的换问法、聚合与排名问题会�
 ### 10.1 自动化测试
 
 ```text
-121 unit tests
-87 integration tests
-208 total, all passed
+128 unit tests
+92 integration tests
+220 total, all passed
 ```
 
-- 单元：密码哈希/校验、CSRF、JSON/Markdown/裸文本与三种平台原生导出解析、字段校验、去重分类、Text2SQL AST 守卫（嵌套 DML、表函数、锁、字面量误伤）、EXPLAIN 预检、评测集加载/结果规范化/指标计算、mock 规则、PWA 资产、MV3 扩展契约、引导/撤销/错误页/静态缓存与性能预算。
-- 集成：schema 约束与删除行为、权限边界、导入预览/确认/幂等/损坏文件、收件箱批量归类、检索与全局搜索、批注复习间隔与事件流水、统计、管理员、采集令牌与 Bearer 入库、Text2SQL 只读/越权/审计与评测编排。
+- 单元：密码哈希/校验、CSRF、JSON/Markdown/裸文本与三种平台原生导出解析、字段校验、去重分类、Text2SQL AST 守卫（嵌套 DML、表函数、锁、字面量误伤）、EXPLAIN 预检、评测集加载/结果规范化/指标计算、RRF 融合、向量字面量/维度校验、mock 规则、PWA 资产、MV3 扩展契约、引导/撤销/错误页/静态缓存与性能预算。
+- 集成：schema 约束与删除行为、权限边界、导入预览/确认/幂等/损坏文件、收件箱批量归类、检索与全局搜索、pgvector 可见范围与混合排名、批注复习间隔与事件流水、统计、管理员、采集令牌与 Bearer 入库、Text2SQL 只读/越权/审计与评测编排。
 
 集成测试只连接以 `_test` 结尾的数据库，每个用例前 `TRUNCATE app.users RESTART IDENTITY CASCADE`。测试脚手架使用管理员连接执行 TRUNCATE，因为应用角色 `ls_app` 被刻意设计为没有 TRUNCATE 权限。
 
 ### 10.2 端到端验收
 
-`scripts/verify.py` 在演示库上执行 35 项检查，所有写操作放在外层事务中，最后主动回滚：
+`scripts/verify.py` 在演示库上执行 37 项检查，所有写操作放在外层事务中，最后主动回滚：
 
 ```text
-结果：35/35 PASS，0 FAIL，耗时约 1.4 秒
+结果：37/37 PASS，0 FAIL，耗时约 1–4 秒
 报告：data/verification/report.json
 ```
 
 检查项包括：
 
-- 14 张表、13 个视图、主外键/唯一/检查约束、索引与 4 个触发器
+- 14 张表、13 个视图、主外键/唯一/检查约束、索引与 4 个触发器；标签唯一索引与数据一致性
 - 演示数据规模、密码哈希、角色边界
 - 重复导入 0 新增 / 84 跳过、损坏文件拒绝、ChatGPT/Qoder/DeepSeek 原生导出适配
-- 关键词检索、课程/标签筛选、上下文与批注内联、全局搜索隔离
+- 关键词检索、课程/标签筛选、上下文与批注内联、全局搜索隔离、pgvector 混合检索与管理员 0 结果
 - 统计概览、CSV、Markdown
 - 批注 → 复习项 → 间隔 2/4 天、复习事件流水与 5 周热力图
 - 粘贴收录、重复收录幂等、收件箱批量归类
@@ -418,7 +424,7 @@ mock 只覆盖固定问法，Q18–Q30 的换问法、聚合与排名问题会�
 
 ### 10.3 UI 验证
 
-Playwright 脚本登录 alice / bob / admin，生成桌面 31 张（含扩展弹窗）与移动端 10 张截图，检查控制台错误与 390px 横向溢出；bob 的 403 页面是预期行为，脚本单独放行。`scripts/extension_smoke.mjs` 另用真实浏览器验证扩展提取、按钮文字清理、预览、Bearer 鉴权与发送体结构。另外用 Performance API 验证首屏 JS 8KB、请求数 2、移动端 LCP 268ms，并检查 Service Worker 缓存版本与静态资源版本参数。
+Playwright 脚本登录 alice / bob / admin，生成桌面 31 张（含扩展弹窗）与移动端 10 张截图，检查控制台错误与 390px 横向溢出；bob 的 403 页面是预期行为，脚本单独放行。R1 另在第二个实例上串联本地嵌入桩：无 Key 时确认“词法检索”徽标与关键词高亮，启用后确认覆盖率、补齐按钮、“混合检索”徽标和 5 条“语义相近”结果，测试结束清除桩向量并恢复演示库。`scripts/extension_smoke.mjs` 另用真实浏览器验证扩展提取、按钮文字清理、预览、Bearer 鉴权与发送体结构。另外用 Performance API 验证首屏 JS 8KB、请求数 2、移动端 LCP 268ms，并检查 Service Worker 缓存版本与静态资源版本参数。
 
 截图与走查过程中发现并修复了三个问题：
 
@@ -462,7 +468,7 @@ node scripts/screenshots.mjs
 ## 13. 限制与改进方向
 
 1. **单机规模**：未做分布式与高并发压测；并发导入依靠唯一键 + advisory lock 保证正确性。
-2. **中文检索**：`pg_trgm` 对 1–2 字短查询选择性差；数据量增大后可引入 `zhparser` 或外部搜索引擎。
+2. **中文检索**：`pg_trgm` 对 1–2 字短查询选择性差；混合检索可补足语义召回，但需要部署方配置嵌入模型并承担相应调用成本，数据量更大时仍可引入 `zhparser` 或外部搜索引擎。
 3. **模拟数据**：会话模板较规整，重复追问句会命中查重；真实数据需要平台适配层与更复杂的清洗规则。
 4. **Text2SQL**：mock 规则只覆盖常见问题；真实 LLM 的 SQL 质量依赖模型与 Prompt，仍需守卫与人工复核。
 5. **管理员权限**：当前只做用户启停与聚合统计；若扩展审计功能，需要单独设计“可查看元数据但不可查看正文”的视图。
@@ -499,7 +505,7 @@ node scripts/screenshots.mjs
 | `app/services/text2sql_service.py` | 生成、守卫、只读执行、审计 |
 | `app/permissions.py` | 课程角色与会话可见性 |
 | `extension/` | Chrome MV3 扩展、隐私说明与回退指引 |
-| `scripts/verify.py` | 35 项端到端验收 |
+| `scripts/verify.py` | 37 项端到端验收 |
 | `scripts/extension_smoke.mjs` | 扩展提取与发送契约冒烟 |
 | `docs/design.md` | 数据库设计详解 |
 | `docs/requirements.md` | R01-F01 需求拆解 |

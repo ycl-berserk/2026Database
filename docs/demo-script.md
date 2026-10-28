@@ -36,13 +36,13 @@ curl -s http://127.0.0.1:8000/healthz
 | 0:00–0:35 | 开场与选题 | 登录页 | 业务问题、模拟数据声明 |
 | 0:35–1:15 | 登录与概览 | `/login` → `/dashboard` | Session、PBKDF2、按用户过滤 |
 | 1:15–2:00 | 课程与共享 | `/courses`、`/courses/1` | 课程成员 M:N、owner/editor/viewer |
-| 2:00–2:50 | 检索与上下文 | `/conversations?q=隔离级别`、会话详情 | trgm + ILIKE、分页、seq_no 上下文 |
+| 2:00–2:50 | 检索与上下文 | `/conversations?q=隔离级别`、会话详情 | trgm + ILIKE、可选 pgvector + RRF、分页、seq_no 上下文 |
 | 2:50–3:50 | 导入与查重 | `/imports`、预览页、`/tokens` | 解析校验、JSONB 预览、唯一键、单事务、原生导出适配、Bearer 令牌 |
 | 3:50–4:40 | 批注与复习 | `/annotations`、`/reviews` | 1:N、UNIQUE(user_id, annotation_id)、间隔重复 |
 | 4:40–5:30 | 统计与导出 | `/stats`、CSV / Markdown | JOIN、GROUP BY、FILTER、窗口函数、CTE |
 | 5:30–6:40 | Text2SQL | `/text2sql` | 权限视图、只读角色、SQL 守卫、审计 |
 | 6:40–7:20 | 权限边界 | bob 403、admin | 应用层 + SQL 作用域 + 数据库权限 |
-| 7:20–7:50 | 设计与验收 | E-R 图、`verify.py` | 8 实体、12 联系、14 张表、35 项验收 |
+| 7:20–7:50 | 设计与验收 | E-R 图、`verify.py` | 8 实体、12 联系、14 张表、37 项验收 |
 | 7:50–8:00 | 收尾 | 报告 / README | 可复现命令与限制 |
 
 如果时间紧，优先保留：**检索 → 导入查重 → 批注复习 → Text2SQL → 权限 403**；统计和 E-R 可各用 20 秒带过。
@@ -121,6 +121,8 @@ curl -s http://127.0.0.1:8000/healthz
 **口播**：
 
 > 检索不是只搜标题：会话标题和消息正文都会匹配。中文没有天然分词，所以这里用 PostgreSQL 的 `pg_trgm` GIN 索引配合 `ILIKE` 做子串检索，查询参数全部参数化。
+>
+> 如果部署方配置了嵌入模型，这里会自动叠加 pgvector 语义召回：词法和向量各取 100 个候选，用 RRF 融合排名，纯语义命中的会话会标“语义相近”。没有配置模型时页面标“词法检索”，功能完全不受影响。
 >
 > 打开会话后按 `seq_no` 排序，能围绕命中的消息看上下文；消息和会话是 1:N，`(conversation_id, seq_no)` 唯一，保证同一会话内顺序不重复。
 
@@ -267,7 +269,7 @@ curl -s http://127.0.0.1:8000/healthz
 .venv/Scripts/python.exe scripts/verify.py --json data/verification/report.json
 ```
 
-4. 指出输出 `35/35 PASS` 与报告路径。
+4. 指出输出 `37/37 PASS` 与报告路径。
 5. 可选：讲解 Text2SQL 金标准评测，指出 30 题中 mock 准确率 56.7%，但合法率与越权拦截率均为 100%。
 
 **口播**：
@@ -276,7 +278,7 @@ curl -s http://127.0.0.1:8000/healthz
 >
 > 逻辑设计上，标签、课程成员、会话标签都拆成关联表，满足 1NF；核心表用单列代理键，关联表的非键属性依赖整个复合键；会话不冗余 owner，消息不冗余课程和来源，避免传递依赖。`import_batches.payload` 是预览期的受控冗余，导入完成后清理。
 >
-> 验收脚本覆盖表与约束、演示数据、登录权限、导入幂等、平台适配、检索、批注复习、统计、采集令牌、Text2SQL 守卫/预检/金标准评测/拒绝与跨用户隔离、导出和事务回滚，共 35 项。
+> 验收脚本覆盖表与约束、演示数据、登录权限、导入幂等、平台适配、检索、批注复习、统计、采集令牌、Text2SQL 守卫/预检/金标准评测/拒绝与跨用户隔离、导出、混合检索和数据一致性，共 37 项。
 
 **备用画面**：`docs/screenshots/16-er-chen.png`、`docs/verification/report.json`（实际路径 `data/verification/report.json`）。
 

@@ -43,6 +43,7 @@
 | R03-F03 | 会话上下文 | 会话 ID、发送者筛选 | 消息按 `seq_no` 排序；上下文窗口；批注内联；发送者统计 | 无权限 403；会话不存在 404 | `conversation_service.get_conversation`、`routers/conversations.py` | `verify.search.context`、`test_search.py` |
 | R03-F04 | 数据范围过滤 | 当前用户 ID | 只返回本人来源或共享课程下的会话 | 管理员不进入课程页面 | `permissions.can_access_conversation`、SQL 作用域 | `test_permissions.py`、`verify.scope` |
 | R03-F05 | 全局搜索 | 关键词（≤ 100 字） | 会话/消息、本人批注、课程、标签分组结果；`/` 或 `Ctrl/Cmd+K` 唤起 | 空查询给出提示；管理员不得检索他人正文 | `search_service.global_search`、`routers/search.py`、`static/app.js` | `tests/integration/test_search.py`、`verify.search.global` |
+| R03-F06 | 混合检索（可选） | 关键词、当前用户 | 词法候选 + 向量候选各 100，RRF(k=60) 融合；页面标注“混合检索 / 词法检索”与向量覆盖率 | 未配置 Key、嵌入调用失败、维度不符均自动退回词法；向量候选严格限制在本人可见消息；管理员 0 结果 | `embedding_service.py`、`conversation_service.list_conversations`、`routers/search.py`、迁移 `004_add_message_embeddings.sql` | `test_hybrid_search.py`、`test_hybrid_search_vector.py`、`verify.search.hybrid` |
 
 **设计要点**
 
@@ -151,10 +152,10 @@
 | --- | --- | --- |
 | 安全 | 密码不落明文、所有写操作防 CSRF、越权三层防护 | PBKDF2、CSRF、角色检查 + SQL 作用域 + 触发器 |
 | 数据完整性 | 主外键、唯一、CHECK、事务 | `schema.sql`、导入确认事务、复习单语句更新 |
-| 性能 | 列表分页、关键查询有索引、统计实时但规模可控 | 索引设计、`LIMIT/OFFSET`、部分索引、trgm |
+| 性能 | 列表分页、关键查询有索引、统计实时但规模可控 | 索引设计、`LIMIT/OFFSET`、部分索引、trgm、HNSW |
 | 可维护性 | 关键 SQL 可定位、无 ORM 黑盒 | `sql/` + `services/` + 本文件映射 |
 | 可演示性 | 离线可演示、模拟数据可复现 | mock Text2SQL、`make_samples.py`、`seed_demo.py` |
-| 可验收 | 自动化测试与端到端报告 | 208 个 pytest 用例 + 35 项 `verify.py` 检查 |
+| 可验收 | 自动化测试与端到端报告 | 220 个 pytest 用例 + 37 项 `verify.py` 检查 |
 
 ## 需求到验收命令的映射
 
@@ -169,4 +170,4 @@
 .venv/Scripts/python.exe scripts/eval_text2sql.py
 ```
 
-验收输出示例见 `data/verification/report.json`：35/35 PASS，0 FAIL。
+验收输出示例见 `data/verification/report.json`：37/37 PASS，0 FAIL。

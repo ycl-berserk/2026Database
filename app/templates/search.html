@@ -23,7 +23,23 @@
       <b>{{ data.annotations | length }}</b> 条批注、
       <b>{{ data.courses | length }}</b> 门课程、
       <b>{{ data.tags | length }}</b> 个标签。
+      <span class="chip chip-soft"
+            title="{% if data.retrieval.mode == 'hybrid' %}RRF 融合词法排名与向量相似度{% else %}标题与消息子串匹配{% endif %}">
+        {{ '混合检索' if data.retrieval.mode == 'hybrid' else '词法检索' }}
+      </span>
     </p>
+    {% if embedding.enabled %}
+      <p class="muted search-summary">
+        向量索引：{{ embedding.coverage.embedded }} / {{ embedding.coverage.total }} 条可见消息
+        {% if embedding.pending %}
+          <form method="post" action="/search/embeddings" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="q" value="{{ q }}">
+            <button class="btn btn-ghost btn-sm" type="submit">更新向量索引</button>
+          </form>
+        {% endif %}
+      </p>
+    {% endif %}
   {% else %}
     <p class="muted search-summary">输入关键词开始搜索。会话会匹配标题与全部消息内容；批注只搜索你自己的记录。</p>
   {% endif %}
@@ -54,6 +70,7 @@
             <div class="record-meta">
               <span class="chip">{{ platform_label(row.platform) }}</span>
               {% if row.course_name %}<span class="chip chip-soft">{{ row.course_name }}</span>{% endif %}
+              {% if row.hit_mode == 'vector' %}<span class="chip chip-soft">语义相近</span>{% endif %}
               <span>{{ row.message_count }} 条消息</span>
               <span class="muted">{{ row.last_message_at | dt }}</span>
             </div>

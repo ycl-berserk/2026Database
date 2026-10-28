@@ -43,7 +43,7 @@ curl -s http://127.0.0.1:8000/healthz
 | 5:05–5:45 | 统计与导出 | `/stats`、CSV / Markdown | JOIN、GROUP BY、FILTER、窗口函数、CTE |
 | 5:45–6:45 | Text2SQL | `/text2sql` | 权限视图、只读角色、SQL 守卫、审计 |
 | 6:45–7:20 | 权限边界 | bob 403、admin | 应用层 + SQL 作用域 + 数据库权限 + 审计元数据 |
-| 7:20–7:50 | 设计与验收 | E-R 图、`verify.py` | 8 实体、12 联系、16 张表、41 项验收 |
+| 7:20–7:50 | 设计与验收 | E-R 图、`verify.py` | 8 实体、12 联系、16 张表、42 项验收 |
 | 7:50–8:00 | 收尾 | 报告 / README | 可复现命令与限制 |
 
 如果时间紧，优先保留：**检索 → 导入查重 → 批注复习 → 知识先修图 → Text2SQL → 权限 403**；统计和 E-R 可各用 20 秒带过。
@@ -275,17 +275,18 @@ curl -s http://127.0.0.1:8000/healthz
 3. 地址栏直接访问 `/courses/1/edit`，展示 403 页面（`docs/screenshots/15-permission-denied.png`）。
 4. 可选：退出 bob，登录 `admin` / `Admin123!`，进入 `/admin`，指出只有用户状态、聚合计数与审计时间线，没有会话正文。
 5. 可选：向下滚动到「审计历史」，按对象筛选“课程”，指出版本记录只含操作者、记录主键和变更列名（如 `description`），没有列值；说明消息/批注/复习表不在审计范围。
+6. 可选：点击「数据库观测」，展示库大小、缓存命中率、连接/事务、I/O、表访问与索引使用；切换执行计划到“到期复习”，指出只使用白名单查询与 `EXPLAIN (FORMAT JSON)`，页面没有任意 SQL 输入框，慢查询只显示归一化语句和指标。
 6. 可选：admin 直接访问 `/conversations`，同样 403。
 
 **口播**：
 
 > 权限做了三层：页面和服务层先判角色；SQL 查询再按 `course_members` 和 `sources.owner_id` 限制作用域；数据库层还有外键、CHECK、触发器和只读角色兜底。viewer 直接改 URL 也会被服务层拦截。
 >
-> 管理员只做账号启停、系统聚合统计和结构变更审计，不读取他人消息正文、批注或复习内容；管理员访问个人会话页会得到 403。停用账号也不会删除历史数据。
+> 管理员只做账号启停、系统聚合统计、结构变更审计和数据库观测，不读取他人消息正文、批注或复习内容；管理员访问个人会话页会得到 403。停用账号也不会删除历史数据。
 >
 > 审计只覆盖课程、课程成员和账号三张表：谁在什么时候改了哪条记录、改了哪些列；不记录列值，密码列被显式排除，学习内容表根本不建触发器。审计行由 `SECURITY DEFINER` 触发器写入，应用角色只能读；清理函数最少保留 90 天。
 
-**备用画面**：`docs/screenshots/14-admin.png`、`14b-admin-audit.png`、`15-permission-denied.png`。
+**备用画面**：`docs/screenshots/14-admin.png`、`14b-admin-audit.png`、`28-observability.png`、`15-permission-denied.png`。
 
 ---
 
@@ -294,14 +295,14 @@ curl -s http://127.0.0.1:8000/healthz
 **操作**：
 
 1. 打开 `docs/er-chen.svg` 或 `docs/screenshots/16-er-chen.png`，指出 8 个核心实体和 12 组联系。
-2. 打开 `docs/design.md`，快速展示 16 张表、范式分析、删除策略与审计边界。
+2. 打开 `docs/design.md`，快速展示 16 张表、范式分析、删除策略、审计边界与观测页设计。
 3. 在终端执行验收脚本：
 
 ```bash
 .venv/Scripts/python.exe scripts/verify.py --json data/verification/report.json
 ```
 
-4. 指出输出 `41/41 PASS` 与报告路径。
+4. 指出输出 `42/42 PASS` 与报告路径。
 5. 可选：讲解 Text2SQL 金标准评测，指出 30 题中 mock 准确率 56.7%，但合法率与越权拦截率均为 100%。
 
 **口播**：
@@ -310,7 +311,7 @@ curl -s http://127.0.0.1:8000/healthz
 >
 > 逻辑设计上，标签、课程成员、会话标签都拆成关联表，满足 1NF；核心表用单列代理键，关联表的非键属性依赖整个复合键；会话不冗余 owner，消息不冗余课程和来源，避免传递依赖。`import_batches.payload` 是预览期的受控冗余，导入完成后清理。标签之间的先修关系单独建边表，闭包实时递归，不存冗余路径。审计表只记录结构变更的元数据，不复制业务内容。
 >
-> 验收脚本覆盖表与约束、演示数据、登录权限、导入幂等、平台适配、检索、批注复习、整理建议、知识先修图、统计、采集令牌与作用域、Text2SQL 守卫/预检/金标准评测/拒绝与跨用户隔离、导出、混合检索、RLS 视图对比、审计元数据与角色边界和数据一致性，共 41 项。
+> 验收脚本覆盖表与约束、演示数据、登录权限、导入幂等、平台适配、检索、批注复习、整理建议、知识先修图、统计、采集令牌与作用域、Text2SQL 守卫/预检/金标准评测/拒绝与跨用户隔离、导出、混合检索、RLS 视图对比、审计元数据与角色边界、数据库观测指标与事务回滚，共 42 项。
 
 **备用画面**：`docs/screenshots/16-er-chen.png`、`docs/verification/report.json`（实际路径 `data/verification/report.json`）。
 
@@ -345,11 +346,12 @@ curl -s http://127.0.0.1:8000/healthz
 
 ## 4. 录像后的清理
 
-截图或演示可能留下预览批次和 Text2SQL 审计记录，不影响业务数据，但会让「最近导入批次」多出一条 preview。需要恢复干净演示库时执行：
+截图或演示可能留下预览批次、采集令牌和 Text2SQL 审计记录，不影响业务数据，但会让「最近导入批次」多出一条 preview。需要恢复干净演示库时执行：
 
 ```bash
 docker compose exec -T db psql -U postgres -d learning_space \
   -c "DELETE FROM app.import_batches WHERE status = 'preview';" \
+  -c "DELETE FROM app.api_tokens;" \
   -c "DELETE FROM app.text2sql_log;"
 ```
 
@@ -389,5 +391,5 @@ node scripts/screenshots.mjs --record
 | 知识先修图 | `/tags/graph` | `27-tag-graph.png`、`27b-tag-graph-detail.png` |
 | 统计 | `/stats` | `11-stats.png` |
 | Text2SQL | `/text2sql` | `12-text2sql.png`、`13-text2sql-result.png`、`13b-text2sql-history.png` |
-| 管理 / 越权 | `/admin`、403 页 | `14-admin.png`、`14b-admin-audit.png`、`15-permission-denied.png` |
+| 管理 / 越权 | `/admin`、`/admin/observability`、403 页 | `14-admin.png`、`14b-admin-audit.png`、`28-observability.png`、`15-permission-denied.png` |
 | 概念设计 | E-R 图 | `16-er-chen.png` |

@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block title %}数据库观测{% endblock %}
+{% block page_title %}数据库观测{% endblock %}
+{% block page_subtitle %}仅聚合指标与归一化语句，不展示消息正文、批注或参数值{% endblock %}
+
+{% block topbar_actions %}
+  <a class="btn btn-ghost btn-sm" href="/admin">返回用户与系统</a>
+{% endblock %}
+
+{% block content %}
+<section class="stat-grid">
+  <div class="stat-card">
+    <span class="stat-label">数据库大小</span>
+    <strong class="stat-value">{{ overview.size_bytes | bytes }}</strong>
+    <small class="muted">{{ overview.datname }}</small>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">缓存命中率</span>
+    <strong class="stat-value">{% if overview.cache_hit_pct is not none %}{{ overview.cache_hit_pct }}%{% else %}—{% endif %}</strong>
+    <small class="muted">堆缓存 {{ overview.blks_hit | num }} / 读 {{ overview.blks_read | num }}</small>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">当前连接</span>
+    <strong class="stat-value">{{ overview.numbackends | num }}</strong>
+    <small class="muted">上限 {{ overview.max_connections | num }}</small>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">事务 / 回滚</span>
+    <strong class="stat-value">{{ overview.xact_commit | num }}</strong>
+    <small class="muted">回滚 {{ overview.xact_rollback | num }} · 死锁 {{ overview.deadlocks | num }}</small>
+  </div>
+</section>
+
+<div class="two-col">
+  <section class="panel">
+    <div class="panel-head">
+      <h2>I/O 统计</h2>
+      <span class="muted">pg_stat_io</span>
+    </div>
+    <div class="table-wrap">
+      <table class="table table-stack">
+        <thead>
+          <tr><th>后端类型</th><th>读</th><th>写</th><th>扩展</th><th>命中</th><th>逐出</th><th>fsync</th></tr>
+        </thead>
+        <tbody>
+          {% for row in io %}
+            <tr>
+              <td data-label="后端类型" class="mono">{{ row.backend_type }}</td>
+              <td data-label="读">{{ row.reads | num }}</td>
+              <td data-label="写">{{ row.writes | num }}</td>
+              <td data-label="扩展">{{ row.extends | num }}</td>
+              <td data-label="命中">{{ row.hits | num }}</td>
+              <td data-label="逐出">{{ row.evictions | num }}</td>
+              <td data-label="fsync">{{ row.fsyncs | num }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>表访问与膨胀</h2>
+      <span class="muted">前 12 张</span>
+    </div>
+    <div class="table-wrap">
+      <table class="table table-stack">
+        <thead>
+          <tr><th>表</th><th>顺序扫描</th><th>索引扫描</th><th>活/死元组</th><th>大小</th><th>最近 autovacuum</th></tr>
+        </thead>
+        <tbody>
+          {% for row in tables %}
+            <tr>
+              <td data-label="表" class="mono">{{ row.relname }}</td>
+              <td data-label="顺序扫描">{{ row.seq_scan | num }}</td>
+              <td data-label="索引扫描">{{ row.idx_scan | num }}</td>
+              <td data-label="活/死元组">{{ row.n_live_tup | num }} / {{ row.n_dead_tup | num }}</td>
+              <td data-label="大小">{{ row.size_bytes | bytes }}</td>
+              <td data-label="最近 autovacuum" class="muted">
+                {% if row.last_autovacuum %}{{ row.last_autovacuum | dt }}{% else %}—{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="muted hint">顺序扫描高且表较大时，检查查询谓词是否命中索引；死元组持续增长时检查 vacuum 策略。</p>
+  </section>
+</div>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>索引使用</h2>
+    <span class="muted">按扫描次数升序，0 次为未使用候选</span>
+  </div>
+  <div class="table-wrap">
+    <table class="table table-stack">
+      <thead>
+        <tr><th>索引</th><th>表</th><th>扫描</th><th>读取元组</th><th>回表</th><th>大小</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for row in indexes %}
+          <tr>
+            <td data-label="索引" class="mono">{{ row.indexrelname }}</td>
+            <td data-label="表" class="mono">{{ row.relname }}</td>
+            <td data-label="扫描">{{ row.idx_scan | num }}</td>
+            <td data-label="读取元组">{{ row.idx_tup_read | num }}</td>
+            <td data-label="回表">{{ row.idx_tup_fetch | num }}</td>
+            <td data-label="大小">{{ row.size_bytes | bytes }}</td>
+            <td>
+              {% if row.idx_scan == 0 %}<span class="chip">未使用</span>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted hint">统计从上次重置或实例启动开始累计；演示库数据量小，未使用不代表可以立即删除。</p>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>慢查询</h2>
+    <span class="muted">pg_stat_statements · 按平均耗时排序</span>
+  </div>
+  {% if slow.available %}
+    {% if slow.rows %}
+      <div class="table-wrap">
+        <table class="table table-stack">
+          <thead>
+            <tr><th>归一化语句</th><th>调用</th><th>平均</th><th>总计</th><th>行数</th><th>缓存命中</th></tr>
+          </thead>
+          <tbody>
+            {% for row in slow.rows %}
+              <tr>
+                <td data-label="归一化语句" class="mono">{{ row.query }}</td>
+                <td data-label="调用">{{ row.calls | num }}</td>
+                <td data-label="平均">{{ row.mean_ms | round(1) }} ms</td>
+                <td data-label="总计">{{ row.total_ms | round(1) }} ms</td>
+                <td data-label="行数">{{ row.rows | num }}</td>
+                <td data-label="缓存命中">{% if row.hit_pct is not none %}{{ row.hit_pct }}%{% else %}—{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="muted hint">语句中的常量已被 PostgreSQL 归一化为 <code>$1</code>，不会展示搜索关键词、消息正文或参数值。</p>
+    {% else %}
+      <p class="empty">还没有可统计的语句，先访问几个页面再回来。</p>
+    {% endif %}
+  {% else %}
+    <div class="notice notice-warning">
+      <strong>{{ slow.reason }}</strong>
+      <p>在 <code>docker-compose.yml</code> 的 db 服务中启用
+        <code>shared_preload_libraries=pg_stat_statements</code> 后重建容器；
+        内置的 I/O、表访问与执行计划仍然可用。</p>
+    </div>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>执行计划</h2>
+    <form method="get" action="/admin/observability" class="inline-form">
+      <select name="plan" aria-label="选择执行计划">
+        {% for value, label in plan_choices %}
+          <option value="{{ value }}" {% if plan.key == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-sm" type="submit">查看计划</button>
+    </form>
+  </div>
+  <p class="muted hint">{{ plan.description }} 仅做 <code>EXPLAIN (FORMAT JSON)</code> 估算，不执行查询。</p>
+  <pre class="code-block">{{ plan.sql }}</pre>
+  <div class="table-wrap">
+    <table class="table table-stack">
+      <thead>
+        <tr><th>节点</th><th>关系</th><th>启动代价</th><th>总代价</th><th>估算行</th><th>行宽</th><th>条件</th></tr>
+      </thead>
+      <tbody>
+        {% for row in plan.rows %}
+          <tr>
+            <td data-label="节点" class="mono" style="padding-left: {{ 0.45 + row.depth * 1.1 }}rem">
+              {% if row.depth %}<span class="muted">└ </span>{% endif %}{{ row.node_type }}
+            </td>
+            <td data-label="关系" class="mono">
+              {% if row.relation %}{{ row.relation }}{% if row.alias %} ({{ row.alias }}){% endif %}{% else %}—{% endif %}
+            </td>
+            <td data-label="启动代价">{{ "%.2f" | format(row.startup_cost or 0) }}</td>
+            <td data-label="总代价">{{ "%.2f" | format(row.total_cost or 0) }}</td>
+            <td data-label="估算行">{{ row.plan_rows | num }}</td>
+            <td data-label="行宽">{{ row.plan_width | num }}</td>
+            <td data-label="条件" class="mono muted">{{ row.detail or "—" }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if plan.planning_time %}
+    <p class="muted hint">规划耗时 {{ "%.2f" | format(plan.planning_time) }} ms。</p>
+  {% endif %}
+</section>
+
+<p class="muted hint">
+  页面只对系统管理员开放；所有指标来自 PostgreSQL 统计视图，不读取消息、批注或复习正文，
+  也不提供任意 SQL 输入框。
+</p>
+{% endblock %}

@@ -1,6 +1,6 @@
 # v2 改进路线图
 
-> 状态：Phase 1、Phase 2、Phase 3 已完成，Phase 4 的 K2、A2、A1、D1、D2 已完成（T1、T2、T5、R1、R6、K2、A1、A2、D1、D2）。当前基线为 274 项测试（155 单元 + 119 集成）与 41 项端到端验收，本路线图的任何后续项都不得破坏这些基线。
+> 状态：Phase 1、Phase 2、Phase 3、Phase 4 已完成（T1、T2、T5、R1、R6、K2、A1、A2、D1、D2、D3）。当前基线为 279 项测试（155 单元 + 124 集成）与 42 项端到端验收，本路线图的任何后续项都不得破坏这些基线。
 >
 > 面向对象：课程小组全体成员。每项都有编号，可据此开 Issue、分任务、写周报。
 
@@ -111,7 +111,7 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 | --- | --- | --- | --- | --- | --- |
 | D1 | RLS + GUC，与现有 `security_barrier` 视图方案做对比实验 | 答辩 | M | 完成 | `rls_experiment` 在 `force_rollback` 事务内建随机 schema/角色与克隆表，对比视图、应用层 WHERE、RLS 三种读取方式；三种方式行集合一致，GUC 未设置均返回 0 行；视图产生 `Subquery Scan`，RLS 计划与 WHERE 相同；新增 2 项单元 + 2 项集成测试、`verify.db.rls` 与 `scripts/rls_experiment.py`；不修改 `app` 基表 |
 | D2 | 审计历史表 + 通用触发器 | 答辩 | M | 完成 | 迁移 007 新增 `audit_log`（第 16 张表）与 `SECURITY DEFINER` 通用触发器，审计 `courses` / `course_members` / `users`；只记对象、动作、主键与变更列名，不记列值、不记密码列，消息/批注/复习表不审计；操作者经事务内 GUC `app.actor_user_id` 传入。`ls_app` 仅可 `SELECT`，清理函数最少保留 90 天；管理页新增筛选时间线与“清理过期记录”，新增 6 项集成测试、`verify.db.audit` 与截图 `14b-admin-audit.png` |
-| D3 | 观测页：`pg_stat_statements` / `pg_stat_io` / 慢查询 / EXPLAIN JSON 可视化 | 答辩 | M | 待办 | 仅 admin 可见，不涉及消息正文 |
+| D3 | 观测页：`pg_stat_statements` / `pg_stat_io` / 慢查询 / EXPLAIN JSON 可视化 | 答辩 | M | 完成 | 迁移 008 条件安装 `pg_stat_statements`（未预加载时页面降级提示）；`/admin/observability` 展示库大小、缓存命中率、连接数、事务、I/O、表访问/死元组、索引使用与慢查询；执行计划只接受 4 个白名单键，`EXPLAIN (FORMAT JSON)` 不执行查询；慢查询只看 SELECT/WITH/INSERT/UPDATE/DELETE，并按 `pg_stat_statements`/`EXPLAIN` 过滤；仅 admin 可见，不提供任意 SQL 输入，不读取正文；新增 5 项集成测试、`verify.db.observability`、桌面截图 `28-observability.png` 与手机截图 `28b-observability-mobile.png` |
 | D4 | PG18：`uuidv7()`、虚拟生成列、`RETURNING OLD/NEW`、`NOT NULL NOT VALID`、AIO 基准 | 答辩 | S/M | 待办 | 独立分支与镜像，不改主线 |
 | D5 | PG19 Beta：SQL/PGQ 属性图（知识点先修关系）、`ON CONFLICT DO SELECT` | 实验 | M | 待办 | 独立 compose profile，Beta 不稳定 |
 | D6 | Apache AGE 图查询替代 | 实验 | M | 待办 | 扩展需编译 |
@@ -190,7 +190,7 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 
 **Phase 3 进度**：T1 AST 校验、T2 EXPLAIN 预检、T5 金标准评测、R1 pgvector 混合检索、R6 自动标签/摘要建议已完成，Phase 3 收尾。
 
-**Phase 4 进度**：K2 知识先修图、A1 MCP 工具接口、A2 命令行、D1 RLS 对比实验与 D2 审计历史已完成（16 张表、15 个视图、9 个触发器；274 项测试、41 项验收）。下一步 D3 观测页。
+**Phase 4 进度**：K2 知识先修图、A1 MCP 工具接口、A2 命令行、D1 RLS 对比实验、D2 审计历史与 D3 数据库观测页已完成（16 张表、15 个视图、9 个触发器；279 项测试、42 项验收）。Phase 4 收尾。
 
 每个阶段的统一验收：
 

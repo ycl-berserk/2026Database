@@ -34,6 +34,7 @@ from app.services import (
     embedding_service,
     export_service,
     import_service,
+    observability_service,
     review_service,
     search_service,
     stats_service,
@@ -1082,6 +1083,41 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             conn.execute("SELECT set_config('app.actor_user_id', '', true)")
         return "课程更新记录操作者、主键与变更列名；应用角色对审计表只读"
     report.run("db.audit", "数据库：审计触发器与只读边界", audit_boundary)
+
+    def observability():
+        stats = observability_service.overview(conn)
+        _ok(stats is not None and stats["size_bytes"] > 0, "数据库大小统计异常")
+        hit = stats["cache_hit_pct"]
+        _ok(hit is None or 0 <= hit <= 100, f"缓存命中率越界：{hit}")
+        io_rows = observability_service.io_stats(conn)
+        _ok(bool(io_rows), "pg_stat_io 没有返回后端统计")
+        tables = observability_service.table_activity(conn)
+        _ok(
+            any(row["relname"] == "messages" for row in tables),
+            "表访问统计缺少 messages",
+        )
+        indexes = observability_service.index_usage(conn)
+        _ok(bool(indexes), "索引使用统计为空")
+        plan = observability_service.explain_plan(conn, "search_messages")
+        _ok(
+            bool(plan["rows"]) and plan["rows"][0]["depth"] == 0,
+            "EXPLAIN JSON 未解析出根节点",
+        )
+        ext = conn.execute(
+            "SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements'"
+        ).fetchone()
+        _ok(ext is not None, "pg_stat_statements 扩展未安装")
+        member = conn.execute(
+            "SELECT pg_has_role('ls_app', 'pg_read_all_stats', 'MEMBER') AS ok"
+        ).fetchone()["ok"]
+        _ok(member, "ls_app 未获得 pg_read_all_stats")
+        slow = observability_service.slow_queries(conn)
+        _ok(slow["available"], f"慢查询统计不可用：{slow['reason']}")
+        return (
+            f"{len(io_rows)} 类后端 I/O、{len(tables)} 张表、{len(indexes)} 个索引；"
+            f"计划根节点 {plan['rows'][0]['node_type']}；慢查询 {len(slow['rows'])} 条"
+        )
+    report.run("db.observability", "数据库：观测指标与 EXPLAIN JSON", observability)
 
     return state
 

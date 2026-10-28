@@ -198,7 +198,17 @@ async function run() {
     await shot(admin, "14-admin.png");
     await admin.goto(`${BASE}/admin`, { waitUntil: "networkidle" });
     await shot(admin, "14b-admin-audit.png");
+
+    await admin.goto(`${BASE}/admin/observability`, { waitUntil: "networkidle" });
+    await admin.selectOption('select[name="plan"]', "due_reviews");
+    await Promise.all([
+      admin.waitForURL(/plan=due_reviews/),
+      admin.locator('form[action="/admin/observability"] button[type="submit"]').click(),
+    ]);
+    await shot(admin, "28-observability.png");
     await adminCtx.close();
+
+    await adminMobilePass(browser);
 
     // bob：viewer 越权被拒（DB 课程为 viewer）；403 资源错误是预期行为
     const { context: bobCtx, page: bob } = await login(browser, "bob", {
@@ -330,6 +340,36 @@ async function mobilePass(browser) {
   }
   if (!swReady) problems.push("mobile: Service Worker 未注册（需 localhost 或 HTTPS）");
 
+  await context.close();
+}
+
+async function adminMobilePass(browser) {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await context.newPage();
+  watch(page, "admin-mobile");
+  await page.goto(`${BASE}/login`, { waitUntil: "networkidle" });
+  await page.fill('input[name="username"]', ACCOUNTS.admin.username);
+  await page.fill('input[name="password"]', ACCOUNTS.admin.password);
+  await Promise.all([
+    page.waitForURL("**/dashboard"),
+    page.click('button[type="submit"]'),
+  ]);
+  await page.goto(`${BASE}/admin/observability`, { waitUntil: "networkidle" });
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+  );
+  if (overflow > 1) problems.push(`admin-mobile/observability 横向溢出 ${overflow}px`);
+  await page.screenshot({
+    path: path.join(OUT, "28b-observability-mobile.png"),
+    fullPage: true,
+    animations: "disabled",
+  });
+  console.log("  ✓ 28b-observability-mobile.png");
   await context.close();
 }
 

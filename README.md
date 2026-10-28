@@ -4,7 +4,7 @@
 
 系统把 Qoder / ChatGPT / DeepSeek 等平台的问答导出文件解析为统一结构，按课程、来源、标签整理；提供中文检索、全局搜索、会话上下文、批注、间隔复习、统计导出，并额外实现一个受只读权限视图保护的 **Text2SQL** 页面。采集侧支持平台原生导出适配、采集令牌 + Bearer 导入接口，以及一个“点击才上传”的 MV3 浏览器扩展；另提供命令行与 MCP 工具接口，方便脚本和 AI 客户端复用同一套权限过滤。
 
-> 演示数据全部为围绕课程知识点生成的模拟聊天记录，不含任何真实个人信息。系统管理员只查看用户、聚合统计与结构变更审计（对象/动作/变更列名，不含内容），不读取他人消息正文或批注。
+> 演示数据全部为围绕课程知识点生成的模拟聊天记录，不含任何真实个人信息。系统管理员只查看用户、聚合统计、结构变更审计（对象/动作/变更列名，不含内容）与数据库观测指标（归一化 SQL、对象名与代价，不含参数值），不读取他人消息正文或批注。
 
 ## 功能一览
 
@@ -21,10 +21,11 @@
 | 统计与导出 | 概览、课程排名、月度活跃补零、标签 TopN、批注解决率、复习状态、重复内容检测；统计 CSV、单会话 Markdown |
 | 用户与权限 | Session 登录、PBKDF2 密码哈希、CSRF、系统角色 + 课程角色、应用层与数据库层双重防护 |
 | 数据库隔离实验 | 在只读演示库的临时事务中对比 `security_barrier` 视图、应用层 WHERE 与 RLS；结果与实验对象全部回滚 |
+| 数据库观测 | 管理员页展示库大小、缓存命中率、连接与事务、`pg_stat_io`、表访问/死元组、索引使用、慢查询与白名单 `EXPLAIN (FORMAT JSON)`；不提供任意 SQL 输入框 |
 | Text2SQL | 自然语言→SQL→AST 守卫→EXPLAIN 预检→只读执行→表格展示、解释、审计历史；无 API Key 时使用本地规则 mock |
 | 命令行 | `ls search` / `ls import`：用采集令牌调用 `/api/search` 与 `/api/ingest`，支持环境变量、课程覆盖与 `--json` 输出 |
 | MCP 接口 | stdio JSON-RPC 服务：`search`、`get_conversation`、`list_due_reviews` 只读；令牌显式授予 `annotate` 后才开放 `add_annotation` |
-| 管理 | 用户启停、系统聚合统计；审计时间线只记录课程/成员/账号的结构变更（对象、动作、主键、变更列名），不读取正文；支持按 90 天保留期清理 |
+| 管理 | 用户启停、系统聚合统计、数据库观测；审计时间线只记录课程/成员/账号的结构变更（对象、动作、主键、变更列名），不读取正文；支持按 90 天保留期清理 |
 | 移动端与安装 | 390px 优先的底部标签栏 / 抽屉导航、列表卡片化、专注阅读模式；PWA manifest + Service Worker 应用壳缓存、离线页、桌面安装、分享快捷方式 |
 | 离线学习 | 会话快照、离线阅读与搜索、离线批注草稿、复习打卡 outbox，恢复联网后按事件 ID 幂等同步 |
 | 体验与可访问性 | 演示账号一键登录、空账号三步引导、删除类操作 5 秒撤销、可关闭且可播报的提示、错误页原因与恢复路径、键盘焦点可见、`prefers-reduced-motion` |
@@ -64,6 +65,8 @@ py -3.13 -m venv .venv
 .venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
+> `docker-compose.yml` 为 db 服务传入 `shared_preload_libraries=pg_stat_statements`，供管理员观测页读取慢查询；扩展本身由迁移 008 在演示库与测试库中条件创建。若数据库未预加载该库，页面会显示降级提示，其余指标不受影响。
+
 > 如果本地已有旧 `postgres:16-alpine` 数据卷：不同基础镜像的 libc 排序规则不同，切换镜像后需执行 `REINDEX DATABASE learning_space;`（或 `init_db.py --reset` 重建演示库），否则唯一索引可能查不到部分中英文混合标签。`verify.py` 的“索引与数据一致性”检查会提示该问题。
 
 打开 <http://127.0.0.1:8000>，使用下方演示账号登录。
@@ -74,7 +77,7 @@ py -3.13 -m venv .venv
 | --- | --- | --- |
 | `alice` | `Alice123!` | 学生；5 门课程 owner；拥有 3 个平台来源 |
 | `bob` | `Bob123!` | 学生；操作系统 editor、数据库 viewer |
-| `admin` | `Admin123!` | 管理员；只访问用户管理与系统聚合统计 |
+| `admin` | `Admin123!` | 管理员；只访问用户管理、聚合统计、审计与数据库观测 |
 
 这些密码仅用于本地演示；数据库只保存 PBKDF2-HMAC-SHA256（210,000 次迭代）哈希。
 
@@ -132,10 +135,10 @@ ls import data/samples/qoder_db.json --course-code DB --json
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（155 单元 + 119 集成，共 274 项）；集成测试需先初始化测试库
+# 全量测试（155 单元 + 124 集成，共 279 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest
 
-# 端到端验收：41 项 PASS/FAIL，写入 data/verification/report.json
+# 端到端验收：42 项 PASS/FAIL，写入 data/verification/report.json
 .venv/Scripts/python.exe scripts/verify.py --json data/verification/report.json
 
 # RLS / 视图 / 应用层 WHERE 隔离对比实验（全部回滚，输出 JSON）
@@ -187,7 +190,7 @@ learning-space/
 │   ├── schema.sql           # 12 张基线表、约束、索引、触发器
 │   ├── views.sql            # 15 个 t2s 只读权限视图
 │   ├── roles.sql            # ls_app / t2s_reader 最小权限
-│   ├── migrations/          # 增量迁移（review_logs、api_tokens、tag_edges、audit_log 等，记录到 meta.schema_migrations）
+│   ├── migrations/          # 增量迁移（review_logs、api_tokens、tag_edges、audit_log、观测扩展等，记录到 meta.schema_migrations）
 │   └── showcase.sql         # 报告用关键 SQL（带注释）
 ├── extension/               # Chrome MV3 扩展：内容脚本、弹窗、隐私与回退说明
 ├── scripts/                 # 初始化、迁移、种子、样例、验收、E-R、截图、扩展冒烟
@@ -210,6 +213,7 @@ learning-space/
 - **数据库角色**：`ls_app` 只有 `app` schema 的 DML 权限，无 DDL；`t2s_reader` 只能 `SELECT` `t2s` 视图，默认只读事务、3 秒语句超时。
 - **管理边界**：管理员看不到课程 / 会话页面，也不能读取他人消息正文、批注或复习内容。审计面板只展示课程、课程成员与账号的结构变更元数据（谁、何时、对哪条记录、改了哪些列名），不保存任何列值；密码列即使变更也不出现在审计里。
 - **审计与保留**：`audit_log` 由 `SECURITY DEFINER` 触发器写入，`ls_app` 仅可读；清理函数最少保留 90 天，避免保留策略被当作删证据的捷径。
+- **数据库观测边界**：`/admin/observability` 只展示 PostgreSQL 统计视图与 4 个白名单执行计划，不接受任意 SQL；慢查询展示归一化语句与指标，不包含参数值，也不关联消息或批注内容。`pg_stat_statements` 由迁移 008 条件安装；若容器未预加载扩展，页面会降级提示，I/O、表访问与执行计划仍可用。
 - **混合检索与隐私**：向量能力默认关闭。只有部署方配置 `EMBEDDING_API_KEY` 后，系统才会把可见消息正文发送到该嵌入服务；未配置时检索完全在本地数据库内完成。向量只用于本人可见范围，管理员没有向量召回入口。
 - **整理建议与隐私**：`SUGGEST_MODE=auto`（默认）下，只有配置了 `LLM_API_KEY` 且具备会话编辑权的用户点击「生成 AI 建议」时，系统才会把该会话前 40 条消息的节选发送到大模型；建议只回填表单，不自动写入。未配置 Key 时按钮隐藏，可手动填写标签与摘要。管理员没有该入口。
 
@@ -250,7 +254,7 @@ v1 已定稿并推送。下一阶段的方向与验收标准统一记录在 [`do
 | Phase 1 | 迁移机制、移动端信息架构、空状态引导、导入向导、PWA 安装、Share Target、粘贴导入、收件箱、静态资源优化 | 手机上可安装、可分享导入、导入有向导、列表不空转 |
 | Phase 2 | 离线阅读与复习 outbox、复习事件表、Ingest Token、浏览器扩展、平台导出适配器、全局搜索 | 断网可读可复习、采集更省事、找会话更快 |
 | Phase 3 | pgvector 混合检索、自动标签/摘要建议、AST 校验、EXPLAIN 预检、Text2SQL 评测集（T1 / T2 / T5 / R1 / R6 已完成） | 检索更准，整理更省事，Text2SQL 可证明 |
-| Phase 4 | 知识先修图、只读 MCP Server、CLI、RLS 对比、审计历史、SQL 观测页 | 从“记录库”变成“学习空间”，并有对外接口 |
+| Phase 4 | 知识先修图、只读 MCP Server、CLI、RLS 对比、审计历史、数据库观测页（K2 / A1 / A2 / D1 / D2 / D3 已完成） | 从“记录库”变成“学习空间”，并有对外接口 |
 | Phase 5 | Dockerfile、CI、Ruff/pyright、E2E，PG18/PG19 实验分支、FSRS | 可部署、可回归、有前沿实验 |
 
 **明确不做**：浏览器内 WASM 数据库、CRDT 多端同步、边缘部署、Redis/Celery/微服务、Electron、messages 分区表、语义缓存。
@@ -262,5 +266,5 @@ v1 已定稿并推送。下一阶段的方向与验收标准统一记录在 [`do
 - 单机课程项目，未做分布式部署与高并发压测；并发导入依靠唯一键与 `pg_advisory_xact_lock` 保证正确性。
 - PostgreSQL 原生全文检索对中文分词支持有限，因此默认使用 `pg_trgm` + `ILIKE`；配置向量模型后叠加 HNSW 语义召回，并用 RRF 融合两路排名。无模型、调用失败或维度不符时都会退回词法检索，页面上会标注当前模式。在 420 条消息的演示规模下，规划器通常选择顺序扫描，索引能力通过 `SET enable_seqscan = off` 的对比计划验证。
 - 模拟数据中多个会话共享常用追问句，因此“重复消息检测”会命中这些模板句；这是刻意保留的查重演示素材，不代表真实用户行为。
-- Playwright 截图脚本会临时创建一个导入预览批次和一条 Text2SQL 审计记录；演示库验收前可用 `scripts/verify.py` 的事务回滚检查，截图后可按需清理这两类演示痕迹。
+- Playwright 截图脚本会临时创建两个导入预览批次、一条采集令牌和一条 Text2SQL 审计记录；演示库验收前可用 `scripts/verify.py` 的事务回滚检查，截图后可按需清理这些演示痕迹。
 - 整理建议的输出由外部模型决定，同样的问题不保证每次一致；服务端只做 JSON 解析、去重与长度限制，并在 25 秒超时后返回可读错误。建议永远不会自动落库，必须由用户点击保存。

@@ -567,8 +567,69 @@ SELECT app.prune_audit_log(90);  -- 删除 90 天前的记录，返回删除行�
 
 管理员页面通过 `table_name` / `action` 两个可选条件筛选，并用 `count(*) FILTER` 汇总总量与近 7 天数量；审计表本身不在 `t2s` 视图中暴露，Text2SQL 无法查询。
 
+## 23. 数据库观测：统计视图与白名单执行计划
+
+管理员观测页只读 PostgreSQL 统计视图，不打开业务表正文。实例概览：
+
+```sql
+SELECT pg_size_pretty(pg_database_size(current_database())) AS size,
+       round(100.0 * blks_hit / nullif(blks_hit + blks_read, 0), 2) AS hit_pct,
+       numbackends, xact_commit, xact_rollback
+  FROM pg_stat_database
+ WHERE datname = current_database();
+```
+
+| size | hit_pct | numbackends | xact_commit | xact_rollback |
+| --- | --- | --- | --- | --- |
+| 11 MB | 99.62 | 3 | 998 | 16 |
+
+表访问与膨胀，按总大小排序（只取 `app` schema 前 3 行）：
+
+```sql
+SELECT relname, seq_scan, idx_scan, n_live_tup, n_dead_tup,
+       pg_size_pretty(pg_total_relation_size(relid)) AS size
+  FROM pg_stat_user_tables
+ WHERE schemaname = 'app'
+ ORDER BY pg_total_relation_size(relid) DESC
+ LIMIT 3;
+```
+
+| relname | seq_scan | idx_scan | n_live_tup | n_dead_tup | size |
+| --- | --- | --- | --- | --- | --- |
+| messages | 157 | 5217 | 420 | 32 | 1008 kB |
+| import_batches | 20 | 87 | 5 | 21 | 200 kB |
+| annotations | 223 | 1894 | 66 | 9 | 112 kB |
+
+慢查询来自可选的 `pg_stat_statements`，只保留 DML/SELECT，排除扩展自身与 `EXPLAIN`，不展示参数值：
+
+```sql
+SELECT left(regexp_replace(query, '\s+', ' ', 'g'), 220) AS query,
+       calls, round(mean_exec_time::numeric, 2) AS mean_ms
+  FROM pg_stat_statements
+ WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
+   AND query NOT ILIKE '%pg_stat_statements%'
+   AND query NOT ILIKE '%EXPLAIN%'
+   AND query ~* '^\s*(select|with|insert|update|delete)(\s|$)'
+ ORDER BY mean_exec_time DESC NULLS LAST, calls DESC
+ LIMIT 8;
+```
+
+执行计划不接受用户输入，只从 4 个白名单键取 SQL，并只做估算：
+
+```sql
+EXPLAIN (FORMAT JSON)
+SELECT r.id, r.due_date, r.interval_days
+  FROM app.review_items r
+ WHERE r.user_id = 1 AND r.status <> 'mastered'
+   AND r.due_date <= current_date
+ ORDER BY r.due_date, r.id
+ LIMIT 20;
+```
+
+应用把 JSON 计划拍平成表格（节点、关系、启动/总代价、估算行、行宽、条件），演示库中“到期复习”计划为 `Limit → Sort → Index Scan (review_items)`，条件为 `((user_id = 1) AND (due_date <= CURRENT_DATE))`。页面没有自由 SQL 输入框；`t2s_reader` 与此功能无关，观测页只对系统管理员开放。
+
 ---
 
 ### 覆盖的 SQL 知识点
 
-`WHERE` / `ORDER BY` / `LIMIT`、多表 `JOIN`、`LEFT JOIN`、`LATERAL`、`DISTINCT ON`、`GROUP BY` + `HAVING`、`COUNT(DISTINCT)`、`FILTER`、`CASE`、`COALESCE`、`generate_series`、`date_trunc`、窗口函数 `RANK()` 与 `count(*) OVER()`、CTE、`WITH RECURSIVE`、数组包含、JSONB 取值与键差异、`ON CONFLICT`、表达式索引、部分索引、GIN 索引、`EXPLAIN (ANALYZE, BUFFERS)`、事务级 GUC（`set_config`）与 `SECURITY DEFINER` 触发器。
+`WHERE` / `ORDER BY` / `LIMIT`、多表 `JOIN`、`LEFT JOIN`、`LATERAL`、`DISTINCT ON`、`GROUP BY` + `HAVING`、`COUNT(DISTINCT)`、`FILTER`、`CASE`、`COALESCE`、`generate_series`、`date_trunc`、窗口函数 `RANK()` 与 `count(*) OVER()`、CTE、`WITH RECURSIVE`、数组包含、JSONB 取值与键差异、`ON CONFLICT`、表达式索引、部分索引、GIN 索引、`EXPLAIN (ANALYZE, BUFFERS)`、`pg_stat_*` 统计视图与 `EXPLAIN (FORMAT JSON)`、事务级 GUC（`set_config`）与 `SECURITY DEFINER` 触发器。

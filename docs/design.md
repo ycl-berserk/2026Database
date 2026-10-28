@@ -47,7 +47,7 @@ Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查�
 
 ## 3. 关系模式
 
-16 张表全部位于 `app` schema（12 张基线表 + 迁移新增的 `review_logs`、`api_tokens`、`tag_edges`、`audit_log`）。
+16 张表全部位于 `app` schema（12 张基线表 + 迁移新增的 `review_logs`、`api_tokens`、`tag_edges`、`audit_log`）。迁移 008 只为观测页条件安装 `pg_stat_statements` 并授权，不新增表。
 
 ### 3.1 用户 `users`
 
@@ -433,6 +433,7 @@ AI 建议本身不建表：它是用户点击保存前的草稿，只存在于�
 | 复习打卡 | ✓ | ✓ | ✗ | ✗ |
 | 删除课程 | ✓（会话置空） | ✗ | ✗ | ✗ |
 | 管理用户 | ✗ | ✗ | ✗ | ✓ |
+| 查看数据库观测与审计 | ✗ | ✗ | ✗ | ✓（仅聚合与元数据） |
 
 三层防护：
 
@@ -450,6 +451,10 @@ AI 建议本身不建表：它是用户点击保存前的草稿，只存在于�
 ### 7.4 审计与只读边界
 
 `audit_log` 对 `ls_app` 只授予 `SELECT`；写入由 `SECURITY DEFINER` 触发器完成，清理走至少保留 90 天的 `app.prune_audit_log(integer)`，且 `PUBLIC` 无执行权限。审计只记录对象、主键与变更列名，不记录字段值；`password_hash` 不进入列名；消息、批注、复习内容表不开启审计。管理员页面因此只能回答“谁改了哪条课程/成员/账号”，不能回答“他写了什么”。
+
+### 7.5 观测页与执行计划
+
+`/admin/observability` 读取 `pg_stat_database`、`pg_stat_io`、`pg_stat_user_tables`、`pg_stat_user_indexes` 与可选的 `pg_stat_statements`，只做聚合与展示。页面没有 SQL 输入框；执行计划仅接受 4 个白名单键，使用 `EXPLAIN (FORMAT JSON)` 估算而不执行。慢查询只保留 SELECT/WITH/INSERT/UPDATE/DELETE，并排除 `pg_stat_statements` 与 `EXPLAIN` 自身。迁移 008 在扩展可用时条件创建 `pg_stat_statements`，`ls_app` 通过 `pg_read_all_stats` 读取集群统计；未预加载扩展时页面降级，不影响其他管理功能。管理员因此能判断“库是否健康”，但不能借观测页读取消息或批注正文。
 
 ## 8. Text2SQL 权限视图
 

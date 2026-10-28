@@ -625,9 +625,9 @@ def slide_permissions(prs):
 
 def slide_tests(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "14 / 测试与验收", "238 项测试与 39 项端到端验收全部通过", 15)
+    header(slide, "14 / 测试与验收", "247 项测试与 39 项端到端验收全部通过", 15)
 
-    stats = [("238", "自动化测试"), ("39", "端到端检查"), ("0", "失败项")]
+    stats = [("247", "自动化测试"), ("39", "端到端检查"), ("0", "失败项")]
     for index, (value, label) in enumerate(stats):
         x = 0.72 + index * 2.15
         rect(slide, x, 1.62, 1.95, 1.35, WHITE, radius=True, line=LINE, width=0.7)
@@ -636,7 +636,7 @@ def slide_tests(prs):
 
     code_block(slide, 0.72, 3.3, 6.0, 2.4,
                ".venv/Scripts/python.exe -m pytest -q\n"
-               "# 137 unit + 101 integration\n\n"
+               "# 143 unit + 104 integration\n\n"
                ".venv/Scripts/python.exe scripts/verify.py \\\n"
                "  --json data/verification/report.json", size=10.5)
     text(slide, 0.9, 5.78, 5.6, 0.75,
@@ -700,7 +700,7 @@ def slide_end(prs):
         "令牌 + 扩展 + 平台导出，离线也可读可复习",
         "标签先修图：触发器防环 + 递归闭包",
         "Text2SQL 由只读视图与角色做最终兜底",
-        "238 项测试 + 39 项验收，全部通过",
+        "247 项测试 + 39 项验收，全部通过",
         "README 五条命令从零复现",
     ]
     bullets(slide, 0.85, 3.15, 6.4, 2.4, left, size=14, color=RGBColor(0xE8, 0xE3, 0xD3), gap=8,

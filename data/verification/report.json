@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-10-28T06:09:54+00:00",
+  "generated_at": "2026-10-28T06:12:26+00:00",
   "database": "learning_space",
   "summary": {
     "total": 39,
     "passed": 39,
     "failed": 0,
-    "duration_ms": 1027
+    "duration_ms": 876
   },
   "counts": {
     "users": 3,
@@ -30,14 +30,14 @@
       "label": "Schema：15 张业务表与 15 个 t2s 视图",
       "status": "PASS",
       "detail": "15 张表、15 个权限视图",
-      "elapsed_ms": 3
+      "elapsed_ms": 2
     },
     {
       "key": "schema.constraints",
       "label": "Schema：主外键、唯一/检查约束、索引与触发器",
       "status": "PASS",
       "detail": "唯一键、CHECK、部分唯一索引与 6 个触发器齐全",
-      "elapsed_ms": 2
+      "elapsed_ms": 1
     },
     {
       "key": "schema.index_health",
@@ -51,7 +51,7 @@
       "label": "演示数据规模与来源标注",
       "status": "PASS",
       "detail": "3 用户 / 5 课程 / 30 会话 / 420 消息 / 66 批注 / 39 复习项 / 32 先修关系",
-      "elapsed_ms": 3
+      "elapsed_ms": 2
     },
     {
       "key": "data.import_batches",
@@ -65,14 +65,14 @@
       "label": "演示数据：收件箱未归类会话",
       "status": "PASS",
       "detail": "收件箱保留 3 个未归类会话，供批量整理演示",
-      "elapsed_ms": 17
+      "elapsed_ms": 12
     },
     {
       "key": "auth.passwords",
       "label": "认证：演示账号密码哈希与校验",
       "status": "PASS",
       "detail": "PBKDF2 哈希校验通过，错误密码被拒绝",
-      "elapsed_ms": 388
+      "elapsed_ms": 359
     },
     {
       "key": "auth.roles",
@@ -93,21 +93,21 @@
       "label": "权限：越权编辑与读取被拦截",
       "status": "PASS",
       "detail": "viewer / 非成员写操作与读取均被拒绝",
-      "elapsed_ms": 2
+      "elapsed_ms": 1
     },
     {
       "key": "import.preview",
       "label": "导入：重复文件预览与查重分类",
       "status": "PASS",
       "detail": "六个会话全部识别为 duplicate（内容哈希一致）",
-      "elapsed_ms": 10
+      "elapsed_ms": 8
     },
     {
       "key": "import.confirm",
       "label": "导入：确认入库幂等（ON CONFLICT 去重）",
       "status": "PASS",
       "detail": "重复确认新增 0 会话 / 0 消息，跳过 84 条",
-      "elapsed_ms": 21
+      "elapsed_ms": 20
     },
     {
       "key": "import.broken",
@@ -121,7 +121,7 @@
       "label": "导入：平台导出适配器（ChatGPT / Qoder / DeepSeek）",
       "status": "PASS",
       "detail": "ChatGPT mapping、Qoder sessions、DeepSeek Markdown 均映射为统一格式",
-      "elapsed_ms": 2
+      "elapsed_ms": 1
     },
     {
       "key": "search.keyword",
@@ -135,14 +135,14 @@
       "label": "检索：课程 / 标签筛选",
       "status": "PASS",
       "detail": "课程筛选 6 个会话，标签筛选正常",
-      "elapsed_ms": 3
+      "elapsed_ms": 2
     },
     {
       "key": "search.hybrid",
       "label": "搜索：pgvector 混合检索与范围隔离",
       "status": "PASS",
       "detail": "pgvector + HNSW 生效，RRF 命中向量会话，管理员 0 结果",
-      "elapsed_ms": 11
+      "elapsed_ms": 9
     },
     {
       "key": "search.context",
@@ -156,28 +156,28 @@
       "label": "统计：概览、课程、月度与复习聚合",
       "status": "PASS",
       "detail": "概览、5 门课程、8 个月活跃与复习摘要一致",
-      "elapsed_ms": 7
+      "elapsed_ms": 6
     },
     {
       "key": "stats.csv",
       "label": "导出：统计 CSV（UTF-8 BOM）",
       "status": "PASS",
       "detail": "CSV 导出 72 行",
-      "elapsed_ms": 10
+      "elapsed_ms": 8
     },
     {
       "key": "export.markdown",
       "label": "导出：单个会话 Markdown（含模拟数据声明）",
       "status": "PASS",
       "detail": "导出 SQL 执行顺序与 JOIN.md，73 行",
-      "elapsed_ms": 2
+      "elapsed_ms": 1
     },
     {
       "key": "annotation.lifecycle",
       "label": "批注与复习：创建、入队、间隔翻倍",
       "status": "PASS",
       "detail": "批注 → 复习项 → 间隔 2/4 天递增，事件幂等落库",
-      "elapsed_ms": 11
+      "elapsed_ms": 9
     },
     {
       "key": "review.activity",
@@ -191,49 +191,49 @@
       "label": "Text2SQL：mock 模式查询与结果",
       "status": "PASS",
       "detail": "自然语言→SQL→执行返回 28 条复习项（mock 模式）",
-      "elapsed_ms": 22
+      "elapsed_ms": 19
     },
     {
       "key": "t2s.scope",
       "label": "Text2SQL：t2s 视图按当前用户过滤",
       "status": "PASS",
       "detail": "同一 SQL 下 alice=30 / bob=12 / admin=0，行级过滤生效",
-      "elapsed_ms": 5
+      "elapsed_ms": 4
     },
     {
       "key": "t2s.guard",
       "label": "Text2SQL：单语句 / 只读 / 白名单守卫",
       "status": "PASS",
       "detail": "10 条危险 SQL 全部被拒绝，正常字面量未被误伤",
-      "elapsed_ms": 2
+      "elapsed_ms": 1
     },
     {
       "key": "t2s.preflight",
       "label": "Text2SQL：EXPLAIN 预检拦截高成本查询",
       "status": "PASS",
       "detail": "正常查询代价 24.31，高成本笛卡尔积被拒绝",
-      "elapsed_ms": 6
+      "elapsed_ms": 4
     },
     {
       "key": "t2s.eval",
       "label": "Text2SQL：金标准评测集与越权拦截",
       "status": "PASS",
       "detail": "30 题金标准全部合法，mock 准确率 56.7%，越权拦截 12/12",
-      "elapsed_ms": 338
+      "elapsed_ms": 258
     },
     {
       "key": "t2s.audit",
       "label": "Text2SQL：危险 SQL 拒绝与审计日志",
       "status": "PASS",
       "detail": "危险 SQL 被拒绝并写入 rejected 审计日志",
-      "elapsed_ms": 3
+      "elapsed_ms": 2
     },
     {
       "key": "t2s.role",
       "label": "Text2SQL：数据库只读角色兜底",
       "status": "PASS",
       "detail": "t2s_reader 无法访问 app schema，也无法写入",
-      "elapsed_ms": 2
+      "elapsed_ms": 1
     },
     {
       "key": "capture.paste",
@@ -247,14 +247,14 @@
       "label": "采集令牌：哈希存储、Bearer 认证、限流与幂等入库",
       "status": "PASS",
       "detail": "哈希存储、课程映射、重复幂等、60 次/分钟限流与撤销均生效",
-      "elapsed_ms": 20
+      "elapsed_ms": 18
     },
     {
       "key": "search.global",
       "label": "搜索：全局检索与课程范围隔离",
       "status": "PASS",
       "detail": "全局搜索命中本人会话，未泄露他人数据",
-      "elapsed_ms": 11
+      "elapsed_ms": 10
     },
     {
       "key": "inbox.organize",
@@ -268,14 +268,14 @@
       "label": "整理建议：标签幂等写入、摘要更新与越权拦截",
       "status": "PASS",
       "detail": "新标签幂等创建、摘要唯一更新、viewer 越权被拒",
-      "elapsed_ms": 14
+      "elapsed_ms": 12
     },
     {
       "key": "graph.prerequisites",
       "label": "知识先修图：递归闭包、分组与环检测",
       "status": "PASS",
       "detail": "6 个课程分组、32 条边；递归闭包距离正确，环被拒绝",
-      "elapsed_ms": 12
+      "elapsed_ms": 11
     },
     {
       "key": "tx.rollback",

@@ -21,6 +21,7 @@
 | 统计与导出 | 概览、课程排名、月度活跃补零、标签 TopN、批注解决率、复习状态、重复内容检测；统计 CSV、单会话 Markdown |
 | 用户与权限 | Session 登录、PBKDF2 密码哈希、CSRF、系统角色 + 课程角色、应用层与数据库层双重防护 |
 | Text2SQL | 自然语言→SQL→AST 守卫→EXPLAIN 预检→只读执行→表格展示、解释、审计历史；无 API Key 时使用本地规则 mock |
+| 命令行 | `ls search` / `ls import`：用采集令牌调用 `/api/search` 与 `/api/ingest`，支持环境变量、课程覆盖与 `--json` 输出 |
 | 管理 | 用户启停、系统聚合统计（不读正文） |
 | 移动端与安装 | 390px 优先的底部标签栏 / 抽屉导航、列表卡片化、专注阅读模式；PWA manifest + Service Worker 应用壳缓存、离线页、桌面安装、分享快捷方式 |
 | 离线学习 | 会话快照、离线阅读与搜索、离线批注草稿、复习打卡 outbox，恢复联网后按事件 ID 幂等同步 |
@@ -75,6 +76,25 @@ py -3.13 -m venv .venv
 
 这些密码仅用于本地演示；数据库只保存 PBKDF2-HMAC-SHA256（210,000 次迭代）哈希。
 
+### 命令行客户端
+
+在 `/tokens` 创建一次性显示的采集令牌后：
+
+```bash
+# 可选：安装入口命令 ls；不安装也可以用 python -m app.cli
+.venv/Scripts/python.exe -m pip install -e .
+
+export LS_BASE_URL=http://127.0.0.1:8000
+export LS_TOKEN=ls_xxxxxxxx
+
+ls search "隔离级别" --limit 5
+ls search "隔离级别" --json
+ls import data/samples/qoder_db.json --course-code DB
+ls import data/samples/qoder_db.json --course-code DB --json
+```
+
+`ls search` 走只读 `/api/search`，只返回令牌所属用户可见的会话、批注、课程与标签；`ls import` 复用 `/api/ingest` 的预览、查重与单事务入库，支持 `--course-code` 覆盖课程、`--platform` 覆盖来源平台。CLI 当前只接受统一 JSON；Markdown 请在网站导入页上传。
+
 ## 常用命令
 
 ```bash
@@ -82,7 +102,7 @@ py -3.13 -m venv .venv
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（137 单元 + 101 集成，共 238 项）；集成测试需先初始化测试库
+# 全量测试（143 单元 + 104 集成，共 247 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest
 
 # 端到端验收：39 项 PASS/FAIL，写入 data/verification/report.json
@@ -120,6 +140,7 @@ learning-space/
 │   ├── config.py            # 环境变量与上限配置
 │   ├── db.py                # 连接池、事务、行工厂
 │   ├── auth.py              # PBKDF2、Session、CSRF
+│   ├── cli.py               # ls search / ls import 命令行客户端
 │   ├── migrations.py        # 迁移发现、应用与版本记录
 │   ├── permissions.py       # 课程角色 / 会话可见性判定
 │   ├── routers/             # 页面与 JSON API

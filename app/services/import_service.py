@@ -412,7 +412,7 @@ def ingest_json(
 
     conversations = conn.execute(
         """
-        SELECT id, external_id, course_id
+        SELECT id, external_id, title, course_id
           FROM app.conversations
          WHERE source_id = %s AND external_id = ANY(%s)
          ORDER BY id

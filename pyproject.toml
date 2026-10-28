@@ -1,8 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "learning-space"
 version = "0.1.0"
 description = "个人学习空间：以聊天记录为核心的课程复习数据库应用系统"
 requires-python = ">=3.12"
+
+[project.scripts]
+ls = "app.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -53,7 +53,7 @@ jobs:
           path: |
             packaging/build/pgsql
             packaging/.cache
-          key: pg16-${{ hashFiles('packaging/postgres/manifest.json', 'packaging/postgres/build_pgvector.ps1', 'packaging/postgres/fetch_trim.py', 'packaging/build.py') }}
+          key: pg16-${{ hashFiles('packaging/postgres/manifest.json', 'packaging/postgres/build_pgvector.py', 'packaging/postgres/fetch_trim.py', 'packaging/build.py') }}
 
       - name: Install Tauri CLI
         run: npm install --global @tauri-apps/cli@^2

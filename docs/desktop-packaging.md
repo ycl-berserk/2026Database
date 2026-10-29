@@ -98,7 +98,7 @@ npm install
 npm run build          # tauri build --bundles nsis
 ```
 
-`packaging/build.py` 按顺序执行：`fetch_trim.py --stage all` → `build_pgvector.ps1` →
+`packaging/build.py` 按顺序执行：`fetch_trim.py --stage all` → `build_pgvector.py` →
 PyInstaller `ls-server.spec` → 复制 `pgsql/`、`sidecar/`、`sql/` 到
 `desktop/src-tauri/resources/`，写入 `version.json`，并输出
 `packaging/build/size-report.{json,md}`；在 GitHub Actions 中同时追加到 Step Summary。

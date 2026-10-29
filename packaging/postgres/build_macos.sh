@@ -5,6 +5,11 @@
 # so packaging/build.py can trim it after pgvector has been built against it.
 set -euo pipefail
 
+# `uv run` prepends .venv/bin to PATH, where the project installs a console
+# script named `ls`; it would shadow /bin/ls and break autoconf's `ls -di .`
+# probe. Keep the system tools ahead of any virtualenv entries.
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
 VERSION="${PG_VERSION:-16.10}"
 SHA256="${PG_SHA256:-de8485f4ce9c32e3ddfeef0b7c261eed1cecb54c9bcd170e437ff454cb292b42}"
 URL="https://ftp.postgresql.org/pub/source/v${VERSION}/postgresql-${VERSION}.tar.bz2"

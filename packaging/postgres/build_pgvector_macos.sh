@@ -2,6 +2,10 @@
 # Build pgvector against the locally built PostgreSQL (macOS).
 set -euo pipefail
 
+# `uv run` prepends .venv/bin to PATH; keep system tools (ls, make) first so
+# project console scripts cannot shadow them.
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
 VERSION="${PGVECTOR_VERSION:-0.8.0}"
 SHA256="${PGVECTOR_SHA256:-867a2c328d4928a5a9d6f052cd3bc78c7d60228a9b914ad32aa3db88e9de27b0}"
 URL="https://codeload.github.com/pgvector/pgvector/tar.gz/refs/tags/v${VERSION}"

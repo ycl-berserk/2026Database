@@ -12,7 +12,7 @@
 
 本项目实现了一个以“聊天记录”为核心的关系数据库应用系统。系统把 Qoder、ChatGPT、DeepSeek 等平台的问答导出文件解析为统一格式，按课程、来源、标签组织；支持中文检索、会话上下文、批注、间隔复习、统计导出，并额外实现了受数据库只读权限视图保护的 Text2SQL 页面。
 
-数据库包含 17 张表（15 张业务表 + 1 张审计表 + 1 张引导状态表）、15 个权限视图、9 个触发器、多组唯一/检查/外键约束；应用层使用参数化 SQL 与显式事务，不依赖 ORM。导入流水线采用“解析 → 校验 → 持久化预览 → 单事务确认 → 查重”的结构，并在文件导入之外提供平台原生导出适配、采集令牌 + Bearer 接口与 MV3 浏览器扩展。标签之间还维护一张有向无环的先修关系图，用递归 CTE 做环检测、闭包与最短路径查询；另在隔离事务中用 RLS 与应用层 WHERE、`security_barrier` 视图做同规则对比实验。审计触发器只记录对象、主键与变更列名，不保存字段值，消息与批注表不开启审计；管理员观测页只展示 PostgreSQL 统计视图与白名单执行计划，不提供任意 SQL 输入。另提供 Windows / macOS 桌面个人版安装包：内置裁剪后的 PostgreSQL 16 与 PyInstaller sidecar，首次启动自动建库并创建本地管理员，数据只保存在本机；同一 Wi-Fi 下手机可扫码访问同一实例，数据库端口永不对外。系统通过 334 个自动化测试、12 项浏览器 E2E 与 42 项端到端验收检查，覆盖 schema、权限、导入幂等、中文检索、全局搜索、统计、批注复习与 FSRS 调度、整理建议、知识先修图、离线同步、导出、Text2SQL 安全、命令行与 MCP 接口、令牌作用域、RLS 隔离一致性、审计元数据边界、数据库观测与事务回滚。
+数据库包含 17 张表（15 张业务表 + 1 张审计表 + 1 张引导状态表）、15 个权限视图、9 个触发器、多组唯一/检查/外键约束；应用层使用参数化 SQL 与显式事务，不依赖 ORM。导入流水线采用“解析 → 校验 → 持久化预览 → 单事务确认 → 查重”的结构，并在文件导入之外提供平台原生导出适配、采集令牌 + Bearer 接口与 MV3 浏览器扩展。标签之间还维护一张有向无环的先修关系图，用递归 CTE 做环检测、闭包与最短路径查询；另在隔离事务中用 RLS 与应用层 WHERE、`security_barrier` 视图做同规则对比实验。审计触发器只记录对象、主键与变更列名，不保存字段值，消息与批注表不开启审计；管理员观测页只展示 PostgreSQL 统计视图与白名单执行计划，不提供任意 SQL 输入。另提供 Windows / macOS 桌面个人版安装包：内置裁剪后的 PostgreSQL 16 与 PyInstaller sidecar，首次启动自动建库并创建本地管理员，数据只保存在本机；同一 Wi-Fi 下手机可扫码访问同一实例，数据库端口永不对外。系统通过 365 个自动化测试、12 项浏览器 E2E 与 42 项端到端验收检查，覆盖 schema、权限、导入幂等、中文检索、全局搜索、统计、批注复习与 FSRS 调度、整理建议、知识先修图、离线同步、导出、Text2SQL 安全、命令行与 MCP 接口、令牌作用域、RLS 隔离一致性、审计元数据边界、数据库观测与事务回滚。
 
 ---
 
@@ -454,7 +454,8 @@ Markdown 导入仍需走网站上传页，因为 CLI 只发送统一 JSON，避�
 - 首次启动：读取/生成 `config.json` 与 `.env`（随机 `SESSION_SECRET` 及 `postgres`/`ls_app`/`t2s_reader` 密码），执行 `initdb --locale=C --encoding=UTF8`，写入受管 `postgresql.conf` 块（`listen_addresses='127.0.0.1'`、`max_connections=20`、`shared_buffers=128MB`）后 `pg_ctl start`。
 - `ls-server bootstrap` 建主库、schema、迁移、视图与角色，迁移前自动 `pg_dump` 备份；随后 `ls-server serve`，轮询 `/healthz` 返回 200 后打开页面。首次进入 `/setup` 创建本地管理员账号（直接设为 admin）。个人模式下这个账号同时是本机学习者，侧边栏保留“管理”和“学习”两组入口；演示模式的管理员仍只看聚合数据，两种模式的边界由 `LS_DESKTOP_MODE` 区分。
 - 数据目录：Windows `%LOCALAPPDATA%\com.learningspace.desktop`，macOS `~/Library/Application Support/com.learningspace.desktop`；备份保留 7 份，卸载默认保留数据。
-- 托盘“手机访问…”把 sidecar 以 `--host 0.0.0.0` 重启并显示 LAN URL 与二维码；关闭开关立即恢复 `127.0.0.1`。PostgreSQL 始终只监听回环地址，局域网是明文 HTTP，仅限可信 Wi-Fi。
+- 托盘“手机访问…”把 sidecar 以 `--host 0.0.0.0` 重启并显示 LAN URL 与二维码；多网卡时列出候选地址（默认路由、真实网卡优先，虚拟机/VPN 标为虚拟）并可手动切换。关闭开关立即恢复 `127.0.0.1`。PostgreSQL 始终只监听回环地址，局域网是明文 HTTP，仅限可信 Wi-Fi。
+- 分享窗口提供只读网络诊断：本机与局域网地址探测、网络位置、监听端口、防火墙状态，以及防火墙放行、AP 隔离等提示和可复制命令；不自动改系统设置、不提权。`/healthz` 暴露 `bind_host` 供手机自检。
 - 安装目录或用户名含中文时，不会把非 ASCII 路径直接交给 PostgreSQL：数据目录与安装目录各经一个 `subst` 盘符转发（Windows 版 PG 用 ANSI 代码页解析 junction 目标，junction 在英文系统上会失效）。
 - 桌面模式是唯一的明文 HTTP 例外（`LS_DESKTOP_MODE=1` 且 `LS_ALLOW_INSECURE_HTTP=1` 才关闭 Secure Cookie 与 HSTS）；普通生产部署仍强制 Secure/HSTS。
 

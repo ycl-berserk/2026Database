@@ -15,6 +15,8 @@ pub struct DesktopConfig {
     pub pg_port: u16,
     #[serde(default)]
     pub lan_enabled: bool,
+    #[serde(default)]
+    pub selected_lan_ip: Option<String>,
 }
 
 impl Default for DesktopConfig {
@@ -23,6 +25,7 @@ impl Default for DesktopConfig {
             app_port: DEFAULT_APP_PORT,
             pg_port: DEFAULT_PG_PORT,
             lan_enabled: false,
+            selected_lan_ip: None,
         }
     }
 }
@@ -69,6 +72,7 @@ pub fn load_or_create(home: &Path) -> Result<DesktopConfig, String> {
         app_port: find_free(DEFAULT_APP_PORT)?,
         pg_port: find_free(DEFAULT_PG_PORT)?,
         lan_enabled: false,
+        selected_lan_ip: None,
     };
     save(home, &config)?;
     Ok(config)
@@ -76,10 +80,9 @@ pub fn load_or_create(home: &Path) -> Result<DesktopConfig, String> {
 
 pub fn save(home: &Path, config: &DesktopConfig) -> Result<(), String> {
     let path = config_path(home);
-    let body = serde_json::to_string_pretty(config)
-        .map_err(|err| format!("无法序列化配置：{err}"))?;
-    fs::write(&path, body + "\n")
-        .map_err(|err| format!("无法写入 {}：{err}", path.display()))
+    let body =
+        serde_json::to_string_pretty(config).map_err(|err| format!("无法序列化配置：{err}"))?;
+    fs::write(&path, body + "\n").map_err(|err| format!("无法写入 {}：{err}", path.display()))
 }
 
 fn state_path(home: &Path) -> PathBuf {
@@ -88,10 +91,9 @@ fn state_path(home: &Path) -> PathBuf {
 
 pub fn write_state(home: &Path, state: &RuntimeState) -> Result<(), String> {
     let path = state_path(home);
-    let body = serde_json::to_string_pretty(state)
-        .map_err(|err| format!("无法序列化运行状态：{err}"))?;
-    fs::write(&path, body + "\n")
-        .map_err(|err| format!("无法写入 {}：{err}", path.display()))
+    let body =
+        serde_json::to_string_pretty(state).map_err(|err| format!("无法序列化运行状态：{err}"))?;
+    fs::write(&path, body + "\n").map_err(|err| format!("无法写入 {}：{err}", path.display()))
 }
 
 pub fn clear_state(home: &Path) {

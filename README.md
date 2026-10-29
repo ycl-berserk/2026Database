@@ -41,7 +41,7 @@
 不想装 Docker / Python / PostgreSQL 时，直接用桌面安装包：每个用户的数据只保存在自己的电脑上，不运行服务器。安装包由 `Desktop packaging` workflow 构建，产物名为 `Learning Space_<版本>_x64-setup.exe`（Windows）与 `Learning Space_<版本>_aarch64.dmg`（Apple Silicon）。
 
 1. 安装并启动“Learning Space”；首次启动会初始化本机数据库（仅监听 `127.0.0.1`）、应用迁移与视图，然后进入 `/setup` 创建本地管理员账号。
-2. 手机与电脑在同一 Wi-Fi 时，托盘菜单 →“手机访问…”打开开关，扫码用同一账号登录；关闭开关或退出应用后手机立即不可访问，数据库从不对外暴露。
+2. 手机与电脑在同一 Wi-Fi 时，托盘菜单 →“手机访问…”打开开关，扫码用同一账号登录；多网卡可手动选择地址，连不上时窗口内提供只读网络诊断（网络位置、防火墙、AP 隔离等）。关闭开关或退出应用后手机立即不可访问，数据库从不对外暴露。
 3. 数据目录：Windows `%LOCALAPPDATA%\com.learningspace.desktop`，macOS `~/Library/Application Support/com.learningspace.desktop`；含 `pgdata/`、`logs/`、`backups/`（保留 7 份）。卸载默认保留数据。
 
 安装包目前未签名：Windows 首次运行会被 SmartScreen 提示（“更多信息 → 仍要运行”），macOS 需在“应用程序”中右键“打开”或在终端执行 `xattr -dr com.apple.quarantine "/Applications/Learning Space.app"`。局域网共享是明文 HTTP，只应在可信 Wi-Fi 下开启。构建方法、体积预算与安全边界见 [desktop/README.md](desktop/README.md) 与 [docs/desktop-packaging.md](docs/desktop-packaging.md)。

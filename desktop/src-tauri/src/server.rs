@@ -12,6 +12,7 @@ const OUTPUT_TAIL: usize = 4000;
 pub struct Health {
     pub ok: bool,
     pub initialized: bool,
+    pub bind_host: Option<String>,
 }
 
 pub struct Server {
@@ -50,7 +51,13 @@ pub fn read_env_value(env_file: &Path, key: &str) -> Option<String> {
 }
 
 impl Server {
-    pub fn new(resources: PathBuf, home: PathBuf, pg_bin: PathBuf, app_port: u16, pg_port: u16) -> Self {
+    pub fn new(
+        resources: PathBuf,
+        home: PathBuf,
+        pg_bin: PathBuf,
+        app_port: u16,
+        pg_port: u16,
+    ) -> Self {
         Self {
             exe: paths::sidecar_exe(&resources),
             home,
@@ -160,26 +167,35 @@ impl Server {
     }
 
     pub fn health(&self) -> Option<Health> {
-        let addr = ("127.0.0.1", self.app_port).to_socket_addrs().ok()?.next()?;
+        self.health_via("127.0.0.1")
+    }
+
+    pub fn health_via(&self, host: &str) -> Option<Health> {
+        let addr = (host, self.app_port).to_socket_addrs().ok()?.next()?;
         let mut stream = TcpStream::connect_timeout(&addr, Duration::from_millis(800)).ok()?;
-        stream
-            .set_read_timeout(Some(Duration::from_secs(5)))
-            .ok()?;
-        stream
-            .write_all(
-                b"GET /healthz HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
-            )
-            .ok()?;
+        stream.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
+        let request = format!(
+            "GET /healthz HTTP/1.1\r\nHost: {host}:{}\r\nConnection: close\r\n\r\n",
+            self.app_port
+        );
+        stream.write_all(request.as_bytes()).ok()?;
         let mut response = String::new();
         stream.read_to_string(&mut response).ok()?;
         let (head, body) = response.split_once("\r\n\r\n")?;
         if !head.starts_with("HTTP/1.1 200") && !head.starts_with("HTTP/1.0 200") {
             return None;
         }
-        let compact: String = body.chars().filter(|ch| !ch.is_whitespace()).collect();
+        let payload: serde_json::Value = serde_json::from_str(body).ok()?;
         Some(Health {
-            ok: compact.contains("\"ok\":true"),
-            initialized: compact.contains("\"initialized\":true"),
+            ok: payload.get("ok").and_then(|value| value.as_bool())?,
+            initialized: payload
+                .get("initialized")
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false),
+            bind_host: payload
+                .get("bind_host")
+                .and_then(|value| value.as_str())
+                .map(str::to_string),
         })
     }
 }

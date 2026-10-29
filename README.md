@@ -280,7 +280,7 @@ learning-space/
 └── docs/                    # 报告、设计、需求、SQL 展示、桌面与移动端截图
 ```
 
-> 数据库共 16 张表：`schema.sql` 的 12 张基线表 + 迁移新增的 `review_logs`（复习事件流水，含评分与算法）、`api_tokens`（采集令牌，仅存 SHA-256）、`tag_edges`（知识先修关系）与 `audit_log`（结构变更审计，只记元数据）。复习项在迁移 009 中增加 FSRS 稳定性/难度/遗忘次数。
+> 数据库共 17 张表：`schema.sql` 的 12 张基线表 + 迁移新增的 `review_logs`（复习事件流水，含评分与算法）、`api_tokens`（采集令牌，仅存 SHA-256）、`tag_edges`（知识先修关系）、`audit_log`（结构变更审计，只记元数据）与 `user_onboarding`（新手指南收起状态）。复习项在迁移 009 中增加 FSRS 稳定性/难度/遗忘次数。
 
 ## 数据与安全说明
 

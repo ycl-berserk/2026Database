@@ -73,44 +73,32 @@
   </section>
 
 {% else %}
-  {% if is_new_user %}
-    <section class="panel onboarding">
+  {% if onboarding.status == 'pending' %}
+    <section class="panel onboarding-summary">
       <div class="panel-head">
-        <h2>三步搭起你的学习空间</h2>
-        <span class="muted">新账号还没有学习记录</span>
+        <h2>开始使用 <span class="onboarding-count">{{ onboarding.completed_count }}/{{ onboarding.total }}</span></h2>
+        <a class="link" href="/welcome">展开指南 →</a>
       </div>
-      <ol class="onboarding-steps">
-        <li>
-          <span class="step-no">1</span>
-          <div class="onboarding-copy">
-            <strong>建一门课程</strong>
-            <p class="muted">课程是会话归档、共享和复习的组织单位。</p>
-          </div>
-          <a class="btn btn-sm" href="/courses/new">新建课程</a>
-        </li>
-        <li>
-          <span class="step-no">2</span>
-          <div class="onboarding-copy">
-            <strong>导入聊天记录</strong>
-            <p class="muted">支持 JSON / Markdown 文件，也可以直接粘贴一段问答。</p>
-          </div>
-          <div class="onboarding-actions">
-            <a class="btn btn-sm" href="/imports">上传文件</a>
-            <a class="btn btn-ghost btn-sm" href="/imports?mode=paste">粘贴文本</a>
-          </div>
-        </li>
-        <li>
-          <span class="step-no">3</span>
-          <div class="onboarding-copy">
-            <strong>整理并开始复习</strong>
-            <p class="muted">未归类的会话会进入收件箱，批量选择课程后添加批注与复习。</p>
-          </div>
-          <a class="btn btn-ghost btn-sm" href="/inbox">打开收件箱</a>
-        </li>
+      <ol class="onboarding-mini">
+        {% for step in onboarding.steps %}
+          <li class="{% if step.done %}is-done{% endif %}">
+            <span class="onboarding-check">{% if step.done %}✓{% else %}{{ loop.index }}{% endif %}</span>
+            <div>
+              <strong>{{ step.title }}</strong>
+              <small>{{ step.description }}</small>
+            </div>
+            {% if not step.done %}<a class="btn btn-ghost btn-sm" href="{{ step.href }}">去完成</a>{% endif %}
+          </li>
+        {% endfor %}
       </ol>
       {% if demo_mode %}
-        <p class="muted">想先看看完整效果？退出登录，在登录页点 <b>alice</b> 一键进入演示账号。</p>
+        <p class="muted onboarding-demo">想先看看完整效果？退出登录，在登录页点 <b>alice</b> 一键进入演示账号。</p>
       {% endif %}
+    </section>
+  {% elif onboarding.status == 'skipped' %}
+    <section class="onboarding-resume">
+      <span>新手指南已收起。</span>
+      <a class="link" href="/welcome">继续新手指南 →</a>
     </section>
   {% endif %}
 

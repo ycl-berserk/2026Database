@@ -96,7 +96,7 @@ Windows CI（英文系统，ACP=1252）上进一步实测：
 - `/healthz` 增加 `desktop` 与 `initialized` 字段，Tauri 壳用它决定打开 `/setup` 还是登录页。
 - 启动时每日首次备份、迁移前强制备份；迁移仍走 `app/migrations.py`，`scripts/init_db.py` 保留为演示模式薄 CLI。
 
-2026-10-29 用裁剪后的 PostgreSQL 16.10 + `python -m app.desktop` 做了端到端验证：`bootstrap` 建库并写入 16 张表、15 个视图，`doctor` 全部通过，`serve` 后 `/healthz` 返回 `initialized:false`，完成 `/setup` 后变为 `true`，`/setup` 随后 303 到 `/login`，`backup` 生成约 97 KiB 的空库 dump，`smoke` 一次通过。
+2026-10-29 用裁剪后的 PostgreSQL 16.10 + `python -m app.desktop` 做了端到端验证：`bootstrap` 建库并写入 17 张表、15 个视图，`doctor` 全部通过，`serve` 后 `/healthz` 返回 `initialized:false`，完成 `/setup` 后变为 `true`，`/setup` 随后 303 到 `/login`，`backup` 生成约 97 KiB 的空库 dump，`smoke` 一次通过。
 
 ## 5. 构建步骤（当前脚本）
 

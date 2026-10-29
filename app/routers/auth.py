@@ -4,9 +4,11 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 
 from ..auth import ensure_csrf, require_user, start_session, verify_csrf
+from ..config import settings
 from ..db import get_conn
 from ..errors import RateLimited
 from ..security import login_throttle
+from ..services import onboarding_service
 from ..services.auth_service import authenticate
 from ..web import add_flash, form_text, render
 
@@ -61,8 +63,16 @@ async def login_submit(request: Request, conn=Depends(get_conn)):
     login_throttle.reset_user(ip, username)
     start_session(request, user["id"])
     ensure_csrf(request)
+    target = next_url
+    can_learn = user["system_role"] != "admin" or settings.desktop_mode
+    if (
+        target == "/dashboard"
+        and can_learn
+        and onboarding_service.ensure_started(conn, user["id"])
+    ):
+        target = "/welcome"
     add_flash(request, f"欢迎回来，{user['display_name']}", "success")
-    return RedirectResponse(next_url, status_code=303)
+    return RedirectResponse(target, status_code=303)
 
 
 @router.post("/logout")

@@ -47,7 +47,7 @@ Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查�
 
 ## 3. 关系模式
 
-16 张表全部位于 `app` schema（12 张基线表 + 迁移新增的 `review_logs`、`api_tokens`、`tag_edges`、`audit_log`）。迁移 008 只为观测页条件安装 `pg_stat_statements` 并授权，不新增表。
+17 张表全部位于 `app` schema（12 张基线表 + 迁移新增的 `review_logs`、`api_tokens`、`tag_edges`、`audit_log`、`user_onboarding`）。迁移 008 只为观测页条件安装 `pg_stat_statements` 并授权，不新增表；迁移 010 只记录新手指南的收起/重新开始状态，四步进度仍按业务表实时计算。
 
 ### 3.1 用户 `users`
 
@@ -280,6 +280,19 @@ Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查�
 - 操作者从事务内 GUC `app.actor_user_id` 读取；课程服务与管理员的启停操作用 `set_actor()` 在同一事务内设置，业务回滚则审计一并回滚。
 - 触发器函数 `SECURITY DEFINER`，应用角色不需要 `audit_log` 的写权限；`ls_app` 仅被授予 `SELECT`。清理函数 `prune_audit_log(retain_days)` 同样以属主身份执行，至少保留 90 天。
 - `messages`、`annotations`、`review_items` 等学习内容表不建审计触发器，避免管理员通过审计时间线推断或读取正文/批注内容。
+
+### 3.17 新手指南状态 `user_onboarding`（迁移 010）
+
+| 列 | 类型 | 约束 |
+| --- | --- | --- |
+| user_id | bigint | PK，FK → users(id) ON DELETE CASCADE |
+| status | varchar(12) | `pending` / `skipped` / `completed`，默认 `pending` |
+| created_at | timestamptz | 默认 now() |
+| updated_at | timestamptz | 默认 now()，更新时刷新 |
+
+- 只存用户主动“收起/重新开始”的状态；课程、导入、批注、复习四步是否完成始终按当前业务数据实时计算，避免状态与事实脱节。
+- 首次登录且四步均为零进度时插入 `pending` 并跳转 `/welcome`；已有任意进度或已存在状态行的用户不被强制跳转。
+- `ls_app` 拥有该表的增删改查权限，便于服务层直接更新。
 
 ## 4. 范式分析
 
@@ -573,5 +586,5 @@ v1 的基线结构保存在 `sql/schema.sql`。v2 起所有结构变更以编号
 - `000_baseline` 表示 `schema.sql` 已应用，它不对应迁移文件；旧库首次执行迁移时自动补记。
 - 每个迁移在单独事务中执行，失败整体回滚且不写版本记录。
 - 初始化顺序为 `schema.sql → migrations → views.sql → roles.sql`，保证 `t2s` 视图始终基于最新结构创建。
-- 业务表仍集中在 `app` schema（16 张，含审计表），迁移登记表放在独立的 `meta` schema，不参与业务计数与权限视图。
-- 当前迁移：`001_add_review_logs`（复习事件流水）、`002_add_annotation_event_id`（批注客户端事件 ID）、`003_add_api_tokens`（采集令牌）、`004_add_message_embeddings`（可选向量）、`005_add_tag_edges`（知识先修关系）、`006_add_token_scopes`（令牌作用域）、`007_add_audit_log`（审计历史与通用触发器）。
+- 业务表仍集中在 `app` schema（17 张，含审计表与引导状态表），迁移登记表放在独立的 `meta` schema，不参与业务计数与权限视图。
+- 当前迁移：`001_add_review_logs`（复习事件流水）、`002_add_annotation_event_id`（批注客户端事件 ID）、`003_add_api_tokens`（采集令牌）、`004_add_message_embeddings`（可选向量）、`005_add_tag_edges`（知识先修关系）、`006_add_token_scopes`（令牌作用域）、`007_add_audit_log`（审计历史与通用触发器）、`008_add_observability`（观测扩展）、`009_add_fsrs_state`（FSRS 状态）、`010_user_onboarding`（新手指南状态）。

@@ -96,7 +96,9 @@ def configure_environment(
     bind_host: str | None = None,
 ) -> DesktopConfig:
     """准备 LS_HOME 目录、生成缺失密钥、写入 .env，并导出进程环境。"""
-    base = Path(home or os.getenv("LS_HOME") or default_home()).resolve()
+    # 不用 resolve()：Windows 上它会把 subst 盘符还原成真实路径，而 PostgreSQL
+    # 工具用 ANSI 命令行解析路径，中文路径会退化成 "?"（pg_dump --file 会直接失败）。
+    base = Path(os.path.abspath(home or os.getenv("LS_HOME") or default_home()))
     for sub in ("pgdata", "logs", "backups", "run"):
         (base / sub).mkdir(parents=True, exist_ok=True)
         _restrict_dir(base / sub)

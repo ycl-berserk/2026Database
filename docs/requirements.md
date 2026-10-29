@@ -246,7 +246,7 @@
 
 | ID | 功能 | 输入 | 输出 / 行为 | 异常与边界 | 实现位置 | 验收 |
 | --- | --- | --- | --- | --- | --- | --- |
-| R18-F01 | 一键安装与首次初始化 | Windows NSIS / macOS DMG | 内置裁剪版 PostgreSQL 16、`ls-server` sidecar 与 SQL；首次启动 `initdb` → 建库 → schema → 迁移 → 视图 → 角色，随后进入 `/setup` 创建本地管理员 | 端口被占用时给出日志路径与解决建议，不静默换端口；安装目录含中文时数据目录经 ASCII junction 转发 | `desktop/src-tauri/src/{lib,postgres,server,paths}.rs`、`app/desktop.py`、`app/bootstrap.py` | `Learning Space --smoke`（Windows 安装后与中文路径两次；macOS `.app` 内一次） |
+| R18-F01 | 一键安装与首次初始化 | Windows NSIS / macOS DMG | 内置裁剪版 PostgreSQL 16、`ls-server` sidecar 与 SQL；首次启动 `initdb` → 建库 → schema → 迁移 → 视图 → 角色，随后进入 `/setup` 创建本地管理员 | 端口被占用时给出日志路径与解决建议，不静默换端口；安装目录或数据目录含中文时经 `subst` 盘符转发给 PostgreSQL，退出时释放 | `desktop/src-tauri/src/{lib,postgres,server,paths}.rs`、`app/desktop.py`、`app/bootstrap.py` | `Learning Space --smoke`（Windows 安装后与中文路径两次；macOS `.app` 内一次） |
 | R18-F02 | 本机数据与备份 | 用户数据目录 `LS_HOME` | `pgdata/`、`logs/`、`backups/`、`run/`；`.env` 存随机密钥；迁移前与每日首次自动备份，保留 7 份 | 卸载默认保留数据；`.env` 不入仓库、不进日志；退出先停 sidecar 再 `pg_ctl stop -m fast` | `app/config.py`、`app/desktop.py`、`desktop/src-tauri/src/config.rs` | `tests/unit/test_desktop_config.py`、`--smoke` 的备份步骤 |
 | R18-F03 | 局域网手机访问 | 托盘“手机访问…”开关 | 显示 LAN URL 与二维码；开启后 sidecar 以 `0.0.0.0` 重启，桌面仍访问 `127.0.0.1`；关闭立即恢复回环 | 未创建账号前不可开启；失败自动回滚；PG 永不对外；明文 HTTP 仅限桌面模式，界面提示可信 Wi-Fi | `desktop/src-tauri/src/share.rs`、`desktop/ui/share.html`、`app/config.py` | `cargo test` 的 URL/二维码单测、Playwright 共享页、真机（待人工验收） |
 | R18-F04 | 安装体积与启动预算 | 打包产物 | 安装后资源 ≤350 MiB；NSIS ≤120 MB、DMG ≤150 MB；首次启动包含 initdb 在 15 s 量级 | 超预算按“去 ICU/NLS → 换发行版 → 首次下载”降级；体积写入 Step Summary | `packaging/build.py`、`packaging/postgres/*`、`.github/workflows/desktop.yml` | `packaging/build/size-report.{json,md}`、CI artifacts |

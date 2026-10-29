@@ -32,7 +32,12 @@ if (Test-Path $source) { Remove-Item $source -Recurse -Force }
 Expand-Archive -Path $archive -DestinationPath $WorkDir -Force
 
 $pgLink = Join-Path $WorkDir "pgsql"
-if (Test-Path $pgLink) { Remove-Item $pgLink -Force }
+if (Test-Path $pgLink) {
+    # Windows PowerShell 5.1 throws NullReferenceException when Remove-Item is
+    # applied to a junction; rmdir removes only the link, never the target.
+    & cmd.exe /c rmdir "$pgLink" | Out-Null
+    if (Test-Path $pgLink) { throw "cannot remove stale junction $pgLink" }
+}
 New-Item -ItemType Junction -Path $pgLink -Target $PgRoot | Out-Null
 
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"

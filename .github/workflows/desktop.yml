@@ -135,21 +135,22 @@ jobs:
         shell: pwsh
         run: |
           $staging = Join-Path $env:GITHUB_WORKSPACE "smoke-artifacts"
-          foreach ($home in @("C:\ls-smoke-home", "C:\ls-smoke-中文")) {
-            $dest = Join-Path $staging (Split-Path $home -Leaf)
+          foreach ($lsHome in @("C:\ls-smoke-home", "C:\ls-smoke-中文")) {
+            $dest = Join-Path $staging (Split-Path $lsHome -Leaf)
             New-Item -ItemType Directory -Force $dest | Out-Null
-            Copy-Item "$home\smoke-report.json" $dest -ErrorAction SilentlyContinue
-            Copy-Item "$home\logs\*.log" $dest -ErrorAction SilentlyContinue
+            Copy-Item "$lsHome\smoke-report.json" $dest -ErrorAction SilentlyContinue
+            Copy-Item "$lsHome\logs\*.log" $dest -ErrorAction SilentlyContinue
           }
 
       - name: Show logs on failure
         if: failure()
         shell: pwsh
         run: |
-          foreach ($home in @("C:\ls-smoke-home", "C:\ls-smoke-中文")) {
-            Get-ChildItem "$home\logs" -ErrorAction SilentlyContinue |
-              ForEach-Object { "== $($home)\$($_.Name) =="; Get-Content $_.FullName -Tail 80 }
+          foreach ($lsHome in @("C:\ls-smoke-home", "C:\ls-smoke-中文")) {
+            Get-ChildItem "$lsHome\logs" -ErrorAction SilentlyContinue |
+              ForEach-Object { "== $($lsHome)\$($_.Name) =="; Get-Content $_.FullName -Tail 80 }
           }
+          cmd /c dir C:\ProgramData\LearningSpace /AL
           Get-Content packaging/build/size-report.md -ErrorAction SilentlyContinue
 
       - name: Upload installer and reports

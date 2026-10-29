@@ -85,7 +85,8 @@ jobs:
           $exe = Join-Path $installDir "learning-space-desktop.exe"
           if (-not (Test-Path $exe)) { throw "installed exe not found: $exe" }
 
-          $env:LS_HOME = "C:\ls-smoke-home"
+          $env:LS_HOME = Join-Path $env:GITHUB_WORKSPACE "ls-smoke-home"
+          Remove-Item $env:LS_HOME -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force $env:LS_HOME | Out-Null
 
           $smoke = Start-Process -FilePath $exe -ArgumentList "--smoke" `
@@ -130,7 +131,7 @@ jobs:
         if: failure()
         shell: pwsh
         run: |
-          Get-ChildItem "C:\ls-smoke-home\logs" -ErrorAction SilentlyContinue |
+          Get-ChildItem "ls-smoke-home\logs" -ErrorAction SilentlyContinue |
             ForEach-Object { "== $($_.Name) =="; Get-Content $_.FullName -Tail 80 }
           Get-Content packaging/build/size-report.md -ErrorAction SilentlyContinue
 
@@ -143,8 +144,8 @@ jobs:
             desktop/src-tauri/target/release/bundle/nsis/*.exe
             packaging/build/size-report.json
             packaging/build/size-report.md
-            C:\ls-smoke-home\smoke-report.json
-            C:\ls-smoke-home\logs\*.log
+            ls-smoke-home/smoke-report.json
+            ls-smoke-home/logs/*.log
           if-no-files-found: warn
 
   macos:

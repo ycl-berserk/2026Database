@@ -1,0 +1,10 @@
+{
+  "name": "PostgreSQL",
+  "version": "16.10",
+  "edition": "EnterpriseDB binaries (Windows x64)",
+  "url": "https://get.enterprisedb.com/postgresql/postgresql-16.10-1-windows-x64-binaries.zip",
+  "sha256": "ebb3b6af4fa69dea9951b66855bc4d42dc04e56ccb9aa7024ce3c58bd89d6b0c",
+  "archive_root": "pgsql",
+  "license": "PostgreSQL License",
+  "source": "https://www.enterprisedb.com/download-postgresql-binaries"
+}

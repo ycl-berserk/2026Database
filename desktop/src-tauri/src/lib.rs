@@ -28,6 +28,8 @@ const START_TIMEOUT: Duration = Duration::from_secs(90);
 
 struct DesktopState {
     home: PathBuf,
+    /// 交给 PostgreSQL 与 sidecar 的 ASCII 视图（Windows 下可能是 `Z:\`）。
+    home_pg: PathBuf,
     resources: PathBuf,
     pg_bin: PathBuf,
     pg_data: PathBuf,
@@ -119,11 +121,15 @@ fn stop_child(state: &DesktopState) {
 fn make_server(state: &DesktopState, cfg: &DesktopConfig) -> server::Server {
     server::Server::new(
         state.resources.clone(),
-        state.home.clone(),
+        state.home_pg.clone(),
         state.pg_bin.clone(),
         cfg.app_port,
         cfg.pg_port,
     )
+}
+
+fn pg_log(state: &DesktopState) -> PathBuf {
+    state.home_pg.join("logs").join("postgresql.log")
 }
 
 fn wait_for_health(state: &DesktopState, server: &server::Server) -> Result<(), String> {
@@ -230,8 +236,9 @@ fn stop_runtime(app: &AppHandle) {
             state.pg_bin.clone(),
             state.pg_data.clone(),
             port,
-            state.home.join("logs").join("postgresql.log"),
-        );
+            pg_log(&state),
+        )
+        .hint(state.home.join("logs").join("postgresql.log"));
         let _ = pg.stop();
     }
 }
@@ -257,7 +264,7 @@ fn boot(app: &AppHandle) -> Result<(), String> {
 
     let server = server::Server::new(
         state.resources.clone(),
-        home.clone(),
+        state.home_pg.clone(),
         state.pg_bin.clone(),
         cfg.app_port,
         cfg.pg_port,
@@ -279,8 +286,9 @@ fn boot(app: &AppHandle) -> Result<(), String> {
         state.pg_bin.clone(),
         state.pg_data.clone(),
         cfg.pg_port,
-        home.join("logs").join("postgresql.log"),
-    );
+        pg_log(&state),
+    )
+    .hint(home.join("logs").join("postgresql.log"));
     pg.init(&password)?;
     boot_note(&home, "initdb 完成");
     pg.start()?;
@@ -574,27 +582,41 @@ pub fn run() {
             paths::ensure_home(&home).map_err(io::Error::other)?;
 
             let mut init_error = None;
-            let (resources, pg_bin, pg_data) =
+            let (resources, home_pg, pg_bin, pg_data) =
                 match paths::resource_root(Some(app.handle())) {
                     Ok(resources) => match (
-                        paths::ascii_pg_bin(&resources),
-                        paths::ascii_pg_data(&home),
+                        paths::home_view(&home),
+                        paths::pg_bin(&resources),
                     ) {
-                        (Ok(pg_bin), Ok(pg_data)) => (resources, pg_bin, pg_data),
+                        (Ok(home_pg), Ok(pg_bin)) => {
+                            let pg_data = home_pg.join("pgdata");
+                            (resources, home_pg, pg_bin, pg_data)
+                        }
                         (Err(err), _) | (_, Err(err)) => {
                             init_error = Some(err);
-                            (PathBuf::new(), PathBuf::new(), PathBuf::new())
+                            (
+                                PathBuf::new(),
+                                PathBuf::new(),
+                                PathBuf::new(),
+                                PathBuf::new(),
+                            )
                         }
                     },
                     Err(err) => {
                         init_error = Some(err);
-                        (PathBuf::new(), PathBuf::new(), PathBuf::new())
+                        (
+                            PathBuf::new(),
+                            PathBuf::new(),
+                            PathBuf::new(),
+                            PathBuf::new(),
+                        )
                     }
                 };
 
             let config = config::load_or_create(&home).unwrap_or_default();
             app.manage(DesktopState {
                 home,
+                home_pg,
                 resources,
                 pg_bin,
                 pg_data,
@@ -626,6 +648,7 @@ pub fn run() {
     app.run(|app, event| {
         if matches!(event, RunEvent::Exit) {
             stop_runtime(app);
+            paths::release_drives();
         }
     });
 }

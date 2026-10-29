@@ -10,7 +10,10 @@ pub struct Postgres {
     pub bin: PathBuf,
     pub data: PathBuf,
     pub port: u16,
+    /// 传给 `pg_ctl -l` 的日志路径，必须是 ASCII 视图。
     pub log: PathBuf,
+    /// 报错时展示给用户的日志路径（可能是 `Z:\logs\...` 的原始位置）。
+    pub log_hint: PathBuf,
 }
 
 fn tool(bin: &Path, name: &str) -> PathBuf {
@@ -52,8 +55,14 @@ impl Postgres {
             bin,
             data,
             port,
+            log_hint: log.clone(),
             log,
         }
+    }
+
+    pub fn hint(mut self, path: PathBuf) -> Self {
+        self.log_hint = path;
+        self
     }
 
     pub fn initialized(&self) -> bool {
@@ -171,7 +180,7 @@ impl Postgres {
             return Err(format!(
                 "pg_ctl start 失败（退出码 {}），请查看 {}",
                 status.code().unwrap_or(-1),
-                self.log.display()
+                self.log_hint.display()
             ));
         }
         Ok(())

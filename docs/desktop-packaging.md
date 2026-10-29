@@ -49,11 +49,26 @@ resources/
 FATAL: invalid byte sequence for encoding "UTF8": 0xb4
 ```
 
-把同一份二进制放到 `C:\ls-pgtest\pgsql`（ASCII）后 `initdb` 成功；用 ASCII junction 指向原目录也能成功。因此：
+把同一份二进制放到 `C:\ls-pgtest\pgsql`（ASCII）后 `initdb` 成功。因此：
 
 - 构建机、CI 和打包临时目录必须使用 ASCII 路径。
-- 桌面运行时不能假定安装目录/用户名是 ASCII；Phase 2 启动 PG 时通过 ASCII junction、`subst` 盘符或 `C:\Users\Public\LearningSpace` 这类 ASCII 路径转发，禁止直接把含中文的资源路径传给 `initdb`/`pg_ctl`。
+- 桌面运行时不能假定安装目录/用户名是 ASCII，必须把转发后的 ASCII 视图交给 PostgreSQL，禁止直接把含中文的资源路径传给 `initdb`/`pg_ctl`。
 - 安装包 `productName` 保持英文 `Learning Space`，但这不是充分条件，仍需运行时处理。
+
+Windows CI（英文系统，ACP=1252）上进一步实测：
+
+| 场景 | 结果 |
+| --- | --- |
+| 中文安装路径直接调用 `initdb` | 失败 |
+| ASCII 路径 + junction 指向 ASCII 目标 | 成功 |
+| ASCII 路径 + junction 指向中文目标 | 失败 |
+| ASCII 路径 + `subst` 盘符指向中文目标 | 成功 |
+| `subst` 盘符指向中文安装目录（PG 可执行文件本身经盘符访问） | 成功 |
+
+原因是 Windows 版 PostgreSQL 用 ANSI 代码页（`CP_ACP`）转换路径：`pgreadlink()`（`src/port/dirmod.c`）解析 junction 时以 `CP_ACP` 把 UTF-16 目标转成 ANSI，英文系统下中文退化为 `?`；随后 `_pgstat64()`（`src/port/win32stat.c`）re-stat 该目标，在 `SelectConfigFiles()` 里报 `could not access directory ... No such file or directory`。`subst` 盘符由对象管理器解析，不经过 `CP_ACP`，所以能稳定转发。运行时因此统一使用 `subst`：
+
+- 数据目录非 ASCII 时映射为 `<盘符>:\`；安装目录（`resources/pgsql`）非 ASCII 时同样映射，PG 可执行文件、share、lib 都经盘符访问。
+- 盘符选择 `D:`–`Z:` 倒序的空闲盘符；复用已有映射前先校验标记文件（`run/.ascii-drive` 哈希）与 `postgres.exe` 大小，退出时对所有本次使用过的盘符执行 `subst /D`。
 
 ## 4. 桌面运行时（Phase 1）
 
@@ -153,7 +168,7 @@ Rust 侧拆分为：
 
 | 模块 | 职责 |
 | --- | --- |
-| `paths.rs` | 解析 `resources/`、`LS_HOME`、sidecar/PG 路径；非 ASCII 路径通过 ProgramData/Public 下的 junction 转发 |
+| `paths.rs` | 解析 `resources/`、`LS_HOME`、sidecar/PG 路径；非 ASCII 的数据目录与安装目录通过 `subst` 盘符转发，退出时释放 |
 | `config.rs` | `config.json`（端口、LAN 开关）、`run/state.json`、空闲端口扫描、残留 sidecar 清理 |
 | `postgres.rs` | `initdb`、`postgresql.conf` 受管块、`pg_ctl start/stop/status` |
 | `server.rs` | 调用 `ls-server init-env/bootstrap/serve/backup`、健康检查、日志重定向 |
@@ -178,9 +193,10 @@ Rust 侧拆分为：
   HTTP 200 而不是 `initialized=true`。
 - `pg_ctl start` 的 stdout/stderr 必须重定向到文件或 null；postgres 会继承句柄，
   用管道会让父进程永远等不到 EOF。
-- 含中文的安装目录或用户名不会被直接传给 `initdb`/`pg_ctl`：数据目录先经
-  `C:\ProgramData\LearningSpace\pgdata-<hash>` junction 转发；不可写时退回 `%PUBLIC%`。
-  `--smoke` 已在 `D:\build-cache\中文测试\学习空间` 下验证通过。
+- 含中文的安装目录或用户名不会被直接传给 `initdb`/`pg_ctl`：非 ASCII 的数据目录与
+  `resources/pgsql` 各映射一个空闲盘符（`D:`–`Z:`），PG、sidecar 和备份都只看到盘符路径；
+  Rust 侧读写配置/日志仍用原始路径。退出时释放本次使用的盘符。
+  Windows CI 覆盖“中文安装目录 + ASCII 数据目录”与“ASCII 安装目录 + 中文数据目录”两次 `--smoke`。
 - 关闭窗口只隐藏；托盘菜单含“打开学习空间 / 手机访问… / 粘贴导入 / 重新启动本地服务 / 打开日志目录 / 退出”。
 
 CI（`.github/workflows/desktop.yml`，仅 `workflow_dispatch` 与 `v*` 触发）：
@@ -240,13 +256,13 @@ CI（`.github/workflows/desktop.yml`，仅 `workflow_dispatch` 与 `v*` 触发�
 | 首次启动 | 可接受 | 安装后 `--smoke` 12–17 s（含 initdb 9–10 s）；热启动 3.5 s | 通过 |
 
 安装包与首次启动数据来自本机 Windows 11 x64 实测（2026-10-29）。安装到含中文的目录、
-数据目录也使用中文路径时，`--smoke` 同样通过；`initdb` 前会建立 ASCII junction。
+数据目录也使用中文路径时，`--smoke` 同样通过；`initdb` 前会为两者建立 `subst` 盘符。
 
 如果后续版本超预算，按顺序降级：去掉 ICU/NLS 词典与未使用 contrib → 换更小的 PostgreSQL 发行版 → 最后才考虑首次启动下载。当前不需要降级。
 
 ## 10. 风险与未决项
 
-- **中文路径**：资源与数据目录都已通过 ASCII junction 解决，并有中文路径 smoke；仍需在干净用户机上覆盖“中文用户名 + 默认安装目录”。
+- **中文路径**：资源与数据目录都通过 `subst` 盘符解决，CI 覆盖两种中文路径组合；仍依赖 22 个可用盘符，并需在干净用户机上覆盖“中文用户名 + 默认安装目录”。
 - **macOS 扩展构建**：改为在 macOS 上从固定 SHA-256 的源码构建 PostgreSQL 16.10 与
   pgvector 0.8.0，避免依赖不存在的 arm64 预编译包；CI 在 `macos-14` 上验证，尚未在真机人工验收。
 - **签名**：MVP 不签名（macOS 仅 ad-hoc），Windows SmartScreen 和 macOS Gatekeeper 会提示；

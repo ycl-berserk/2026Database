@@ -63,13 +63,14 @@ fn execute(home: &Path, steps: &mut Vec<Step>) -> Result<(), String> {
     config::cleanup_stale(home);
 
     let resources = step(steps, "定位资源", || paths::resource_root(None))?;
-    let pg_bin = step(steps, "解析 PostgreSQL 路径", || paths::ascii_pg_bin(&resources))?;
-    let pg_data = step(steps, "解析数据目录", || paths::ascii_pg_data(home))?;
+    let pg_bin = step(steps, "解析 PostgreSQL 路径", || paths::pg_bin(&resources))?;
+    let home_pg = step(steps, "解析数据目录", || paths::home_view(home))?;
+    let pg_data = home_pg.join("pgdata");
     let cfg = step(steps, "读取配置", || config::load_or_create(home))?;
 
     let server = Server::new(
         resources,
-        home.to_path_buf(),
+        home_pg.clone(),
         pg_bin.clone(),
         cfg.app_port,
         cfg.pg_port,
@@ -81,8 +82,9 @@ fn execute(home: &Path, steps: &mut Vec<Step>) -> Result<(), String> {
         pg_bin,
         pg_data,
         cfg.pg_port,
-        home.join("logs").join("postgresql.log"),
-    );
+        home_pg.join("logs").join("postgresql.log"),
+    )
+    .hint(home.join("logs").join("postgresql.log"));
     step(steps, "initdb", || pg.init(&password))?;
     step(steps, "启动 PostgreSQL", || pg.start())?;
 
@@ -150,10 +152,12 @@ pub fn run() -> i32 {
     match &report.error {
         Some(err) => {
             eprintln!("smoke 失败：{err}");
+            paths::release_drives();
             1
         }
         None => {
             println!("smoke 通过（{:.2}s）", report.seconds);
+            paths::release_drives();
             0
         }
     }

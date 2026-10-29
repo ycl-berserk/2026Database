@@ -454,7 +454,7 @@ Markdown 导入仍需走网站上传页，因为 CLI 只发送统一 JSON，避�
 - `ls-server bootstrap` 建主库、schema、迁移、视图与角色，迁移前自动 `pg_dump` 备份；随后 `ls-server serve`，轮询 `/healthz` 返回 200 后打开页面。首次进入 `/setup` 创建本地管理员账号（直接设为 admin）。
 - 数据目录：Windows `%LOCALAPPDATA%\com.learningspace.desktop`，macOS `~/Library/Application Support/com.learningspace.desktop`；备份保留 7 份，卸载默认保留数据。
 - 托盘“手机访问…”把 sidecar 以 `--host 0.0.0.0` 重启并显示 LAN URL 与二维码；关闭开关立即恢复 `127.0.0.1`。PostgreSQL 始终只监听回环地址，局域网是明文 HTTP，仅限可信 Wi-Fi。
-- 安装目录或用户名含中文时，不会把非 ASCII 路径直接交给 PostgreSQL：数据目录经 `C:\ProgramData\LearningSpace\pgdata-<hash>` junction 转发。
+- 安装目录或用户名含中文时，不会把非 ASCII 路径直接交给 PostgreSQL：数据目录与安装目录各经一个 `subst` 盘符转发（Windows 版 PG 用 ANSI 代码页解析 junction 目标，junction 在英文系统上会失效）。
 - 桌面模式是唯一的明文 HTTP 例外（`LS_DESKTOP_MODE=1` 且 `LS_ALLOW_INSECURE_HTTP=1` 才关闭 Secure Cookie 与 HSTS）；普通生产部署仍强制 Secure/HSTS。
 
 本机实测（Windows 11 x64，0.2.0）：安装后资源约 101 MiB，NSIS 安装包 35.9 MiB；首次启动 `--smoke`（initdb → 迁移 → 启动服务 → `/healthz` → 备份 → 停止）12–17 s，热启动 3.5 s；开启局域网后 `http://10.47.125.30:8765/` 可登录，`55432` 从局域网不可达，关闭开关后立即失效；安装到含中文的目录、`LS_HOME` 也为中文时 smoke 通过。macOS（Apple Silicon）由 CI 构建 DMG 并执行 `.app` 内 smoke，尚未人工验收。完整构建、目录结构、体积预算与安全边界见 [desktop-packaging.md](desktop-packaging.md)。

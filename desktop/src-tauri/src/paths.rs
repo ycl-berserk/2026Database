@@ -92,111 +92,179 @@ pub fn ensure_home(home: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// PostgreSQL 不接受含中文的路径。必要时在 ASCII 目录下建立 junction 转发：
-/// 可执行文件在 ProgramData 下共享，数据目录按用户哈希区分。
+/// PostgreSQL 在 Windows 上用 ANSI 代码页（CP_ACP）转换路径，连 junction 的
+/// 目标也会被展开后按 ANSI 重新解释，所以中文路径必须换成真正的 ASCII 盘符。
+/// 这里用 `subst` 把非 ASCII 目录映射成盘符，PG 侧只看到 `<盘符>:\...`。
 #[cfg(windows)]
-fn ascii_root() -> Result<PathBuf, String> {
-    let mut candidates = Vec::new();
-    if let Ok(base) = env::var("ProgramData") {
-        candidates.push(PathBuf::from(base).join("LearningSpace"));
+mod drive {
+    use std::path::{Path, PathBuf};
+    use std::process::{Command, Stdio};
+    use std::sync::Mutex;
+
+    /// 本次运行创建的盘符，退出时释放，避免盘符大量堆积。
+    static CREATED: Mutex<Vec<char>> = Mutex::new(Vec::new());
+
+    fn hash8(path: &Path) -> String {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = DefaultHasher::new();
+        path.hash(&mut hasher);
+        format!("{:x}", hasher.finish())[..8].to_string()
     }
-    if let Ok(base) = env::var("PUBLIC") {
-        candidates.push(PathBuf::from(base).join("LearningSpace"));
+
+    /// 为数据目录写一个标记文件，用于下次启动时确认某个盘符就是本仓库的映射，
+    /// 而不是用户自己的盘符或指向别处的映射。
+    pub fn write_marker(target: &Path) {
+        let marker = target.join("run").join(".ascii-drive");
+        let _ = std::fs::create_dir_all(marker.parent().unwrap_or(target));
+        let _ = std::fs::write(marker, hash8(target));
     }
-    for base in candidates {
-        if std::fs::create_dir_all(&base).is_ok() {
-            return Ok(base);
+
+    fn marker_matches(target: &Path, root: &Path) -> bool {
+        let expected = hash8(target);
+        std::fs::read_to_string(root.join("run").join(".ascii-drive"))
+            .map(|value| value.trim() == expected)
+            .unwrap_or(false)
+    }
+
+    /// 资源目录通常是只读的，无法写标记，改用 `bin/postgres.exe` 的大小核对。
+    fn exe_matches(target: &Path, root: &Path) -> bool {
+        let name = "bin/postgres.exe";
+        match (std::fs::metadata(target.join(name)), std::fs::metadata(root.join(name))) {
+            (Ok(left), Ok(right)) => left.len() == right.len(),
+            _ => false,
         }
     }
-    Err("无法找到可写的 ASCII 目录（ProgramData / Public）".to_string())
-}
 
-#[cfg(windows)]
-fn ascii_link(target: &Path, prefix: &str) -> Result<PathBuf, String> {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    let base = ascii_root()?;
-    std::fs::create_dir_all(target)
-        .map_err(|err| format!("无法创建 {}：{err}", target.display()))?;
-    // canonicalize 会返回 \\?\C:\...。把该前缀写进 junction 目标后，部分
-    // Win32/CRT 路径解析（如 PostgreSQL bootstrap）会报 ENOENT，必须先去前缀。
-    let target = strip_verbatim(
-        target
-            .canonicalize()
-            .map_err(|err| format!("无法解析 {}：{err}", target.display()))?,
-    );
-    let mut hasher = DefaultHasher::new();
-    target.hash(&mut hasher);
-    let suffix = format!("{:x}", hasher.finish());
-    let link = base.join(format!("{prefix}-{}", &suffix[..8]));
-
-    let metadata = std::fs::symlink_metadata(&link);
-    match metadata {
-        Ok(_) => {
-            let existing = link.canonicalize().map(strip_verbatim);
-            if existing.as_ref().map(|path| path == &target).unwrap_or(false) {
-                return Ok(link);
+    fn run_subst(letter: char, target: Option<&Path>) -> bool {
+        let mut command = Command::new("cmd");
+        command.args(["/C", "subst"]).arg(format!("{letter}:"));
+        match target {
+            Some(path) => {
+                command.arg(path);
             }
-            if existing.is_err() {
-                std::fs::remove_dir(&link)
-                    .map_err(|err| format!("无法清理失效的 junction {}：{err}", link.display()))?;
-            } else {
-                return Err(format!(
-                    "ASCII junction 已指向其他位置：{}",
-                    link.display()
-                ));
+            None => {
+                command.arg("/D");
             }
         }
-        Err(_) => {}
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x0800_0000);
+        }
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
     }
 
-    std::fs::create_dir_all(&target)
-        .map_err(|err| format!("无法创建 {}：{err}", target.display()))?;
-    let status = std::process::Command::new("cmd")
-        .args(["/C", "mklink", "/J"])
-        .arg(&link)
-        .arg(&target)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map_err(|err| format!("创建 junction 失败：{err}"))?;
-    if !status.success() {
-        return Err(format!("无法创建 ASCII junction：{}", link.display()));
+    fn letters() -> impl Iterator<Item = char> {
+        ('D'..='Z').rev()
     }
-    Ok(link)
+
+    fn map(
+        target: &Path,
+        matches: impl Fn(&Path, &Path) -> bool,
+        what: &str,
+    ) -> Result<PathBuf, String> {
+        std::fs::create_dir_all(target)
+            .map_err(|err| format!("无法创建 {}：{err}", target.display()))?;
+        let target = super::strip_verbatim(
+            target
+                .canonicalize()
+                .map_err(|err| format!("无法解析 {}：{err}", target.display()))?,
+        );
+
+        for letter in letters() {
+            let root = PathBuf::from(format!("{letter}:\\"));
+            if root.metadata().is_ok() {
+                if matches(&target, &root) {
+                    // 上次异常退出留下的映射，记下来以便本次退出时释放。
+                    if let Ok(mut created) = CREATED.lock() {
+                        created.push(letter);
+                    }
+                    return Ok(root);
+                }
+                continue;
+            }
+            if !run_subst(letter, Some(&target)) {
+                continue;
+            }
+            if matches(&target, &root) {
+                if let Ok(mut created) = CREATED.lock() {
+                    created.push(letter);
+                }
+                return Ok(root);
+            }
+            let _ = run_subst(letter, None);
+        }
+        Err(format!(
+            "没有可用的空闲盘符来映射{}（{}），请先断开多余的 subst/网络驱动器后重试",
+            what,
+            target.display()
+        ))
+    }
+
+    pub fn home_view(home: &Path) -> Result<PathBuf, String> {
+        let target = super::strip_verbatim(
+            home.canonicalize()
+                .map_err(|err| format!("无法解析 {}：{err}", home.display()))?,
+        );
+        write_marker(&target);
+        map(&target, marker_matches, "数据目录")
+    }
+
+    pub fn pgsql_root(pgsql: &Path) -> Result<PathBuf, String> {
+        map(pgsql, exe_matches, "程序目录")
+    }
+
+    pub fn release() {
+        let letters = CREATED.lock().map(|mut list| std::mem::take(&mut *list));
+        if let Ok(letters) = letters {
+            for letter in letters {
+                let _ = run_subst(letter, None);
+            }
+        }
+    }
 }
 
-pub fn ascii_pg_bin(resources: &Path) -> Result<PathBuf, String> {
-    let root = resources.join("pgsql");
-    if root.to_string_lossy().is_ascii() {
-        return Ok(root.join("bin"));
+/// 交给 PostgreSQL 的 pgsql/bin 视图：路径含非 ASCII 时通过盘符映射成 ASCII。
+pub fn pg_bin(resources: &Path) -> Result<PathBuf, String> {
+    let pgsql = resources.join("pgsql");
+    if pgsql.to_string_lossy().is_ascii() {
+        return Ok(pgsql.join("bin"));
     }
     #[cfg(windows)]
     {
-        // 必须转发整个 pgsql 根目录：initdb 通过可执行文件所在的 bin/ 推导
-        // prefix，再读取 share/postgres.bki；只链接 bin/ 会让它去找 <link>/share。
-        Ok(ascii_link(&root, "pgsql")?.join("bin"))
+        drive::pgsql_root(&pgsql).map(|root| root.join("bin"))
     }
     #[cfg(not(windows))]
     {
-        Ok(root.join("bin"))
+        Ok(pgsql.join("bin"))
     }
 }
 
-/// initdb/pg_ctl 使用的数据目录；含非 ASCII 路径时通过 junction 转发。
-pub fn ascii_pg_data(home: &Path) -> Result<PathBuf, String> {
-    let original = home.join("pgdata");
-    if original.to_string_lossy().is_ascii() {
-        return Ok(original);
+/// 交给 PostgreSQL 与 sidecar 的数据目录视图：`<盘符>:\` 或原生路径。
+pub fn home_view(home: &Path) -> Result<PathBuf, String> {
+    if home.to_string_lossy().is_ascii() {
+        return Ok(home.to_path_buf());
     }
     #[cfg(windows)]
     {
-        ascii_link(&original, "pgdata")
+        drive::home_view(home)
     }
     #[cfg(not(windows))]
     {
-        Ok(original)
+        Ok(home.to_path_buf())
     }
+}
+
+/// 退出时释放本次 `subst` 映射；PG 与 sidecar 必须先停止。
+pub fn release_drives() {
+    #[cfg(windows)]
+    drive::release();
 }

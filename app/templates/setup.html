@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>创建本地账号 · {{ app_name }}</title>
+  <link rel="stylesheet" href="/static/app.css?v={{ asset_version }}">
+</head>
+<body class="login-page">
+  <main class="login-shell">
+    <section class="login-intro">
+      <div class="brand brand-large">
+        <span class="brand-mark">学</span>
+        <span class="brand-text">
+          <strong>{{ app_name }}</strong>
+          <small>{{ app_tagline }}</small>
+        </span>
+      </div>
+      <h1>先创建你的<br>本地账号</h1>
+      <p>所有数据都保存在这台电脑上，不会上传到服务器。这个账号会作为本机管理员，也可以用同一账号在同一个 Wi-Fi 下的手机登录。</p>
+      <ul class="login-points">
+        <li>数据目录：本机用户数据文件夹（可随时备份）</li>
+        <li>手机访问：创建完成后可在托盘菜单手动开启</li>
+        <li>密码只保存在本机数据库中</li>
+      </ul>
+    </section>
+
+    <section class="login-card card">
+      <h2>创建本地账号</h2>
+      <p class="muted">首次启动需要设置一个管理员账号。</p>
+      {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+      <form method="post" action="/setup" class="stack" id="setup-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="field">
+          <span>用户名</span>
+          <input name="username" id="setup-username" value="{{ username or '' }}" autocomplete="username" pattern="[A-Za-z0-9_]{3,50}" required autofocus>
+        </label>
+        <label class="field">
+          <span>显示名称</span>
+          <input name="display_name" id="setup-display-name" value="{{ display_name or '' }}" autocomplete="nickname" maxlength="100" required>
+        </label>
+        <label class="field">
+          <span>密码（至少 8 位）</span>
+          <input name="password" id="setup-password" type="password" autocomplete="new-password" minlength="8" required>
+        </label>
+        <label class="field">
+          <span>确认密码</span>
+          <input name="password_confirm" id="setup-password-confirm" type="password" autocomplete="new-password" minlength="8" required>
+        </label>
+        <button class="btn btn-primary btn-block" type="submit">创建并进入</button>
+      </form>
+      <p class="muted" style="margin-top:14px">用户名可用字母、数字和下划线；显示名称可以写中文。</p>
+    </section>
+  </main>
+  <script src="/static/app.js?v={{ asset_version }}"></script>
+</body>
+</html>

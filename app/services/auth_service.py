@@ -33,7 +33,13 @@ def authenticate(conn, username: str, password: str) -> dict[str, Any] | None:
     }
 
 
-def create_user(conn, username: str, password: str, display_name: str) -> dict[str, Any]:
+def create_user(
+    conn,
+    username: str,
+    password: str,
+    display_name: str,
+    system_role: str = "student",
+) -> dict[str, Any]:
     from ..auth import hash_password
 
     username = username.strip()
@@ -41,8 +47,8 @@ def create_user(conn, username: str, password: str, display_name: str) -> dict[s
     if len(password) < 8:
         raise ValidationError("密码至少 8 位")
     row = conn.execute(
-        "INSERT INTO app.users (username, password_hash, display_name) "
-        "VALUES (%s, %s, %s) RETURNING id, username, display_name, system_role",
-        (username, hash_password(password), display_name),
+        "INSERT INTO app.users (username, password_hash, display_name, system_role) "
+        "VALUES (%s, %s, %s, %s) RETURNING id, username, display_name, system_role",
+        (username, hash_password(password), display_name, system_role),
     ).fetchone()
     return row

@@ -103,6 +103,13 @@ def session_expired(
 
 
 def ensure_production_settings(config) -> None:
+    if getattr(config, "allow_insecure_http", False) and not getattr(
+        config, "desktop_mode", False
+    ):
+        raise RuntimeError(
+            "LS_ALLOW_INSECURE_HTTP 只能与 LS_DESKTOP_MODE 一起使用；"
+            "普通部署必须使用 HTTPS"
+        )
     if config.is_dev:
         return
     secret = config.session_secret or ""

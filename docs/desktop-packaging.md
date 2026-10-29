@@ -1,6 +1,6 @@
 # 桌面打包与个人模式
 
-> 状态：Phase 0 可行性验证完成（Windows x64）。macOS 在 Phase 4 验证。
+> 状态：Phase 0 可行性验证、Phase 1 桌面运行时完成（Windows x64）。macOS 在 Phase 4 验证。
 >
 > 目标：把同一套 FastAPI + PostgreSQL 应用打成 Windows / macOS 安装包，每个用户的数据只存在本机；演示模式（Docker + 源码）保持不变。
 
@@ -55,7 +55,33 @@ FATAL: invalid byte sequence for encoding "UTF8": 0xb4
 - 桌面运行时不能假定安装目录/用户名是 ASCII；Phase 2 启动 PG 时通过 ASCII junction、`subst` 盘符或 `C:\Users\Public\LearningSpace` 这类 ASCII 路径转发，禁止直接把含中文的资源路径传给 `initdb`/`pg_ctl`。
 - 安装包 `productName` 保持英文 `Learning Space`，但这不是充分条件，仍需运行时处理。
 
-## 4. 构建步骤（当前脚本）
+## 4. 桌面运行时（Phase 1）
+
+`app/desktop.py` 提供 `ls-server` 子命令，打包前可直接用 `python -m app.desktop` 调试：
+
+| 命令 | 作用 |
+| --- | --- |
+| `init-env` | 创建 `LS_HOME` 子目录，生成 `.env`（密钥、端口、连接串） |
+| `bootstrap` | 设置 postgres 密码 → 建主库 → schema → 迁移 → 视图 → 角色密码覆盖 |
+| `serve` | 启动 FastAPI；默认 `127.0.0.1`，端口取 `LS_PORT` |
+| `backup` / `restore` | 用内置 `pg_dump` / `pg_restore`（`--pg-bin`），默认保留 7 份 |
+| `doctor` | 检查目录、密钥文件、pg 工具、主库/只读库连接与待执行迁移 |
+| `smoke` | 初始化临时目录、起服务、请求 `/healthz` 与 `/setup`、备份后退出 |
+
+环境变量：`LS_HOME`、`LS_ENV_FILE`、`LS_DATA_DIR`、`LS_DESKTOP_MODE`、`LS_ALLOW_INSECURE_HTTP`、`LS_BIND_HOST`、`LS_PG_PORT`、`LS_PORT`、`LS_PG_BIN`，以及标准的 `DATABASE_URL` / `T2S_DATABASE_URL` / `ADMIN_DATABASE_URL` / `SESSION_SECRET`。
+
+行为约定：
+
+- `.env` 只在首次生成；`LS_APP_PASSWORD`、`LS_T2S_PASSWORD`、`LS_PG_ADMIN_PASSWORD`、`SESSION_SECRET` 均为随机值，Unix 下 0600；`sql/roles.sql` 里的固定开发密码随后被 `ALTER ROLE` 覆盖。
+- `APP_ENV=production`：登录页隐藏演示账号，密钥长度校验照常生效。
+- **明文 HTTP 例外仅限桌面模式**：只有同时设置 `LS_DESKTOP_MODE=1` 与 `LS_ALLOW_INSECURE_HTTP=1` 才关闭 Secure Cookie 与 HSTS；非桌面环境带该标志会直接启动失败。
+- `/setup` 仅在桌面模式且 `app.users` 为空时开放；创建的用户直接是管理员并自动登录。`/` 在未初始化时跳 `/setup`，已初始化跳 `/dashboard`。
+- `/healthz` 增加 `desktop` 与 `initialized` 字段，Tauri 壳用它决定打开 `/setup` 还是登录页。
+- 启动时每日首次备份、迁移前强制备份；迁移仍走 `app/migrations.py`，`scripts/init_db.py` 保留为演示模式薄 CLI。
+
+2026-10-29 用裁剪后的 PostgreSQL 16.10 + `python -m app.desktop` 做了端到端验证：`bootstrap` 建库并写入 16 张表、15 个视图，`doctor` 全部通过，`serve` 后 `/healthz` 返回 `initialized:false`，完成 `/setup` 后变为 `true`，`/setup` 随后 303 到 `/login`，`backup` 生成约 97 KiB 的空库 dump，`smoke` 一次通过。
+
+## 5. 构建步骤（当前脚本）
 
 ```powershell
 # 1) 下载、校验、解压、裁剪 PG（清单固定版本与 SHA-256）
@@ -75,15 +101,15 @@ powershell -ExecutionPolicy Bypass -File packaging/postgres/build_pgvector.ps1 `
 
 构建工具版本固定在 `packaging/requirements.txt`：PyInstaller 6.22.3、pefile 2024.8.26。`fetch_trim.py` 会删除 `include/doc/pgAdmin/StackBuilder`，排除静态 `.lib`，再按 PE 导入闭包删除未使用的 DLL（pgAdmin 的 wxWidgets、libcurl 等），只保留服务端、客户端工具及其依赖。
 
-## 5. Sidecar 打包要点
+## 6. Sidecar 打包要点
 
 - 使用 onedir，不使用 onefile/UPX：启动更快、杀软误报更少，且保留 `_internal`。
 - `ls-server.spec` 打包 `app/templates`、`app/static`、`sql` 到 `_internal` 下对应位置，保证 `settings.base_dir` 的源路径与冻结路径一致。
 - 排除 pytest、hypothesis、numpy、pandas、PIL、pptx、setuptools 等非运行时依赖；PIL 曾因开发环境被误收集，占用 13 MiB。
 - `uvicorn`、`psycopg[binary]`、`sqlglot` 已通过实际启动与 `/healthz`、`/login`、静态资源请求验证。
-- 冻结包启动命令由 `packaging/sidecar/entry.py` 负责；正式 Phase 1 会替换为 `ls-server serve|bootstrap|...` 子命令。
+- 冻结包启动命令由 `packaging/sidecar/entry.py` 负责；Phase 2 会改为调用 `ls-server serve|bootstrap|...` 子命令。
 
-## 6. 预算与降级路径
+## 7. 预算与降级路径
 
 | 项目 | 预算 | Phase 0 实测 | 判断 |
 | --- | --- | --- | --- |
@@ -94,7 +120,7 @@ powershell -ExecutionPolicy Bypass -File packaging/postgres/build_pgvector.ps1 `
 
 如果后续版本超预算，按顺序降级：去掉 ICU/NLS 词典与未使用 contrib → 换更小的 PostgreSQL 发行版 → 最后才考虑首次启动下载。当前不需要降级。
 
-## 7. 风险与未决项
+## 8. 风险与未决项
 
 - **中文路径**：见第 3 节，必须在 Rust 启动器中解决，不能只靠文档。Phase 2 需补一项自动化 smoke：在含中文的临时目录启动安装包，验证 `initdb` 不被路径击穿。
 - **macOS 扩展构建**：需要匹配 arm64 的 PostgreSQL 头文件与 pgvector；Phase 4 在 `macos-14` 上验证。

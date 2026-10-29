@@ -1,13 +1,30 @@
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / ".env")
+
+def env_flag(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _default_app_root() -> Path:
+    if getattr(sys, "frozen", False):
+        # PyInstaller onedir 把数据放在 _internal，也就是 sys._MEIPASS。
+        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+    return Path(__file__).resolve().parent.parent
+
+
+BASE_DIR = Path(os.getenv("LS_APP_ROOT") or _default_app_root()).resolve()
+ENV_FILE = Path(os.getenv("LS_ENV_FILE") or BASE_DIR / ".env")
+load_dotenv(ENV_FILE)
 
 
 @dataclass(frozen=True)
@@ -43,6 +60,19 @@ class Settings:
         )
     )
     app_env: str = field(default_factory=lambda: os.getenv("APP_ENV", "dev"))
+    desktop_mode: bool = field(default_factory=lambda: env_flag("LS_DESKTOP_MODE"))
+    bind_host: str = field(
+        default_factory=lambda: os.getenv("LS_BIND_HOST", "127.0.0.1").strip()
+        or "127.0.0.1"
+    )
+    allow_insecure_http: bool = field(
+        default_factory=lambda: env_flag("LS_ALLOW_INSECURE_HTTP")
+    )
+    data_dir: Path = field(
+        default_factory=lambda: Path(
+            os.getenv("LS_DATA_DIR") or BASE_DIR / "data"
+        ).resolve()
+    )
     session_max_age: int = field(
         default_factory=lambda: int(os.getenv("SESSION_MAX_AGE", str(60 * 60 * 24 * 7)))
     )
@@ -123,8 +153,19 @@ class Settings:
         return self.app_env != "production"
 
     @property
+    def insecure_http_allowed(self) -> bool:
+        # 只有桌面模式显式开启时才允许明文 HTTP；普通部署仍强制 Secure/HSTS。
+        return self.desktop_mode and self.allow_insecure_http
+
+    @property
     def cookie_secure(self) -> bool:
-        return self.session_cookie_secure or not self.is_dev
+        if self.session_cookie_secure:
+            return True
+        return not self.is_dev and not self.insecure_http_allowed
+
+    @property
+    def hsts_enabled(self) -> bool:
+        return self.cookie_secure
 
     @property
     def static_dir(self) -> Path:
@@ -135,8 +176,12 @@ class Settings:
         return self.base_dir / "app" / "templates"
 
     @property
-    def data_dir(self) -> Path:
-        return self.base_dir / "data"
+    def log_dir(self) -> Path:
+        return self.data_dir / "logs"
+
+    @property
+    def backup_dir(self) -> Path:
+        return self.data_dir / "backups"
 
 
 settings = Settings()

@@ -42,6 +42,21 @@ def _run(command: list[str], url: str, tool: str) -> None:
         raise SystemExit(f"{tool} 执行失败，退出码 {completed.returncode}")
 
 
+def _tool(name: str, pg_bin: str | None) -> str:
+    if pg_bin:
+        executable = Path(pg_bin) / (name + (".exe" if os.name == "nt" else ""))
+        if executable.exists():
+            return str(executable)
+        raise SystemExit(f"未在 {pg_bin} 找到 {executable.name}")
+    found = shutil.which(name)
+    if found is None:
+        raise SystemExit(
+            f"未找到 {name}。请安装 PostgreSQL 客户端，"
+            "或通过 --pg-bin 指定内置 bin 目录。"
+        )
+    return found
+
+
 def _prune(directory: Path, keep: int) -> None:
     if keep <= 0:
         return
@@ -62,6 +77,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--keep", type=int, default=10, help="保留最近 N 份备份")
     parser.add_argument("--restore", metavar="DUMP", help="从 .dump 恢复")
     parser.add_argument("--force", action="store_true", help="允许恢复到非 *_test 库")
+    parser.add_argument("--pg-bin", help="PostgreSQL bin 目录（内置 pg_dump/pg_restore）")
     args = parser.parse_args(argv)
 
     target = args.database or connection_params(settings.database_url)["dbname"]
@@ -73,17 +89,12 @@ def main(argv: list[str] | None = None) -> int:
             assert_restore_target(target, force=args.force)
         except ValueError as exc:
             raise SystemExit(str(exc)) from exc
-        executable = shutil.which("pg_restore") or "pg_restore"
+        executable = _tool("pg_restore", args.pg_bin)
         _run(build_pg_restore_command(url, args.restore, executable), url, "pg_restore")
         print(f"[OK] 已恢复到 {target}：{args.restore}")
         return 0
 
-    executable = shutil.which("pg_dump")
-    if executable is None:
-        raise SystemExit(
-            "未找到 pg_dump。请安装 PostgreSQL 客户端，"
-            "或用 docker exec 在容器内执行同样的命令。"
-        )
+    executable = _tool("pg_dump", args.pg_bin)
     directory = Path(args.output_dir)
     directory.mkdir(parents=True, exist_ok=True)
     output = directory / dump_filename()

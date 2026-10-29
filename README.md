@@ -29,12 +29,22 @@
 | MCP 接口 | stdio JSON-RPC 服务：`search`、`get_conversation`、`list_due_reviews` 只读；令牌显式授予 `annotate` 后才开放 `add_annotation` |
 | 管理 | 用户启停、系统聚合统计、数据库观测；审计时间线只记录课程/成员/账号的结构变更（对象、动作、主键、变更列名），不读取正文；支持按 90 天保留期清理 |
 | 移动端与安装 | 390px 优先的底部标签栏 / 抽屉导航、列表卡片化、专注阅读模式；PWA manifest + Service Worker 应用壳缓存、离线页、桌面安装、分享快捷方式 |
-| 桌面端 | Tauri v2 本地启动器：自动拉起 uvicorn、健康检查后打开窗口、托盘菜单、`Ctrl+Shift+Space` 显隐、`Ctrl+Shift+V` 粘贴导入、剪贴板长度提示；关闭窗口收进托盘 |
+| 桌面端（个人模式） | Tauri v2 安装包（Windows NSIS / macOS DMG）：内置裁剪版 PostgreSQL 16 与 PyInstaller sidecar，不依赖本机 Python/Docker；首次启动 initdb → 建库 → 设置向导；托盘、全局快捷键、剪贴板提示；局域网“手机访问”二维码，关闭后手机立即失去访问 |
 | 离线学习 | 会话快照、离线阅读与搜索、离线批注草稿、复习打卡 outbox，恢复联网后按事件 ID 幂等同步 |
 | 体验与可访问性 | 演示账号一键登录、空账号三步引导、删除类操作 5 秒撤销、可关闭且可播报的提示、错误页原因与恢复路径、键盘焦点可见、`prefers-reduced-motion` |
 | 性能 | GZip 压缩、静态资源版本化与长缓存、首屏 JS < 10KB、移动端 LCP < 0.5s（本地实测） |
 
 > PWA 安装与 Service Worker 只在 `localhost` 或 HTTPS 下启用；通过局域网 HTTP 访问手机时仍可使用完整响应式界面，但不会缓存静态资源。
+
+## 桌面版（个人模式）
+
+不想装 Docker / Python / PostgreSQL 时，直接用桌面安装包：每个用户的数据只保存在自己的电脑上，不运行服务器。安装包由 `Desktop packaging` workflow 构建，产物名为 `Learning Space_<版本>_x64-setup.exe`（Windows）与 `Learning Space_<版本>_aarch64.dmg`（Apple Silicon）。
+
+1. 安装并启动“Learning Space”；首次启动会初始化本机数据库（仅监听 `127.0.0.1`）、应用迁移与视图，然后进入 `/setup` 创建本地管理员账号。
+2. 手机与电脑在同一 Wi-Fi 时，托盘菜单 →“手机访问…”打开开关，扫码用同一账号登录；关闭开关或退出应用后手机立即不可访问，数据库从不对外暴露。
+3. 数据目录：Windows `%LOCALAPPDATA%\com.learningspace.desktop`，macOS `~/Library/Application Support/com.learningspace.desktop`；含 `pgdata/`、`logs/`、`backups/`（保留 7 份）。卸载默认保留数据。
+
+安装包目前未签名：Windows 首次运行会被 SmartScreen 提示（“更多信息 → 仍要运行”），macOS 需在“应用程序”中右键“打开”或在终端执行 `xattr -dr com.apple.quarantine "/Applications/Learning Space.app"`。局域网共享是明文 HTTP，只应在可信 Wi-Fi 下开启。构建方法、体积预算与安全边界见 [desktop/README.md](desktop/README.md) 与 [docs/desktop-packaging.md](docs/desktop-packaging.md)。
 
 ## 技术栈
 
@@ -45,6 +55,7 @@
 - `pg_trgm` GIN 索引支持中文子串检索；`vector(1536)` + HNSW 支持可选的语义召回，RRF 融合两路排名
 - GZip 中间件 + 带版本参数的静态资源长缓存
 - Chrome MV3 浏览器扩展（原生 JS，点击发送、按需站点权限）
+- 桌面个人模式：Tauri v2（Rust）+ PyInstaller onedir sidecar + 裁剪版 PostgreSQL 16，Windows NSIS / macOS DMG；SQLite 未采用，数据库与演示模式完全一致
 - Playwright 用于带断言的页面 E2E、截图、扩展冒烟与演示录屏
 
 ## 快速开始
@@ -86,19 +97,27 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 使用 pip 时把 `uv run python` 换成 `.venv/Scripts/python.exe` 即可。
 
-### 方式 C：桌面壳（Tauri v2，可选）
+### 方式 C：桌面开发模式（Tauri v2，可选）
 
-已装 Rust、MSVC Build Tools 2022 与 WebView2 时，可以用桌面窗口承载同一套站点：
+已装 Rust、MSVC Build Tools 2022 与 WebView2 时，可以直接用开发模式调试桌面壳。桌面壳不复用 `.venv` 或 Docker，而是读取 `desktop/src-tauri/resources/` 下打包好的 PostgreSQL、sidecar 与 SQL：
 
 ```bash
-docker compose up -d db                 # 数据库仍需先启动
-uv run python scripts/seed_demo.py      # 首次或重置演示数据
+uv sync
+uv pip install -r packaging/requirements.txt
+uv run python packaging/build.py         # PG + pgvector + sidecar + 资源汇总（约 5–10 分钟）
 cd desktop
 npm install
 npm run dev
 ```
 
-桌面壳会在启动时自动拉起 `uvicorn app.main:app`，健康检查通过后打开登录页；关闭窗口收进托盘，托盘菜单提供“打开 / 粘贴导入 / 重启服务 / 退出”，全局快捷键为 `Ctrl+Shift+Space`（显示或隐藏）与 `Ctrl+Shift+V`（粘贴导入）。剪贴板监听只在本机判断文本长度并更新托盘提示，不保存、不上传内容。完整条件、环境变量与排障见 [desktop/README.md](desktop/README.md)。当前是“本地启动器”形态，仍依赖本机 Python 与 PostgreSQL；独立安装包的 sidecar 方案尚未实现。
+建议使用独立数据目录，避免污染真实数据：
+
+```powershell
+$env:LS_HOME = "D:\build-cache\ls-dev-home"
+npm run dev
+```
+
+关闭窗口收进托盘，托盘菜单提供“打开学习空间 / 手机访问… / 粘贴导入 / 重新启动本地服务 / 打开日志目录 / 退出”；全局快捷键 `Ctrl+Shift+Space`（显隐）与 `Ctrl+Shift+V`（粘贴导入）。修改 Python 代码后需重新执行 `packaging/build.py --skip-fetch --skip-pgvector --clean-sidecar`。完整条件、环境变量与排障见 [desktop/README.md](desktop/README.md)。
 
 > `docker-compose.yml` 为 db 服务传入 `shared_preload_libraries=pg_stat_statements`，供管理员观测页读取慢查询；扩展本身由迁移 008 在演示库与测试库中条件创建。若数据库未预加载该库，页面会显示降级提示，其余指标不受影响。
 

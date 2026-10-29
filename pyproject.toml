@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "learning-space"
-version = "0.1.0"
+version = "0.2.0"
 description = "个人学习空间：以聊天记录为核心的课程复习数据库应用系统"
 requires-python = ">=3.12"
 dependencies = [

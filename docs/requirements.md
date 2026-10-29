@@ -242,6 +242,22 @@
 - `pg_stat_statements` 是可选扩展，迁移条件创建；`docker-compose.yml` 负责预加载，未加载时页面仍可用其余指标。
 - 慢查询只保留 SELECT/WITH/INSERT/UPDATE/DELETE，且排除 `pg_stat_statements` 与 `EXPLAIN` 自身，避免工具语句占据榜单。
 
+## R18 桌面个人模式
+
+| ID | 功能 | 输入 | 输出 / 行为 | 异常与边界 | 实现位置 | 验收 |
+| --- | --- | --- | --- | --- | --- | --- |
+| R18-F01 | 一键安装与首次初始化 | Windows NSIS / macOS DMG | 内置裁剪版 PostgreSQL 16、`ls-server` sidecar 与 SQL；首次启动 `initdb` → 建库 → schema → 迁移 → 视图 → 角色，随后进入 `/setup` 创建本地管理员 | 端口被占用时给出日志路径与解决建议，不静默换端口；安装目录含中文时数据目录经 ASCII junction 转发 | `desktop/src-tauri/src/{lib,postgres,server,paths}.rs`、`app/desktop.py`、`app/bootstrap.py` | `Learning Space --smoke`（Windows 安装后与中文路径两次；macOS `.app` 内一次） |
+| R18-F02 | 本机数据与备份 | 用户数据目录 `LS_HOME` | `pgdata/`、`logs/`、`backups/`、`run/`；`.env` 存随机密钥；迁移前与每日首次自动备份，保留 7 份 | 卸载默认保留数据；`.env` 不入仓库、不进日志；退出先停 sidecar 再 `pg_ctl stop -m fast` | `app/config.py`、`app/desktop.py`、`desktop/src-tauri/src/config.rs` | `tests/unit/test_desktop_config.py`、`--smoke` 的备份步骤 |
+| R18-F03 | 局域网手机访问 | 托盘“手机访问…”开关 | 显示 LAN URL 与二维码；开启后 sidecar 以 `0.0.0.0` 重启，桌面仍访问 `127.0.0.1`；关闭立即恢复回环 | 未创建账号前不可开启；失败自动回滚；PG 永不对外；明文 HTTP 仅限桌面模式，界面提示可信 Wi-Fi | `desktop/src-tauri/src/share.rs`、`desktop/ui/share.html`、`app/config.py` | `cargo test` 的 URL/二维码单测、Playwright 共享页、真机（待人工验收） |
+| R18-F04 | 安装体积与启动预算 | 打包产物 | 安装后资源 ≤350 MiB；NSIS ≤120 MB、DMG ≤150 MB；首次启动包含 initdb 在 15 s 量级 | 超预算按“去 ICU/NLS → 换发行版 → 首次下载”降级；体积写入 Step Summary | `packaging/build.py`、`packaging/postgres/*`、`.github/workflows/desktop.yml` | `packaging/build/size-report.{json,md}`、CI artifacts |
+
+**设计要点**
+
+- 演示模式（Docker + 源码 + 种子数据）保持不变；桌面模式只换运行方式，不换 schema、视图、权限与业务代码。
+- 桌面模式是明文 HTTP 的唯一例外：必须同时满足 `LS_DESKTOP_MODE=1` 与 `LS_ALLOW_INSECURE_HTTP=1`，否则启动失败；生产部署仍强制 Secure Cookie 与 HSTS。
+- `/setup` 只在桌面模式且用户表为空时开放，创建的用户直接是管理员，避免手机在账号创建前抢注。
+- macOS 无 arm64 预编译 PostgreSQL，打包时从固定 SHA-256 的源码构建，并用 `install_name_tool` 把绝对 `install_name` 改为 `@rpath`；MVP 仅 ad-hoc 签名。
+
 ## 非功能需求
 
 | 类别 | 要求 | 实现 |
@@ -253,11 +269,12 @@
 | 工程质量 | 依赖可复现、静态检查、提交钩子、随机化与浏览器测试 | `uv.lock`、Ruff、pyright、pre-commit、Hypothesis、Playwright；CI 同步执行 |
 | 可演示性 | 离线可演示、模拟数据可复现 | mock Text2SQL、`make_samples.py`、`seed_demo.py` |
 | 可验收 | 自动化测试与端到端报告 | 334 个 pytest 用例 + 12 项 Playwright E2E + 42 项 `verify.py` 检查 |
+| 可分发 | 普通用户无需 Docker/Python 即可安装使用，数据只在本机 | Windows NSIS（约 36 MiB）与 macOS DMG，内置 PostgreSQL + sidecar；`--smoke` 自检；体积报告进 CI |
 
 ## 需求到验收命令的映射
 
 ```bash
-# R01–R16 的主要回归
+# R01–R18 的主要回归
 .venv/Scripts/python.exe -m pytest -q
 
 # 端到端 PASS/FAIL（含权限、导入、检索、统计、导出、Text2SQL、事务）

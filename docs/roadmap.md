@@ -138,7 +138,7 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 | E7 | 登录限流、会话轮换、生产 Cookie 标志 | 答辩 | S | 完成 | `app/security.py` 滑动窗口同时限制 IP+账号与单 IP，超限 429 + `Retry-After`；登录清空旧会话并写入签发时间/nonce，超过 `SESSION_MAX_AGE` 失效；生产环境 Cookie `Secure`、HSTS 与安全响应头；`APP_ENV=production` 使用默认/过短 `SESSION_SECRET` 时拒绝启动；新增 6 项单元 + 1 项集成测试 |
 | E8 | Gzip / Brotli + 静态缓存 + 字体子集 | 用户 | S | 完成 | GZip 中间件；`?v=` 版本化静态资源一年 immutable 缓存，无版本参数 5 分钟；页面 HTML `no-store`；未引入 Web 字体，使用系统字体栈 |
 | E9 | 游标分页（keyset） | 用户 | S | 完成 | 会话列表与收件箱改为 `(最近消息时间, id)` 复合游标，首页仍用 `count(*) OVER()` 取总数并写入游标；后端保留 `page` 参数兼容旧调用，`after`/`before` 分别向后/向前翻页并反转排序；混合检索按 RRF 融合位置生成位置游标；无效游标回退首页；新增 2 项单元 + 1 项集成 + 1 项 E2E |
-| E10 | Tauri 桌面壳（全局快捷键、剪贴板监听、托盘） | 用户 | M/L | 完成（本地壳） | `desktop/` 下 Tauri v2 壳：启动自动拉起 uvicorn、健康检查后打开登录页，托盘菜单支持打开/粘贴导入/重启/退出，`Ctrl+Shift+Space` 显隐窗口，`Ctrl+Shift+V` 直达粘贴导入；剪贴板只在内存判断长度并更新托盘提示，不保存内容；环境变量 `LS_URL` / `LS_AUTOSTART_SERVER` / `LS_PYTHON` / `LS_PROJECT_ROOT` / `LS_CLIPBOARD_MONITOR` 可覆盖默认行为；本机已验证构建、自动起服务、两个快捷键与关闭收托盘；独立安装包所需的 Python/数据库 sidecar 未实现 |
+| E10 | Tauri 桌面壳 → 个人版桌面安装包 | 用户 | L | 完成（Windows 已验收，macOS 待 CI） | `desktop/` 从“本地启动器”（依赖 `.venv` 与 Docker）升级为内置运行时的个人模式：裁剪版 PostgreSQL 16（`pg_trgm`/`pgvector`）+ PyInstaller onedir sidecar + Rust 编排 `initdb`/`pg_ctl`/`bootstrap`/`serve`；首次启动 `/setup` 建本地管理员，数据与备份在 `LS_HOME`；托盘“手机访问…”以 `0.0.0.0` 重启并展示二维码，关闭即失效；Windows NSIS 35.9 MiB、安装后约 111 MiB，`--smoke` 12–17 s；macOS arm64 源码构建 PostgreSQL + `install_name_tool` 重定位 + ad-hoc 签名，CI 产出 DMG；详见 `docs/desktop-packaging.md` |
 | E11 | Qoder Sites 静态展示页（报告 / 截图 / PPT） | 答辩 | S | 待办 | 只承载静态内容，不部署应用本体 |
 
 ### 8. 学习闭环（知识结构与复习）
@@ -190,11 +190,9 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 
 **Phase 3 进度**：T1 AST 校验、T2 EXPLAIN 预检、T5 金标准评测、R1 pgvector 混合检索、R6 自动标签/摘要建议已完成，Phase 3 收尾。
 
-**Phase 4 进度**：K2 知识先修图、A1 只读 MCP、A2 CLI、D1 迁移体系、D2 审计历史、D3 数据库观测均已完成，Phase 4 收尾。
-
-**Phase 5 进度**：E1 容器化、E2 GitHub Actions CI、E3 工程工具链、E4 属性测试、E5 Playwright E2E、E6 备份/恢复与全量导出、D8 物化视图统计实验、E9 游标分页、E7 安全加固、K3 FSRS 复习调度、E10 Tauri 本地桌面壳已完成；下一步 E11 静态展示页。
-
 **Phase 4 进度**：K2 知识先修图、A1 MCP 工具接口、A2 命令行、D1 RLS 对比实验、D2 审计历史与 D3 数据库观测页已完成（16 张表、15 个视图、9 个触发器；334 项测试、42 项验收）。Phase 4 收尾。
+
+**Phase 5 进度**：E1 容器化、E2 GitHub Actions CI、E3 工程工具链、E4 属性测试、E5 Playwright E2E、E6 备份/恢复与全量导出、D8 物化视图统计实验、E9 游标分页、E7 安全加固、K3 FSRS 复习调度、E10 个人版桌面安装包（内置 PostgreSQL + sidecar + 局域网手机访问，Windows 已验收、macOS DMG 由 CI 构建）已完成；下一步 E11 静态展示页。
 
 每个阶段的统一验收：
 

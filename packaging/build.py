@@ -100,13 +100,13 @@ def fetch_postgres(force: bool) -> int:
 
 def _vector_library() -> Path:
     if MACOS:
-        for candidate in (
-            PG_ROOT / "lib" / "postgresql" / "vector.so",
-            PG_ROOT / "lib" / "vector.so",
-        ):
-            if candidate.exists():
-                return candidate
-        return PG_ROOT / "lib" / "vector.so"
+        # pgvector's PGXS install names the module vector.dylib on macOS.
+        for directory in (PG_ROOT / "lib" / "postgresql", PG_ROOT / "lib"):
+            for suffix in (".dylib", ".so"):
+                candidate = directory / f"vector{suffix}"
+                if candidate.exists():
+                    return candidate
+        return PG_ROOT / "lib" / "vector.dylib"
     return PG_ROOT / "lib" / "vector.dll"
 
 

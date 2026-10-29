@@ -106,6 +106,16 @@ def _vector_library() -> Path:
     return PG_ROOT / "lib" / "vector.dll"
 
 
+def _raw_server_header() -> Path | None:
+    # EDB Windows archives use include/server; source-installed trees use
+    # include/postgresql/server.
+    for rel in ("include/server/postgres.h", "include/postgresql/server/postgres.h"):
+        candidate = RAW_PG / rel
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def build_pgvector() -> None:
     vector = PG_ROOT / "share" / "extension" / "vector.control"
     library = _vector_library()
@@ -117,8 +127,11 @@ def build_pgvector() -> None:
         return
     if os.name != "nt":
         raise SystemExit("pgvector 构建脚本目前只支持 Windows 与 macOS")
-    if not (RAW_PG / "include" / "postgresql" / "server" / "postgres.h").exists():
-        raise SystemExit("缺少 EDB 头文件，请先运行 fetch_trim.py --stage all")
+    if _raw_server_header() is None:
+        raise SystemExit(
+            f"缺少 EDB 头文件：{RAW_PG / 'include'} 下未找到 server/postgres.h；"
+            "请先运行 packaging/postgres/fetch_trim.py --stage all"
+        )
     _run(
         [
             "powershell",

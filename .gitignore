@@ -10,6 +10,7 @@ packaging/.cache/
 packaging/build/
 packaging/sidecar/build/
 packaging/sidecar/dist/
+desktop/src-tauri/resources/
 .pytest_cache/
 .ruff_cache/
 node_modules/

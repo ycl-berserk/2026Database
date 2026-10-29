@@ -1,12 +1,11 @@
-"""Frozen entry point used by the desktop bundle.
+"""Frozen entry point: delegate to the desktop runtime CLI.
 
-Only environment parsing and uvicorn startup live here; application settings
-remain in app/config.py so the source build and the frozen build behave alike.
+The packaged binary behaves like ``ls-server``: init-env / bootstrap / serve /
+backup / restore / doctor / smoke.
 """
 
 from __future__ import annotations
 
-import os
 import sys
 
 
@@ -16,17 +15,9 @@ def main() -> int:
 
         print(version("learning-space"))
         return 0
-    import uvicorn
+    from app.desktop import main as desktop_main
 
-    host = os.environ.get("LS_BIND_HOST", "127.0.0.1")
-    port = int(os.environ.get("LS_PORT", "8765"))
-    uvicorn.run(
-        "app.main:app",
-        host=host,
-        port=port,
-        log_level=os.environ.get("LS_LOG_LEVEL", "info"),
-    )
-    return 0
+    return desktop_main(sys.argv[1:])
 
 
 if __name__ == "__main__":

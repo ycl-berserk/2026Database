@@ -1,6 +1,6 @@
 # 桌面打包与个人模式
 
-> 状态：Phase 0 可行性验证、Phase 1 桌面运行时完成（Windows x64）。macOS 在 Phase 4 验证。
+> 状态：Phase 0 可行性、Phase 1 桌面运行时、Phase 2 Windows 打包完成（Windows x64）。macOS 在 Phase 4 验证。
 >
 > 目标：把同一套 FastAPI + PostgreSQL 应用打成 Windows / macOS 安装包，每个用户的数据只存在本机；演示模式（Docker + 源码）保持不变。
 
@@ -84,22 +84,34 @@ FATAL: invalid byte sequence for encoding "UTF8": 0xb4
 ## 5. 构建步骤（当前脚本）
 
 ```powershell
-# 1) 下载、校验、解压、裁剪 PG（清单固定版本与 SHA-256）
-.venv\Scripts\python.exe packaging/postgres/fetch_trim.py --stage all
+# 0) 依赖
+uv sync
+uv pip install -r packaging/requirements.txt
 
-# 2) 用 EDB 头文件构建 pgvector，并安装到裁剪树
-powershell -ExecutionPolicy Bypass -File packaging/postgres/build_pgvector.ps1 `
-  -PgRoot packaging/.cache/raw-16.10/pgsql `
-  -InstallDir packaging/build/pgsql
+# 1) 下载/裁剪 PG、构建 pgvector、打包 sidecar、汇总 resources
+uv run python packaging/build.py
+#    可分别跳过：--skip-fetch --skip-pgvector --skip-sidecar --clean-sidecar
 
-# 3) 构建 Python sidecar
-.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean `
-  --distpath packaging/build/sidecar `
-  --workpath packaging/.cache/pyinstaller `
-  packaging/sidecar/ls-server.spec
+# 2) 生成 NSIS 安装包
+cd desktop
+npm install
+npm run build          # tauri build --bundles nsis
 ```
 
+`packaging/build.py` 按顺序执行：`fetch_trim.py --stage all` → `build_pgvector.ps1` →
+PyInstaller `ls-server.spec` → 复制 `pgsql/`、`sidecar/`、`sql/` 到
+`desktop/src-tauri/resources/`，写入 `version.json`，并输出
+`packaging/build/size-report.{json,md}`；在 GitHub Actions 中同时追加到 Step Summary。
+每个阶段都以产物存在为幂等条件，CI 缓存 `packaging/build/pgsql` 与 `packaging/.cache`。
+
 构建工具版本固定在 `packaging/requirements.txt`：PyInstaller 6.22.3、pefile 2024.8.26。`fetch_trim.py` 会删除 `include/doc/pgAdmin/StackBuilder`，排除静态 `.lib`，再按 PE 导入闭包删除未使用的 DLL（pgAdmin 的 wxWidgets、libcurl 等），只保留服务端、客户端工具及其依赖。
+
+Tauri 配置（`desktop/src-tauri/tauri.conf.json`）：
+
+- `productName: "Learning Space"`，窗口标题仍为中文“学习空间”。
+- `bundle.resources: ["resources/**/*"]`，安装后位于 `<安装目录>/resources/{pgsql,sidecar,sql}`。
+- `bundle.targets: ["nsis"]`；NSIS 使用 `currentUser`、简体中文/英文、不显示语言选择器。
+- WebView2 使用 `downloadBootstrapper`，缺失时由安装器下载。
 
 ## 6. Sidecar 打包要点
 
@@ -107,23 +119,72 @@ powershell -ExecutionPolicy Bypass -File packaging/postgres/build_pgvector.ps1 `
 - `ls-server.spec` 打包 `app/templates`、`app/static`、`sql` 到 `_internal` 下对应位置，保证 `settings.base_dir` 的源路径与冻结路径一致。
 - 排除 pytest、hypothesis、numpy、pandas、PIL、pptx、setuptools 等非运行时依赖；PIL 曾因开发环境被误收集，占用 13 MiB。
 - `uvicorn`、`psycopg[binary]`、`sqlglot` 已通过实际启动与 `/healthz`、`/login`、静态资源请求验证。
-- 冻结包启动命令由 `packaging/sidecar/entry.py` 负责；Phase 2 会改为调用 `ls-server serve|bootstrap|...` 子命令。
+- `packaging/sidecar/entry.py` 现在只做两件事：`--version` 输出版本；其余参数转交 `app.desktop.main`，因此安装包内的 `ls-server` 与源码 `python -m app.desktop` 行为一致。
+- 第三方许可汇总见 `packaging/licenses/THIRD_PARTY_NOTICES.md`。
 
-## 7. 预算与降级路径
+## 7. Windows 桌面壳（Phase 2）
 
-| 项目 | 预算 | Phase 0 实测 | 判断 |
+Rust 侧拆分为：
+
+| 模块 | 职责 |
+| --- | --- |
+| `paths.rs` | 解析 `resources/`、`LS_HOME`、sidecar/PG 路径；非 ASCII 路径通过 ProgramData/Public 下的 junction 转发 |
+| `config.rs` | `config.json`（端口、LAN 开关）、`run/state.json`、空闲端口扫描、残留 sidecar 清理 |
+| `postgres.rs` | `initdb`、`postgresql.conf` 受管块、`pg_ctl start/stop/status` |
+| `server.rs` | 调用 `ls-server init-env/bootstrap/serve/backup`、健康检查、日志重定向 |
+| `smoke.rs` | `--smoke` 无界面自检，输出 `smoke-report.json` |
+| `lib.rs` | 单实例、托盘、快捷键、剪贴板、启动编排与退出清理 |
+
+启动顺序：
+
+1. 单实例插件先注册，重复启动只唤出窗口。
+2. `ensure_home` → 按 `run/state.json` 清理路径匹配的残留 sidecar → 读取/生成 `config.json`。
+3. 若 `/healthz` 已可用（上一次留下的服务），直接打开 `/`。
+4. `ls-server init-env` 生成 `.env`；用其中的 `LS_PG_ADMIN_PASSWORD` 运行 `initdb`
+   （`scram-sha-256`、UTF8、locale C），写入受管 `postgresql.conf` 块并 `pg_ctl start`。
+5. `ls-server bootstrap`：建主库、schema、迁移、视图、角色密码；迁移前与每日首次自动备份。
+6. 启动 `ls-server serve`，写 `run/state.json`，轮询 `/healthz` 200 后跳到 `/`；
+   首次进入 `/` 会 303 到 `/setup`。
+7. 退出时先停 sidecar，再 `pg_ctl stop -m fast`（失败退回 immediate）。
+
+关键约定：
+
+- `/healthz` 的 `initialized` 表示“已有账号”，首次建号前为 false，因此桌面壳等待的是
+  HTTP 200 而不是 `initialized=true`。
+- `pg_ctl start` 的 stdout/stderr 必须重定向到文件或 null；postgres 会继承句柄，
+  用管道会让父进程永远等不到 EOF。
+- 含中文的安装目录或用户名不会被直接传给 `initdb`/`pg_ctl`：数据目录先经
+  `C:\ProgramData\LearningSpace\pgdata-<hash>` junction 转发；不可写时退回 `%PUBLIC%`。
+  `--smoke` 已在 `D:\build-cache\中文测试\学习空间` 下验证通过。
+- 关闭窗口只隐藏；托盘菜单含“打开学习空间 / 粘贴导入 / 重新启动本地服务 / 打开日志目录 / 退出”。
+
+CI（`.github/workflows/desktop.yml`，仅 `workflow_dispatch` 与 `v*` 触发）：
+
+1. `windows-latest` 上同步依赖、安装 PyInstaller 与 Tauri CLI。
+2. 缓存并构建 PG/pgvector/sidecar，`tauri build --bundles nsis`。
+3. NSIS 静默安装到 `C:\ls-install`，用临时 `LS_HOME` 运行
+   `Learning Space.exe --smoke`，失败时打印日志。
+4. 上传安装包、体积报告与 `smoke-report.json`。
+
+## 8. 预算与降级路径
+
+| 项目 | 预算 | 当前实测 | 判断 |
 | --- | --- | --- | --- |
-| Windows 安装包 | ≤120 MB | 资源约 101.4 MiB | 通过（待 NSIS 实测） |
-| Windows 安装后 | ≤350 MB | 约 101.4 MiB | 通过 |
+| Windows 安装包 | ≤120 MB | **35.8 MiB**（NSIS，x64，0.1.0） | 通过 |
+| Windows 安装后 | ≤350 MB | 约 111 MiB（资源 101.5 MiB + 主程序 9.6 MiB） | 通过 |
 | macOS DMG | ≤150 MB | 未验证 | Phase 4 |
-| 首次启动 | 可接受 | <10 s（本机） | 通过 |
+| 首次启动 | 可接受 | 安装后 `--smoke` 11.9–14.6 s（含 initdb）；热启动 3.5 s | 通过 |
+
+安装包与首次启动数据来自本机 Windows 11 x64 实测（2026-10-29）。安装到含中文的目录、
+数据目录也使用中文路径时，`--smoke` 同样通过；`initdb` 前会建立 ASCII junction。
 
 如果后续版本超预算，按顺序降级：去掉 ICU/NLS 词典与未使用 contrib → 换更小的 PostgreSQL 发行版 → 最后才考虑首次启动下载。当前不需要降级。
 
-## 8. 风险与未决项
+## 9. 风险与未决项
 
-- **中文路径**：见第 3 节，必须在 Rust 启动器中解决，不能只靠文档。Phase 2 需补一项自动化 smoke：在含中文的临时目录启动安装包，验证 `initdb` 不被路径击穿。
+- **中文路径**：资源与数据目录都已通过 ASCII junction 解决，并有中文路径 smoke；仍需在干净用户机上覆盖“中文用户名 + 默认安装目录”。
 - **macOS 扩展构建**：需要匹配 arm64 的 PostgreSQL 头文件与 pgvector；Phase 4 在 `macos-14` 上验证。
 - **签名**：MVP 不签名，Windows SmartScreen 和 macOS Gatekeeper 会提示；正式分发需证书与公证。
 - **局域网 HTTP**：手机访问走明文 HTTP，仅限可信 Wi-Fi，默认关闭；PG 端口永不对外。
-- **体积报告**：Phase 2 的 CI 应输出归档/安装后体积，作为发布门禁。
+- **体积报告**：`packaging/build.py` 与 desktop workflow 已输出资源与安装包体积；后续接入发布门槛。
+

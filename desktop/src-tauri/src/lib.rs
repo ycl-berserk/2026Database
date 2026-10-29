@@ -1,33 +1,40 @@
+mod config;
+mod paths;
+mod postgres;
+mod server;
+mod smoke;
+
+use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::net::{TcpStream, ToSocketAddrs};
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::Child;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::thread;
 use std::time::{Duration, Instant};
-use std::{env, fs::OpenOptions, thread};
+use std::{env, io};
 
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, RunEvent, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
-use url::Url;
+use tauri_plugin_opener::OpenerExt;
 
-const DEFAULT_BASE_URL: &str = "http://127.0.0.1:8000";
-const START_TIMEOUT: Duration = Duration::from_secs(45);
+use config::DesktopConfig;
+use postgres::Postgres;
+
+const START_TIMEOUT: Duration = Duration::from_secs(90);
 
 struct DesktopState {
-    base_url: String,
+    home: PathBuf,
+    resources: PathBuf,
+    pg_bin: PathBuf,
+    pg_data: PathBuf,
+    config: Mutex<DesktopConfig>,
     server: Mutex<Option<Child>>,
     starting: AtomicBool,
     status: Mutex<String>,
-}
-
-fn base_url() -> String {
-    env::var("LS_URL")
-        .unwrap_or_else(|_| DEFAULT_BASE_URL.to_string())
-        .trim_end_matches('/')
-        .to_string()
+    init_error: Option<String>,
 }
 
 fn env_bool(name: &str, default: bool) -> bool {
@@ -40,94 +47,21 @@ fn env_bool(name: &str, default: bool) -> bool {
     }
 }
 
-fn project_root() -> PathBuf {
-    if let Some(path) = env::var_os("LS_PROJECT_ROOT") {
-        return PathBuf::from(path);
-    }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."))
-}
-
-fn server_port(base: &str) -> u16 {
-    Url::parse(base)
-        .ok()
-        .and_then(|url| url.port_or_known_default())
-        .unwrap_or(8000)
-}
-
-fn server_up(base: &str) -> bool {
-    let Ok(url) = Url::parse(base) else {
-        return false;
-    };
-    let Some(host) = url.host_str() else {
-        return false;
-    };
-    let port = url.port_or_known_default().unwrap_or(80);
-    let Ok(addrs) = (host, port).to_socket_addrs() else {
-        return false;
-    };
-    addrs.into_iter().any(|addr| {
-        TcpStream::connect_timeout(&addr, Duration::from_millis(400)).is_ok()
-    })
-}
-
-fn spawn_server(base: &str) -> Result<Child, String> {
-    let root = project_root();
-    let port = server_port(base);
-    let python = env::var_os("LS_PYTHON").map(PathBuf::from).unwrap_or_else(|| {
-        let candidate = if cfg!(windows) {
-            root.join(".venv").join("Scripts").join("python.exe")
-        } else {
-            root.join(".venv").join("bin").join("python")
-        };
-        if candidate.exists() {
-            candidate
-        } else {
-            PathBuf::from("python")
-        }
-    });
-
-    let mut command = Command::new(&python);
-    command
-        .arg("-m")
-        .arg("uvicorn")
-        .arg("app.main:app")
-        .arg("--host")
-        .arg("127.0.0.1")
-        .arg("--port")
-        .arg(port.to_string())
-        .current_dir(&root);
-
-    let log_path = root.join("data").join("desktop-server.log");
-    match OpenOptions::new().create(true).append(true).open(&log_path) {
-        Ok(file) => {
-            let errors = file
-                .try_clone()
-                .map_err(|err| format!("无法写服务日志：{err}"))?;
-            command.stdout(Stdio::from(file)).stderr(Stdio::from(errors));
-        }
-        Err(_) => {
-            command.stdout(Stdio::null()).stderr(Stdio::null());
-        }
-    }
-
-    #[cfg(windows)]
+fn boot_note(home: &std::path::Path, message: &str) {
+    let logs = home.join("logs");
+    let _ = fs::create_dir_all(&logs);
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(logs.join("desktop.log"))
     {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        command.creation_flags(CREATE_NO_WINDOW);
+        let _ = writeln!(file, "[boot] {message}");
     }
-
-    command
-        .spawn()
-        .map_err(|err| format!("无法启动本地服务（{}）：{err}", python.display()))
 }
 
 fn set_status(app: &AppHandle, text: &str) {
-    if let Ok(mut status) = app.state::<DesktopState>().status.lock() {
+    let state = app.state::<DesktopState>();
+    if let Ok(mut status) = state.status.lock() {
         *status = text.to_string();
     }
     if let Some(window) = app.get_webview_window("main") {
@@ -140,11 +74,16 @@ fn set_status(app: &AppHandle, text: &str) {
 }
 
 fn navigate(app: &AppHandle, path: &str) {
-    let state = app.state::<DesktopState>();
+    let port = app
+        .state::<DesktopState>()
+        .config
+        .lock()
+        .map(|config| config.app_port)
+        .unwrap_or(8765);
     let url = if path.starts_with("http://") || path.starts_with("https://") {
         path.to_string()
     } else {
-        format!("{}{}", state.base_url, path)
+        format!("http://127.0.0.1:{port}{path}")
     };
     if let Some(window) = app.get_webview_window("main") {
         if let Ok(target) = serde_json::to_string(&url) {
@@ -167,6 +106,131 @@ fn toggle_window(app: &AppHandle) {
     }
 }
 
+fn stop_child(state: &DesktopState) {
+    if let Ok(mut slot) = state.server.lock() {
+        if let Some(mut child) = slot.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+fn stop_runtime(app: &AppHandle) {
+    let state = app.state::<DesktopState>();
+    stop_child(&state);
+    config::clear_state(&state.home);
+
+    let port = state
+        .config
+        .lock()
+        .map(|config| config.pg_port)
+        .unwrap_or(0);
+    if port > 0 {
+        let pg = Postgres::new(
+            state.pg_bin.clone(),
+            state.pg_data.clone(),
+            port,
+            state.home.join("logs").join("postgresql.log"),
+        );
+        let _ = pg.stop();
+    }
+}
+
+fn boot(app: &AppHandle) -> Result<(), String> {
+    let state = app.state::<DesktopState>();
+    if let Some(message) = &state.init_error {
+        return Err(message.clone());
+    }
+
+    let home = state.home.clone();
+    boot_note(&home, "开始启动");
+    paths::ensure_home(&home)?;
+    config::cleanup_stale(&home);
+    let cfg = config::load_or_create(&home)?;
+    if let Ok(mut slot) = state.config.lock() {
+        *slot = cfg.clone();
+    }
+    boot_note(
+        &home,
+        &format!("配置就绪：app {} / pg {}", cfg.app_port, cfg.pg_port),
+    );
+
+    let server = server::Server::new(
+        state.resources.clone(),
+        home.clone(),
+        state.pg_bin.clone(),
+        cfg.app_port,
+        cfg.pg_port,
+    );
+
+    if server.health().is_some() {
+        boot_note(&home, "复用已运行的服务");
+        navigate(app, "/");
+        return Ok(());
+    }
+    stop_child(&state);
+
+    set_status(app, "准备数据库（首次启动会稍慢）…");
+    server.init_env()?;
+    boot_note(&home, "本机配置已生成");
+    let password = server.pg_password()?;
+
+    let pg = Postgres::new(
+        state.pg_bin.clone(),
+        state.pg_data.clone(),
+        cfg.pg_port,
+        home.join("logs").join("postgresql.log"),
+    );
+    pg.init(&password)?;
+    boot_note(&home, "initdb 完成");
+    pg.start()?;
+    boot_note(&home, "PostgreSQL 已启动");
+
+    set_status(app, "应用数据库迁移…");
+    server.bootstrap()?;
+    boot_note(&home, "迁移与角色配置完成");
+
+    set_status(app, "启动本地服务…");
+    let child = server.spawn("127.0.0.1", &home.join("logs").join("desktop.log"))?;
+    boot_note(&home, &format!("服务进程已启动：{}", child.id()));
+    let state_file = config::RuntimeState {
+        sidecar_pid: child.id(),
+        sidecar_exe: server.exe.to_string_lossy().to_string(),
+        pg_port: cfg.pg_port,
+    };
+    if let Ok(mut slot) = state.server.lock() {
+        *slot = Some(child);
+    }
+    config::write_state(&home, &state_file)?;
+
+    let deadline = Instant::now() + START_TIMEOUT;
+    while Instant::now() < deadline {
+        if server.health().is_some() {
+            boot_note(&home, "服务已就绪");
+            navigate(app, "/");
+            return Ok(());
+        }
+        if let Ok(mut slot) = state.server.lock() {
+            if let Some(child) = slot.as_mut() {
+                if let Ok(Some(status)) = child.try_wait() {
+                    slot.take();
+                    return Err(format!(
+                        "本地服务已退出（{status}），请查看日志：{}",
+                        home.join("logs").display()
+                    ));
+                }
+            }
+        }
+        thread::sleep(Duration::from_millis(300));
+    }
+
+    stop_child(&state);
+    Err(format!(
+        "本地服务启动超时，请查看日志：{}",
+        home.join("logs").display()
+    ))
+}
+
 fn ensure_and_open(app: AppHandle) {
     let state = app.state::<DesktopState>();
     if state.starting.swap(true, Ordering::SeqCst) {
@@ -174,61 +238,20 @@ fn ensure_and_open(app: AppHandle) {
     }
 
     thread::spawn(move || {
-        let state = app.state::<DesktopState>();
-        let base = state.base_url.clone();
-        let mut already_running = state
-            .server
-            .lock()
-            .map(|mut child| {
-                matches!(
-                    child.as_mut().map(|process| process.try_wait()),
-                    Some(Ok(None))
-                )
-            })
-            .unwrap_or(false);
-
-        if !server_up(&base) && !already_running {
-            if !env_bool("LS_AUTOSTART_SERVER", true) {
-                set_status(
-                    &app,
-                    "LS_AUTOSTART_SERVER=0：请先手动启动本地服务（uv run uvicorn app.main:app），再点击重试。",
-                );
-                state.starting.store(false, Ordering::SeqCst);
-                return;
-            }
-            set_status(&app, "正在启动本地服务…");
-            match spawn_server(&base) {
-                Ok(child) => {
-                    if let Ok(mut slot) = state.server.lock() {
-                        *slot = Some(child);
-                    }
-                    already_running = true;
-                }
-                Err(message) => {
-                    set_status(&app, &message);
-                    state.starting.store(false, Ordering::SeqCst);
-                    return;
-                }
-            }
+        if let Err(message) = boot(&app) {
+            let home = app.state::<DesktopState>().home.clone();
+            boot_note(&home, &format!("启动失败：{message}"));
+            set_status(
+                &app,
+                &format!(
+                    "{message}\n可点击“重新启动”重试；数据库与服务日志位于 {}。",
+                    home.join("logs").display()
+                ),
+            );
         }
-
-        let deadline = Instant::now() + START_TIMEOUT;
-        while Instant::now() < deadline {
-            if server_up(&base) {
-                let _ = already_running;
-                state.starting.store(false, Ordering::SeqCst);
-                navigate(&app, "/login");
-                return;
-            }
-            thread::sleep(Duration::from_millis(400));
-        }
-
-        set_status(
-            &app,
-            "本地服务启动超时。请确认 PostgreSQL 已运行（docker compose up -d db）、\
-             依赖与演示数据已初始化，然后点击重试；日志见 data/desktop-server.log。",
-        );
-        state.starting.store(false, Ordering::SeqCst);
+        app.state::<DesktopState>()
+            .starting
+            .store(false, Ordering::SeqCst);
     });
 }
 
@@ -236,8 +259,9 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "打开学习空间", true, None::<&str>)?;
     let paste = MenuItem::with_id(app, "paste", "打开粘贴导入", true, None::<&str>)?;
     let retry = MenuItem::with_id(app, "retry", "重新启动本地服务", true, None::<&str>)?;
+    let logs = MenuItem::with_id(app, "logs", "打开日志目录", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &paste, &retry, &quit])?;
+    let menu = Menu::with_items(app, &[&open, &paste, &retry, &logs, &quit])?;
 
     let mut builder = TrayIconBuilder::with_id("main")
         .menu(&menu)
@@ -246,6 +270,11 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             "open" => navigate(app, "/"),
             "paste" => navigate(app, "/imports?mode=paste"),
             "retry" => ensure_and_open(app.clone()),
+            "logs" => {
+                let logs = app.state::<DesktopState>().home.join("logs");
+                let _ = fs::create_dir_all(&logs);
+                let _ = app.opener().reveal_item_in_dir(&logs);
+            }
             "quit" => app.exit(0),
             _ => {}
         });
@@ -299,17 +328,6 @@ fn start_clipboard_monitor(app: AppHandle) {
     });
 }
 
-fn stop_server(app: &AppHandle) {
-    let child = {
-        let state = app.state::<DesktopState>();
-        state.server.lock().ok().and_then(|mut slot| slot.take())
-    };
-    if let Some(mut child) = child {
-        let _ = child.kill();
-        let _ = child.wait();
-    }
-}
-
 #[tauri::command]
 fn retry_start(app: AppHandle) {
     set_status(&app, "正在重试…");
@@ -331,14 +349,17 @@ fn desktop_status(state: tauri::State<DesktopState>) -> String {
 }
 
 pub fn run() {
-    let state = DesktopState {
-        base_url: base_url(),
-        server: Mutex::new(None),
-        starting: AtomicBool::new(false),
-        status: Mutex::new(String::new()),
-    };
+    if env::args().any(|arg| arg == "--smoke") {
+        std::process::exit(smoke::run());
+    }
 
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
@@ -355,9 +376,44 @@ pub fn run() {
                 })
                 .build(),
         )
-        .manage(state)
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![retry_start, quit_app, desktop_status])
         .setup(|app| {
+            let home = paths::data_home(app.handle()).map_err(io::Error::other)?;
+            paths::ensure_home(&home).map_err(io::Error::other)?;
+
+            let mut init_error = None;
+            let (resources, pg_bin, pg_data) =
+                match paths::resource_root(Some(app.handle())) {
+                    Ok(resources) => match (
+                        paths::ascii_pg_bin(&resources),
+                        paths::ascii_pg_data(&home),
+                    ) {
+                        (Ok(pg_bin), Ok(pg_data)) => (resources, pg_bin, pg_data),
+                        (Err(err), _) | (_, Err(err)) => {
+                            init_error = Some(err);
+                            (PathBuf::new(), PathBuf::new(), PathBuf::new())
+                        }
+                    },
+                    Err(err) => {
+                        init_error = Some(err);
+                        (PathBuf::new(), PathBuf::new(), PathBuf::new())
+                    }
+                };
+
+            let config = config::load_or_create(&home).unwrap_or_default();
+            app.manage(DesktopState {
+                home,
+                resources,
+                pg_bin,
+                pg_data,
+                config: Mutex::new(config),
+                server: Mutex::new(None),
+                starting: AtomicBool::new(false),
+                status: Mutex::new(String::new()),
+                init_error,
+            });
+
             build_tray(app.handle())?;
             register_shortcuts(app.handle());
             start_clipboard_monitor(app.handle().clone());
@@ -375,9 +431,7 @@ pub fn run() {
 
     app.run(|app, event| {
         if matches!(event, RunEvent::Exit) {
-            stop_server(app);
+            stop_runtime(app);
         }
     });
-
-    let _ = std::io::stdout().flush();
 }

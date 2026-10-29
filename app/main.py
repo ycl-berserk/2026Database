@@ -76,7 +76,7 @@ async def response_headers(request: Request, call_next):
     response.headers.setdefault(
         "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
     )
-    if settings.cookie_secure:
+    if settings.hsts_enabled:
         response.headers.setdefault(
             "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
         )
@@ -146,9 +146,26 @@ async def handle_unexpected_error(request: Request, exc: Exception):
     )
 
 
+def _initialized() -> bool:
+    try:
+        from .bootstrap import is_initialized
+
+        with main_pool.connection() as conn:
+            return is_initialized(conn)
+    except Exception:
+        return False
+
+
 @app.get("/healthz")
 def healthz():
-    result = {"ok": True, "app": "up", "db": "up", "t2s_db": "up"}
+    result = {
+        "ok": True,
+        "app": "up",
+        "db": "up",
+        "t2s_db": "up",
+        "desktop": settings.desktop_mode,
+        "initialized": False,
+    }
     try:
         check_main_db()
     except Exception as exc:
@@ -159,11 +176,15 @@ def healthz():
     except Exception as exc:
         result["ok"] = False
         result["t2s_db"] = f"error: {exc.__class__.__name__}"
+    if result["db"] == "up":
+        result["initialized"] = _initialized()
     return JSONResponse(result, status_code=200 if result["ok"] else 503)
 
 
 @app.get("/")
 def index():
+    if settings.desktop_mode and not _initialized():
+        return RedirectResponse("/setup", status_code=303)
     return RedirectResponse("/dashboard", status_code=303)
 
 
@@ -208,6 +229,7 @@ from .routers import (  # noqa: E402
     mcp,
     reviews,
     search,
+    setup,
     stats,
     tags,
     text2sql,
@@ -215,6 +237,7 @@ from .routers import (  # noqa: E402
 )
 
 app.include_router(auth.router)
+app.include_router(setup.router)
 app.include_router(api.router)
 app.include_router(mcp.router)
 app.include_router(dashboard.router)

@@ -8,26 +8,17 @@
   <link rel="stylesheet" href="/static/app.css?v={{ asset_version }}">
 </head>
 <body class="login-page">
+  {% include "partials/desktop_frame.html" %}
   <main class="login-shell">
-    <section class="login-intro">
-      <div class="brand brand-large">
+    <section class="login-card card" aria-labelledby="login-title">
+      <div class="auth-head">
         <span class="brand-mark">学</span>
-        <span class="brand-text">
+        <span class="auth-brand-text">
           <strong>{{ app_name }}</strong>
-          <small>{{ app_tagline }}</small>
+          <small>问答记录 · 课程资料 · 复习队列</small>
         </span>
       </div>
-      <h1>把聊天记录<br>变成可复习的课程资料</h1>
-      <p>导入 Qoder、ChatGPT、DeepSeek 的问答记录，按课程、标签和来源整理；搜索上下文、添加批注、安排复习，并用 SQL 统计你的学习轨迹。</p>
-      <ul class="login-points">
-        <li>课程 / 来源 / 会话 / 消息 / 标签 / 批注 的关系模型</li>
-        <li>解析、预览、查重、事务入库</li>
-        <li>课程级权限与 Text2SQL 只读视图</li>
-      </ul>
-    </section>
-
-    <section class="login-card card">
-      <h2>登录学习空间</h2>
+      <h1 id="login-title">登录</h1>
       <p class="muted">{% if demo_mode %}使用课程演示账号进入系统。{% else %}使用本机账号登录。{% endif %}</p>
       {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
       <form method="post" action="/login" class="stack" id="login-form">
@@ -59,6 +50,7 @@
       </div>
       {% endif %}
     </section>
+    <p class="login-foot muted">本地部署 · 演示数据不含真实个人信息</p>
   </main>
   <script src="/static/app.js?v={{ asset_version }}"></script>
 </body>

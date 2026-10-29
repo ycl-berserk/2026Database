@@ -1,6 +1,6 @@
 # 桌面打包与个人模式
 
-> 状态：Phase 0 可行性、Phase 1 桌面运行时、Phase 2 Windows 打包完成（Windows x64）。macOS 在 Phase 4 验证。
+> 状态：Phase 0 可行性、Phase 1 桌面运行时、Phase 2 Windows 打包、Phase 3 局域网共享完成（Windows x64）。macOS 在 Phase 4 验证。
 >
 > 目标：把同一套 FastAPI + PostgreSQL 应用打成 Windows / macOS 安装包，每个用户的数据只存在本机；演示模式（Docker + 源码）保持不变。
 
@@ -156,17 +156,43 @@ Rust 侧拆分为：
 - 含中文的安装目录或用户名不会被直接传给 `initdb`/`pg_ctl`：数据目录先经
   `C:\ProgramData\LearningSpace\pgdata-<hash>` junction 转发；不可写时退回 `%PUBLIC%`。
   `--smoke` 已在 `D:\build-cache\中文测试\学习空间` 下验证通过。
-- 关闭窗口只隐藏；托盘菜单含“打开学习空间 / 粘贴导入 / 重新启动本地服务 / 打开日志目录 / 退出”。
+- 关闭窗口只隐藏；托盘菜单含“打开学习空间 / 手机访问… / 粘贴导入 / 重新启动本地服务 / 打开日志目录 / 退出”。
 
 CI（`.github/workflows/desktop.yml`，仅 `workflow_dispatch` 与 `v*` 触发）：
 
 1. `windows-latest` 上同步依赖、安装 PyInstaller 与 Tauri CLI。
 2. 缓存并构建 PG/pgvector/sidecar，`tauri build --bundles nsis`。
 3. NSIS 静默安装到 `C:\ls-install`，用临时 `LS_HOME` 运行
-   `Learning Space.exe --smoke`，失败时打印日志。
+   `learning-space-desktop.exe --smoke`，失败时打印日志。
 4. 上传安装包、体积报告与 `smoke-report.json`。
 
-## 8. 预算与降级路径
+## 8. 局域网共享（Phase 3）
+
+设计目标：手机与电脑在同一 Wi-Fi 下访问同一个实例，默认关闭、手动开启，数据库不对外。
+
+- 新增 Tauri `share` 窗口（`desktop/ui/share.html`）：显示局域网 URL、二维码、开关与风险提示。
+  二维码由 Rust `qrcode` 生成 SVG，界面不依赖外部服务；`--share` 或托盘“手机访问…”打开。
+- LAN 地址来自 `sysinfo` 网卡枚举：跳过 VMware/WSL/Docker/utun 等虚拟网卡，优先
+  192.168/16、10/8、172.16/12。手机必须与这些地址互通（访客网络/AP 隔离会导致失败）。
+- 开启前要求 `/healthz` 已就绪且 `initialized=true`，避免手机在创建账号前抢注。
+- 开关走 `respawn_server`：先停 sidecar，再以 `--host 0.0.0.0` 重启并轮询 `/healthz`，
+  成功后把 `config.json` 的 `lan_enabled` 持久化；失败时自动回滚到 `127.0.0.1`。
+  桌面窗口始终访问 `127.0.0.1`，不受影响。
+- 关闭开关立即恢复 `127.0.0.1`；退出应用时 sidecar 与 PostgreSQL 一并停止。
+- 明文 HTTP 例外沿用 Phase 1：`LS_DESKTOP_MODE=1` 时关闭 Secure Cookie 与 HSTS；
+  普通生产部署仍强制 Secure/HSTS。CSRF 与登录节流在 LAN 下照常生效。
+- PostgreSQL 的 `postgresql.conf` 只写 `listen_addresses = '127.0.0.1'`，
+  `pg_hba.conf` 仅放行回环地址；LAN 开关不会改动数据库。
+- Windows 首次监听 `0.0.0.0` 会触发防火墙授权（`ls-server.exe`），文档提示允许“专用网络”，
+  应用不静默修改防火墙规则。macOS 同理。
+
+2026-10-29 本机验证：安装包启动 `--share` → `/setup` 建号 → 开关开启后
+`netstat` 显示 `0.0.0.0:8765`，通过 `http://10.47.125.30:8765/` 登录并打开仪表盘，
+`Set-Cookie` 不带 Secure、无 HSTS；同时 `127.0.0.1:55432` 正常监听，
+`10.47.125.30:55432` 连接超时。关闭开关后应用端口恢复 `127.0.0.1`，手机地址立即不可达，
+`config.json` 的 `lan_enabled` 同步为 false。真实手机（同一 Wi-Fi）仍需人工验收。
+
+## 9. 预算与降级路径
 
 | 项目 | 预算 | 当前实测 | 判断 |
 | --- | --- | --- | --- |
@@ -180,11 +206,12 @@ CI（`.github/workflows/desktop.yml`，仅 `workflow_dispatch` 与 `v*` 触发�
 
 如果后续版本超预算，按顺序降级：去掉 ICU/NLS 词典与未使用 contrib → 换更小的 PostgreSQL 发行版 → 最后才考虑首次启动下载。当前不需要降级。
 
-## 9. 风险与未决项
+## 10. 风险与未决项
 
 - **中文路径**：资源与数据目录都已通过 ASCII junction 解决，并有中文路径 smoke；仍需在干净用户机上覆盖“中文用户名 + 默认安装目录”。
 - **macOS 扩展构建**：需要匹配 arm64 的 PostgreSQL 头文件与 pgvector；Phase 4 在 `macos-14` 上验证。
 - **签名**：MVP 不签名，Windows SmartScreen 和 macOS Gatekeeper 会提示；正式分发需证书与公证。
 - **局域网 HTTP**：手机访问走明文 HTTP，仅限可信 Wi-Fi，默认关闭；PG 端口永不对外。
+  手机真机（扫描二维码、导入、复习）仍需在同一 Wi-Fi 下人工验收；访客网络/AP 隔离无法访问。
 - **体积报告**：`packaging/build.py` 与 desktop workflow 已输出资源与安装包体积；后续接入发布门槛。
 

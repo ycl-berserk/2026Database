@@ -18,6 +18,18 @@
         "minHeight": 640,
         "center": true,
         "resizable": true
+      },
+      {
+        "label": "share",
+        "title": "手机访问 · 学习空间",
+        "url": "share.html",
+        "width": 460,
+        "height": 640,
+        "minWidth": 380,
+        "minHeight": 520,
+        "center": true,
+        "resizable": true,
+        "visible": false
       }
     ],
     "security": {

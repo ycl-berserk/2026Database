@@ -68,6 +68,7 @@ Windows CI（英文系统，ACP=1252）上进一步实测：
 原因是 Windows 版 PostgreSQL 用 ANSI 代码页（`CP_ACP`）转换路径：`pgreadlink()`（`src/port/dirmod.c`）解析 junction 时以 `CP_ACP` 把 UTF-16 目标转成 ANSI，英文系统下中文退化为 `?`；随后 `_pgstat64()`（`src/port/win32stat.c`）re-stat 该目标，在 `SelectConfigFiles()` 里报 `could not access directory ... No such file or directory`。`subst` 盘符由对象管理器解析，不经过 `CP_ACP`，所以能稳定转发。运行时因此统一使用 `subst`：
 
 - 数据目录非 ASCII 时映射为 `<盘符>:\`；安装目录（`resources/pgsql`）非 ASCII 时同样映射，PG 可执行文件、share、lib 都经盘符访问。
+- PG 工具的命令行参数同样按 ANSI 解析（`pg_dump --file` 会退化成 `?`），所以 sidecar 全程使用盘符视图；`configure_environment` 用 `os.path.abspath` 而非 `Path.resolve()`，避免把 `subst` 盘符还原回真实中文路径。
 - 盘符选择 `D:`–`Z:` 倒序的空闲盘符；复用已有映射前先校验标记文件（`run/.ascii-drive` 哈希）与 `postgres.exe` 大小，退出时对所有本次使用过的盘符执行 `subst /D`。
 
 ## 4. 桌面运行时（Phase 1）

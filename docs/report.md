@@ -12,7 +12,7 @@
 
 本项目实现了一个以“聊天记录”为核心的关系数据库应用系统。系统把 Qoder、ChatGPT、DeepSeek 等平台的问答导出文件解析为统一格式，按课程、来源、标签组织；支持中文检索、会话上下文、批注、间隔复习、统计导出，并额外实现了受数据库只读权限视图保护的 Text2SQL 页面。
 
-数据库包含 16 张表（15 张业务表 + 1 张审计表）、15 个权限视图、9 个触发器、多组唯一/检查/外键约束；应用层使用参数化 SQL 与显式事务，不依赖 ORM。导入流水线采用“解析 → 校验 → 持久化预览 → 单事务确认 → 查重”的结构，并在文件导入之外提供平台原生导出适配、采集令牌 + Bearer 接口与 MV3 浏览器扩展。标签之间还维护一张有向无环的先修关系图，用递归 CTE 做环检测、闭包与最短路径查询；另在隔离事务中用 RLS 与应用层 WHERE、`security_barrier` 视图做同规则对比实验。审计触发器只记录对象、主键与变更列名，不保存字段值，消息与批注表不开启审计；管理员观测页只展示 PostgreSQL 统计视图与白名单执行计划，不提供任意 SQL 输入。系统通过 334 个自动化测试、12 项浏览器 E2E 与 42 项端到端验收检查，覆盖 schema、权限、导入幂等、中文检索、全局搜索、统计、批注复习与 FSRS 调度、整理建议、知识先修图、离线同步、导出、Text2SQL 安全、命令行与 MCP 接口、令牌作用域、RLS 隔离一致性、审计元数据边界、数据库观测与事务回滚。
+数据库包含 16 张表（15 张业务表 + 1 张审计表）、15 个权限视图、9 个触发器、多组唯一/检查/外键约束；应用层使用参数化 SQL 与显式事务，不依赖 ORM。导入流水线采用“解析 → 校验 → 持久化预览 → 单事务确认 → 查重”的结构，并在文件导入之外提供平台原生导出适配、采集令牌 + Bearer 接口与 MV3 浏览器扩展。标签之间还维护一张有向无环的先修关系图，用递归 CTE 做环检测、闭包与最短路径查询；另在隔离事务中用 RLS 与应用层 WHERE、`security_barrier` 视图做同规则对比实验。审计触发器只记录对象、主键与变更列名，不保存字段值，消息与批注表不开启审计；管理员观测页只展示 PostgreSQL 统计视图与白名单执行计划，不提供任意 SQL 输入。另提供 Windows / macOS 桌面个人版安装包：内置裁剪后的 PostgreSQL 16 与 PyInstaller sidecar，首次启动自动建库并创建本地管理员，数据只保存在本机；同一 Wi-Fi 下手机可扫码访问同一实例，数据库端口永不对外。系统通过 334 个自动化测试、12 项浏览器 E2E 与 42 项端到端验收检查，覆盖 schema、权限、导入幂等、中文检索、全局搜索、统计、批注复习与 FSRS 调度、整理建议、知识先修图、离线同步、导出、Text2SQL 安全、命令行与 MCP 接口、令牌作用域、RLS 隔离一致性、审计元数据边界、数据库观测与事务回滚。
 
 ---
 
@@ -446,17 +446,18 @@ Markdown 导入仍需走网站上传页，因为 CLI 只发送统一 JSON，避�
 
 ![数据库观测](screenshots/28-observability.png)
 
-### 6.18 桌面壳（Tauri v2，可选）
+### 6.18 桌面个人模式（Tauri v2，可选）
 
-`desktop/` 用 Tauri v2 把同一套站点包进桌面窗口，定位是“本地启动器”，页面、权限与数据库不变：
+同一套站点可以打成“装好即用”的桌面应用：每个用户的数据只保存在本机，不需要服务器、Docker 或本机 Python。安装包内置裁剪后的 PostgreSQL 16（含 `pg_trgm`、`pgvector`）与 PyInstaller onedir sidecar，Rust 壳负责进程编排：
 
-- 启动时先探测 `LS_URL`（默认 `http://127.0.0.1:8000`）；不可达且允许自动启动时，用项目 `.venv` 的 Python 以隐藏窗口方式拉起 `uvicorn app.main:app`，输出写入 `data/desktop-server.log`；健康检查通过后窗口跳转登录页。
-- 托盘菜单提供“打开学习空间 / 粘贴导入 / 重启本地服务 / 退出”；关闭窗口只隐藏，避免误退出。
-- 全局快捷键 `Ctrl+Shift+Space` 显示或隐藏窗口，`Ctrl+Shift+V` 直达 `/imports?mode=paste`。
-- 剪贴板监听每 1.2 秒比较文本是否变化，只有超过 20 字时才把托盘提示改为“剪贴板有新内容”，内容不落盘、不上传；可用 `LS_CLIPBOARD_MONITOR=0` 关闭。
-- 应用退出时结束自己拉起的子进程；若服务是外部启动的，则不干预。
+- 首次启动：读取/生成 `config.json` 与 `.env`（随机 `SESSION_SECRET` 及 `postgres`/`ls_app`/`t2s_reader` 密码），执行 `initdb --locale=C --encoding=UTF8`，写入受管 `postgresql.conf` 块（`listen_addresses='127.0.0.1'`、`max_connections=20`、`shared_buffers=128MB`）后 `pg_ctl start`。
+- `ls-server bootstrap` 建主库、schema、迁移、视图与角色，迁移前自动 `pg_dump` 备份；随后 `ls-server serve`，轮询 `/healthz` 返回 200 后打开页面。首次进入 `/setup` 创建本地管理员账号（直接设为 admin）。
+- 数据目录：Windows `%LOCALAPPDATA%\com.learningspace.desktop`，macOS `~/Library/Application Support/com.learningspace.desktop`；备份保留 7 份，卸载默认保留数据。
+- 托盘“手机访问…”把 sidecar 以 `--host 0.0.0.0` 重启并显示 LAN URL 与二维码；关闭开关立即恢复 `127.0.0.1`。PostgreSQL 始终只监听回环地址，局域网是明文 HTTP，仅限可信 Wi-Fi。
+- 安装目录或用户名含中文时，不会把非 ASCII 路径直接交给 PostgreSQL：数据目录经 `C:\ProgramData\LearningSpace\pgdata-<hash>` junction 转发。
+- 桌面模式是唯一的明文 HTTP 例外（`LS_DESKTOP_MODE=1` 且 `LS_ALLOW_INSECURE_HTTP=1` 才关闭 Secure Cookie 与 HSTS）；普通生产部署仍强制 Secure/HSTS。
 
-本机验证（Windows 11，Rust 1.91，MSVC Build Tools 2022，WebView2，Node 24）：`cargo check` 与 `npm run dev` 通过；窗口标题为“学习空间”，`/healthz` 返回 200 且日志显示 uvicorn 由桌面壳拉起；两次发送 `Ctrl+Shift+Space` 后窗口可见性依次为“显示 → 隐藏 → 显示”；按 `Ctrl+Shift+V` 后服务日志出现 `GET /imports?mode=paste`；向窗口发送 `WM_CLOSE` 后进程仍存活且窗口隐藏，快捷键可再次唤出。前置条件、环境变量与排障见 [desktop/README.md](../desktop/README.md)。当前壳仍依赖本机 Python 与 PostgreSQL，独立安装包需要 sidecar 化，属于后续工作。
+本机实测（Windows 11 x64，0.2.0）：安装后资源约 101 MiB，NSIS 安装包 35.9 MiB；首次启动 `--smoke`（initdb → 迁移 → 启动服务 → `/healthz` → 备份 → 停止）12–17 s，热启动 3.5 s；开启局域网后 `http://10.47.125.30:8765/` 可登录，`55432` 从局域网不可达，关闭开关后立即失效；安装到含中文的目录、`LS_HOME` 也为中文时 smoke 通过。macOS（Apple Silicon）由 CI 构建 DMG 并执行 `.app` 内 smoke，尚未人工验收。完整构建、目录结构、体积预算与安全边界见 [desktop-packaging.md](desktop-packaging.md)。
 
 ## 7. 关键 SQL
 
@@ -642,12 +643,17 @@ node scripts/extension_smoke.mjs
 node scripts/screenshots.mjs
 ```
 
-桌面演示（可选，需 Rust、MSVC Build Tools 2022 与 WebView2）：
+桌面个人模式（可选，需 Rust、MSVC Build Tools 2022 与 WebView2）：
 
 ```bash
+uv pip install -r packaging/requirements.txt
+uv run python packaging/build.py      # 内置 PostgreSQL + pgvector + sidecar + SQL
 cd desktop
 npm install
-npm run dev        # 自动拉起 uvicorn 并打开登录页
+npm run dev                           # 独立 LS_HOME，首次启动 initdb 并进入 /setup
+
+# 生成安装包（Windows）
+npx tauri build --bundles nsis
 ```
 
 演示账号：`alice / Alice123!`、`bob / Bob123!`、`admin / Admin123!`。完整演示脚本见 [demo-script.md](demo-script.md)。
@@ -663,7 +669,7 @@ npm run dev        # 自动拉起 uvicorn 并打开登录页
 7. **扩展 DOM 依赖**：ChatGPT / DeepSeek / Qoder 的页面结构随时可能改版；扩展提供预览与回退提示，但长期仍以平台导出文件和适配器为主。
 8. **令牌与离线边界**：令牌限流是单机固定窗口，多实例部署需要换成共享计数器；离线数据只保存在当前浏览器，换设备需重新保存。
 9. **整理建议的质量与成本**：建议依赖外部模型，输出不保证稳定；服务端只做清洗与长度限制，25 秒超时后返回可读错误。启用前需要部署方提供 Key，并明确该会话节选会被发送到模型服务；结果永远需要用户确认，不会自动写入。
-10. **桌面分发**：Tauri 壳目前是本地启动器，仍要求本机有 Python、`.venv` 与 PostgreSQL；要做成双击即用的安装包，需要把服务改为 sidecar 并解决数据库的嵌入式或托管方案，本次未实现。
+10. **桌面分发**：已提供 Windows NSIS 与 macOS DMG 个人版安装包（内置 PostgreSQL 与 sidecar，不依赖本机 Python/Docker），但安装包未签名，Windows SmartScreen 与 macOS Gatekeeper 会提示；macOS 仅由 CI 构建并通过 `.app` 内 smoke，尚未在真机人工验收；自动更新仍为手动下载覆盖安装。
 
 ## 14. 结论
 
@@ -700,7 +706,8 @@ npm run dev        # 自动拉起 uvicorn 并打开登录页
 | `app/services/text2sql_service.py` | 生成、守卫、只读执行、审计 |
 | `app/permissions.py` | 课程角色与会话可见性 |
 | `extension/` | Chrome MV3 扩展、隐私说明与回退指引 |
-| `desktop/` | Tauri v2 桌面壳：自动启动服务、托盘、全局快捷键与剪贴板提示 |
+| `desktop/` | Tauri v2 个人版桌面壳：内置 PostgreSQL/sidecar 编排、托盘、局域网共享、`--smoke` 自检 |
+| `packaging/` | PostgreSQL 裁剪/源码构建、pgvector、sidecar 打包、资源汇总与体积报告 |
 | `scripts/verify.py` | 42 项端到端验收 |
 | `scripts/rls_experiment.py` | 隔离对比实验 CLI 与 JSON 报告 |
 | `scripts/extension_smoke.mjs` | 扩展提取与发送契约冒烟 |

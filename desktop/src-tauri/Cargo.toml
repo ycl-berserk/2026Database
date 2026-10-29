@@ -1,6 +1,6 @@
 [package]
 name = "learning-space-desktop"
-version = "0.1.0"
+version = "0.2.0"
 description = "学习空间本地桌面壳"
 edition = "2021"
 rust-version = "1.77.2"

@@ -1,6 +1,6 @@
 # 桌面打包与个人模式
 
-> 状态：Phase 0 可行性、Phase 1 桌面运行时、Phase 2 Windows 打包、Phase 3 局域网共享、Phase 4 macOS 打包脚本与 CI 完成；macOS 尚未人工验收。
+> 状态：Phase 0 可行性、Phase 1 桌面运行时、Phase 2 Windows 打包、Phase 3 局域网共享、Phase 4 macOS 打包脚本与 CI、Phase 5 文档与发布准备完成（0.2.0）；macOS 尚未人工验收。
 >
 > 目标：把同一套 FastAPI + PostgreSQL 应用打成 Windows / macOS 安装包，每个用户的数据只存在本机；演示模式（Docker + 源码）保持不变。
 
@@ -234,10 +234,10 @@ CI（`.github/workflows/desktop.yml`，仅 `workflow_dispatch` 与 `v*` 触发�
 
 | 项目 | 预算 | 当前实测 | 判断 |
 | --- | --- | --- | --- |
-| Windows 安装包 | ≤120 MB | **35.8 MiB**（NSIS，x64，0.1.0） | 通过 |
+| Windows 安装包 | ≤120 MB | **35.9 MiB**（NSIS，x64，0.2.0） | 通过 |
 | Windows 安装后 | ≤350 MB | 约 111 MiB（资源 101.5 MiB + 主程序 9.6 MiB） | 通过 |
 | macOS DMG | ≤150 MB | CI 构建，体积由 `size-report.md` 与上传产物记录 | Phase 4 待首次 CI 结果 |
-| 首次启动 | 可接受 | 安装后 `--smoke` 11.9–14.6 s（含 initdb）；热启动 3.5 s | 通过 |
+| 首次启动 | 可接受 | 安装后 `--smoke` 12–17 s（含 initdb 9–10 s）；热启动 3.5 s | 通过 |
 
 安装包与首次启动数据来自本机 Windows 11 x64 实测（2026-10-29）。安装到含中文的目录、
 数据目录也使用中文路径时，`--smoke` 同样通过；`initdb` 前会建立 ASCII junction。
@@ -254,4 +254,20 @@ CI（`.github/workflows/desktop.yml`，仅 `workflow_dispatch` 与 `v*` 触发�
 - **局域网 HTTP**：手机访问走明文 HTTP，仅限可信 Wi-Fi，默认关闭；PG 端口永不对外。
   手机真机（扫描二维码、导入、复习）仍需在同一 Wi-Fi 下人工验收；访客网络/AP 隔离无法访问。
 - **体积报告**：`packaging/build.py` 与 desktop workflow 已输出资源与安装包体积；后续接入发布门槛。
+
+## 11. 发布步骤（0.2.0）
+
+MVP 不接入自动更新，按以下顺序手动发版：
+
+1. 确认主分支 CI（`ci.yml`）与 `Desktop packaging` 的 Windows/macOS 两个 job 都通过；
+   下载 artifacts：`windows-nsis` 的 `*.exe` 与 `macos-dmg` 的 `*.dmg`。
+2. 版本号：`pyproject.toml`、`app/mcp_server.py`、`desktop/package.json`、
+   `desktop/src-tauri/{Cargo.toml,tauri.conf.json}` 保持一致（当前 `0.2.0`）。
+3. 打标签 `v0.2.0` 并推送，触发 `Desktop packaging` 重新构建（标签构建用于留档）。
+4. 在 GitHub Release 上传 NSIS、DMG 与 `size-report.md`，附 SHA-256：
+   `certutil -hashfile <安装包> SHA256`（Windows）或 `shasum -a 256 <dmg>`（macOS）。
+5. 发布说明至少包含：Windows SmartScreen / macOS Gatekeeper 绕过方式、数据目录位置、
+   LAN 共享的安全边界、从 0.1.0 升级时自动备份与迁移。
+
+升级安装会覆盖程序资源，但保留 `LS_HOME`；首次启动检测到待执行迁移时先备份再迁移。
 

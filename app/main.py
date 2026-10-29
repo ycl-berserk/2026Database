@@ -227,6 +227,7 @@ from .routers import (  # noqa: E402
     dashboard,
     imports,
     mcp,
+    onboarding,
     reviews,
     search,
     setup,
@@ -241,6 +242,7 @@ app.include_router(setup.router)
 app.include_router(api.router)
 app.include_router(mcp.router)
 app.include_router(dashboard.router)
+app.include_router(onboarding.router)
 app.include_router(search.router)
 app.include_router(capture.router)
 app.include_router(courses.router)

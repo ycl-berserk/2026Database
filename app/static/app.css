@@ -1190,29 +1190,67 @@ mark { background: #f7e3a8; color: inherit; padding: 0 1px; border-radius: 2px; 
 }
 
 /* ---------- onboarding ---------- */
-.onboarding-steps {
-  list-style: none;
-  margin: 14px 0 0;
-  padding: 0;
-  display: grid;
-  gap: 10px;
+.onboarding-summary .panel-head h2 { display: flex; align-items: center; gap: 8px; }
+.onboarding-count {
+  padding: 1px 7px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper-2);
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 500;
 }
-.onboarding-steps li {
+.onboarding-mini {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.onboarding-mini li {
   display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 14px;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 9px 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: var(--paper-2);
+  background: var(--paper);
 }
-.onboarding-steps strong { font-size: 14px; }
-.onboarding-steps p { margin: 2px 0 0; font-size: 12.5px; }
-.onboarding-steps li > :last-child { margin-left: auto; }
+.onboarding-mini li.is-done { background: var(--white); }
+.onboarding-mini li > div { min-width: 0; flex: 1; }
+.onboarding-mini strong { display: block; font-size: 13px; }
+.onboarding-mini small { display: block; margin-top: 1px; color: var(--ink-3); font-size: 11.5px; line-height: 1.45; }
+.onboarding-mini li > .btn { flex: none; margin-left: auto; align-self: center; }
+.onboarding-check {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.is-done .onboarding-check { border-color: #c3d6ca; background: var(--jade-soft); color: var(--jade); }
+.onboarding-demo { margin: 12px 0 0; font-size: 12.5px; }
+.onboarding-resume {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  color: var(--ink-3);
+  font-size: 13px;
+}
 .step-no {
   flex: none;
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1222,7 +1260,28 @@ mark { background: #f7e3a8; color: inherit; padding: 0 1px; border-radius: 2px; 
   font-family: var(--mono);
   font-size: 12.5px;
 }
-.onboarding-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+
+.welcome-head { display: flex; align-items: center; justify-content: space-between; gap: 28px; }
+.welcome-head h2 { margin-bottom: 4px; }
+.welcome-head p { margin: 0; font-size: 13.5px; }
+.welcome-progress { flex: 0 0 210px; display: grid; gap: 6px; }
+.welcome-progress strong { font-size: 28px; line-height: 1; font-variant-numeric: tabular-nums; }
+.welcome-progress strong span { color: var(--ink-3); font-size: 14px; font-weight: 500; }
+.welcome-progress small { color: var(--ink-3); font-size: 12px; }
+.progress-track { height: 5px; overflow: hidden; border-radius: 999px; background: var(--paper-2); }
+.progress-track span { display: block; height: 100%; background: var(--seal); }
+.welcome-steps { display: grid; gap: 10px; }
+.welcome-step { display: flex; align-items: flex-start; gap: 14px; }
+.welcome-step.is-done .step-no { background: var(--jade-soft); color: var(--jade); }
+.welcome-step-copy { flex: 1; min-width: 0; }
+.welcome-step-title { display: flex; align-items: center; gap: 10px; }
+.welcome-step-title h3 { font-size: 15px; }
+.welcome-step-copy p { margin: 3px 0 0; font-size: 13px; }
+.welcome-actions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-top: 10px; }
+.welcome-foot { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.welcome-foot p { margin: 2px 0 0; font-size: 12.5px; }
+.welcome-foot .welcome-actions { margin-top: 0; }
+.welcome-note { margin: -4px 0 0; font-size: 12px; }
 
 /* ---------- annotations / reviews / stats ---------- */
 .stat-grid-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
@@ -1636,14 +1695,13 @@ mark { background: #f7e3a8; color: inherit; padding: 0 1px; border-radius: 2px; 
     bottom: calc(70px + env(safe-area-inset-bottom));
     justify-content: center;
   }
-  .onboarding-steps li { flex-wrap: wrap; align-items: flex-start; }
-  .onboarding-copy { flex: 1 1 0; min-width: 0; }
-  .onboarding-actions { justify-content: flex-start; }
-  .onboarding-steps li > :last-child {
-    flex: 0 0 auto;
-    margin-left: 40px;
-    width: calc(100% - 40px);
-  }
+  .onboarding-mini { grid-template-columns: minmax(0, 1fr); }
+  .onboarding-summary .panel-head { flex-wrap: wrap; }
+  .welcome-head { flex-direction: column; align-items: stretch; gap: 16px; }
+  .welcome-progress { flex: none; }
+  .welcome-step { gap: 10px; }
+  .welcome-actions .btn { flex: 1 1 auto; }
+  .welcome-foot { flex-direction: column; align-items: flex-start; }
 
   .two-col, .form-grid { grid-template-columns: minmax(0, 1fr); }
   .login-shell { grid-template-columns: minmax(0, 1fr); gap: 26px; padding: 36px 18px; min-height: auto; }

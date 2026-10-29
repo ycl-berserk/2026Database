@@ -190,7 +190,7 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 
 **Phase 3 进度**：T1 AST 校验、T2 EXPLAIN 预检、T5 金标准评测、R1 pgvector 混合检索、R6 自动标签/摘要建议已完成，Phase 3 收尾。
 
-**Phase 4 进度**：K2 知识先修图、A1 MCP 工具接口、A2 命令行、D1 RLS 对比实验、D2 审计历史与 D3 数据库观测页已完成（16 张表、15 个视图、9 个触发器；334 项测试、42 项验收）。Phase 4 收尾。
+**Phase 4 进度**：K2 知识先修图、A1 MCP 工具接口、A2 命令行、D1 RLS 对比实验、D2 审计历史与 D3 数据库观测页已完成（17 张表、15 个视图、9 个触发器；334 项测试、42 项验收）。Phase 4 收尾。
 
 **Phase 5 进度**：E1 容器化、E2 GitHub Actions CI、E3 工程工具链、E4 属性测试、E5 Playwright E2E、E6 备份/恢复与全量导出、D8 物化视图统计实验、E9 游标分页、E7 安全加固、K3 FSRS 复习调度、E10 个人版桌面安装包（内置 PostgreSQL + sidecar + 局域网手机访问，Windows 已验收、macOS DMG 由 CI 构建）已完成；下一步 E11 静态展示页。
 

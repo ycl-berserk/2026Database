@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Request
 from ..auth import require_user
 from ..config import settings
 from ..db import get_conn
+from ..services import onboarding_service
 from ..services.dashboard_service import admin_dashboard, student_dashboard
 from ..web import render
 
@@ -17,8 +18,5 @@ def dashboard(request: Request, user=Depends(require_user), conn=Depends(get_con
         data = admin_dashboard(conn)
     else:
         data = student_dashboard(conn, user["id"])
-        data["is_new_user"] = (
-            data["stats"]["course_count"] == 0
-            and data["stats"]["conversation_count"] == 0
-        )
+        data["onboarding"] = onboarding_service.progress(conn, user["id"])
     return render(request, "dashboard.html", **data)

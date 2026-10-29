@@ -40,9 +40,14 @@ def test_login_exposes_one_click_demo_accounts():
 
 def test_new_user_onboarding_has_next_steps():
     dashboard = _read(TEMPLATES / "dashboard.html")
-    assert "{% if is_new_user %}" in dashboard
+    assert "onboarding.status == 'pending'" in dashboard
+    assert 'href="/welcome"' in dashboard
+    assert "onboarding.completed_count" in dashboard
+
+    welcome = _read(TEMPLATES / "welcome.html")
+    assert "先完成这四步" in welcome
     for href in ("/courses/new", "/imports", "/imports?mode=paste", "/inbox"):
-        assert f'href="{href}"' in dashboard
+        assert f"'{href}'" in welcome or f'href="{href}"' in welcome
 
 
 def test_flash_and_toast_are_announced_and_dismissible():

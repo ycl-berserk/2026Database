@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}开始使用{% endblock %}
+{% block page_title %}开始使用{% endblock %}
+{% block page_subtitle %}四步把聊天记录变成可检索、可批注、可复习的课程资料{% endblock %}
+
+{% block topbar_actions %}
+  <a class="btn btn-ghost" href="/dashboard">回到概览</a>
+{% endblock %}
+
+{% block content %}
+<section class="panel welcome-head">
+  <div>
+    <span class="eyebrow">新手指南</span>
+    <h2>先完成这四步，之后随时可以回来</h2>
+    <p class="muted">清单会按你的真实使用进度自动更新；已完成的步骤不会因为离开页面而丢失。</p>
+  </div>
+  <div class="welcome-progress" aria-label="引导进度">
+    <strong>{{ onboarding.completed_count }}<span>/{{ onboarding.total }}</span></strong>
+    <div class="progress-track">
+      <span style="width: {{ (100 * onboarding.completed_count / onboarding.total) | round(0) }}%"></span>
+    </div>
+    <small>
+      {% if onboarding.status == 'completed' %}全部完成
+      {% elif onboarding.status == 'skipped' %}已暂时收起
+      {% else %}完成 {{ onboarding.total - onboarding.completed_count }} 步即可开始整理{% endif %}
+    </small>
+  </div>
+</section>
+
+<ol class="welcome-steps">
+  {% for step in onboarding.steps %}
+    <li class="panel welcome-step {% if step.done %}is-done{% endif %}">
+      <span class="step-no">{% if step.done %}✓{% else %}{{ loop.index }}{% endif %}</span>
+      <div class="welcome-step-copy">
+        <div class="welcome-step-title">
+          <h3>{{ step.title }}</h3>
+          {% if step.done %}
+            <span class="badge badge-ok">已完成</span>
+          {% else %}
+            <span class="badge">待完成</span>
+          {% endif %}
+        </div>
+        <p class="muted">{{ step.description }}</p>
+        <div class="welcome-actions">
+          {% if step.key == 'course' %}
+            <a class="btn btn-sm" href="{{ '/courses' if step.done else '/courses/new' }}">{{ '查看课程' if step.done else '新建课程' }}</a>
+          {% elif step.key == 'import' %}
+            <a class="btn btn-sm" href="/imports">上传 JSON / Markdown</a>
+            <a class="btn btn-ghost btn-sm" href="/imports?mode=paste">直接粘贴</a>
+            <a class="btn btn-ghost btn-sm" href="/share">手机分享 / 快速收录</a>
+          {% elif step.key == 'annotate' %}
+            <a class="btn btn-sm" href="/conversations">打开会话添加批注</a>
+            {% if not step.done %}<a class="btn btn-ghost btn-sm" href="/inbox">从收件箱开始</a>{% endif %}
+          {% elif step.key == 'review' %}
+            <a class="btn btn-sm" href="/annotations">把批注加入复习</a>
+            <a class="btn btn-ghost btn-sm" href="/reviews">查看复习队列</a>
+          {% endif %}
+        </div>
+      </div>
+    </li>
+  {% endfor %}
+</ol>
+
+<section class="panel welcome-foot">
+  {% if onboarding.status == 'completed' %}
+    <div>
+      <strong>四步都完成了</strong>
+      <p class="muted">接下来可以按课程整理会话，或在复习队列里安排今天的学习。</p>
+    </div>
+    <div class="welcome-actions">
+      <a class="btn btn-primary btn-sm" href="/dashboard">回到概览</a>
+      <a class="btn btn-ghost btn-sm" href="/reviews">开始复习</a>
+    </div>
+  {% elif onboarding.status == 'skipped' %}
+    <div>
+      <strong>新手指南已收起</strong>
+      <p class="muted">需要时可以继续查看四步清单，已完成的状态会保留。</p>
+    </div>
+    <form method="post" action="/welcome/restart">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn btn-sm" type="submit">继续引导</button>
+    </form>
+  {% else %}
+    <div>
+      <strong>暂时不需要？</strong>
+      <p class="muted">收起后概览仍会保留进度提示，随时可以回来继续。</p>
+    </div>
+    <form method="post" action="/welcome/skip">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn btn-ghost btn-sm" type="submit">暂时跳过</button>
+    </form>
+  {% endif %}
+</section>
+
+<p class="muted welcome-note">所有课程、会话和批注都保存在你的账号中；桌面个人版的数据保存在这台电脑上。</p>
+{% endblock %}

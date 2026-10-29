@@ -14,6 +14,7 @@ from ..bootstrap import is_initialized
 from ..config import settings
 from ..db import get_conn
 from ..errors import ValidationError
+from ..services import onboarding_service
 from ..services.auth_service import create_user
 from ..web import add_flash, form_text, render
 
@@ -73,6 +74,8 @@ async def setup_submit(request: Request, conn=Depends(get_conn)):
     except ValidationError as exc:
         return _render_form(request, 400, error=exc.message, **values)
 
-    start_session(request, int(user["id"]))
+    user_id = int(user["id"])
+    start_session(request, user_id)
+    onboarding_service.ensure_started(conn, user_id)
     add_flash(request, "本地账号已创建，已设为管理员。", "success")
-    return RedirectResponse("/dashboard", status_code=303)
+    return RedirectResponse("/welcome", status_code=303)

@@ -57,7 +57,7 @@ def test_setup_creates_admin_and_then_closes(conn, desktop):
             "/setup", data={**FORM, "csrf_token": token}, follow_redirects=False
         )
         assert response.status_code == 303
-        assert response.headers["location"] == "/dashboard"
+        assert response.headers["location"] == "/welcome"
         assert response.cookies.get("ls_session")
 
         user = conn.execute(

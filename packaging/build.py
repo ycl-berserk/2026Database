@@ -134,15 +134,11 @@ def build_pgvector() -> None:
         )
     _run(
         [
-            "powershell",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(PACKAGING / "postgres" / "build_pgvector.ps1"),
-            "-PgRoot",
+            sys.executable,
+            str(PACKAGING / "postgres" / "build_pgvector.py"),
+            "--pg-root",
             str(RAW_PG),
-            "-InstallDir",
+            "--install-dir",
             str(PG_ROOT),
         ]
     )

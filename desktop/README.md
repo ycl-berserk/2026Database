@@ -1,85 +1,105 @@
-# 学习空间桌面壳（Tauri v2）
+# 学习空间桌面版（Tauri v2）
 
-把本地 FastAPI 服务包成桌面窗口，方便在本机直接使用：
+把学习空间打包成“装好即用”的桌面应用：不依赖本机 Python、PostgreSQL 或 Docker，
+每个用户的数据只保存在自己的电脑上。
 
-- 启动时自动拉起 `uvicorn app.main:app`，健康检查通过后打开登录页
-- 托盘菜单：打开学习空间 / 粘贴导入 / 重启本地服务 / 退出
-- 全局快捷键：`Ctrl+Shift+Space` 显示或隐藏窗口，`Ctrl+Shift+V` 打开粘贴导入
-- 剪贴板监听：检测到较长的文本时，仅把托盘提示改成“剪贴板有新内容”，不读取、不保存、不上传内容
-- 关闭窗口默认收进托盘，退出请用托盘菜单
+安装包内置：
 
-桌面壳只是“启动器”，页面仍是同一套 FastAPI + Jinja2 站点；数据库、迁移、演示数据与浏览器访问完全一致。
+- PostgreSQL 16（裁剪版，含 `pg_trgm`、`pgvector`，仅监听 `127.0.0.1`）
+- FastAPI 服务的 PyInstaller sidecar（`ls-server`）
+- Tauri 桌面壳：托盘、全局快捷键、剪贴板提示、启动进度与错误提示
 
-## 前置条件（Windows）
+## 普通用户
+
+1. 运行安装包（Windows 首次会被 SmartScreen 提示，选择“更多信息 → 仍要运行”）。
+2. 启动“Learning Space”，首次启动会初始化本机数据库，随后进入设置向导。
+3. 在 `/setup` 创建本地账号（自动成为管理员）；之后手机或用同一账号登录。
+4. 关闭窗口会收进系统托盘；完全退出请用托盘菜单“退出”。
+
+数据位置：
+
+- Windows：`%LOCALAPPDATA%\com.learningspace.desktop`
+- macOS：`~/Library/Application Support/com.learningspace.desktop`
+
+其中 `pgdata/` 是数据库，`backups/` 是自动备份（保留 7 份），`logs/` 是日志。
+卸载默认保留该目录；需要彻底清除时手动删除。
+
+默认端口：应用 `8765`、PostgreSQL `55432`。首次启动会挑选空闲端口并持久化；
+之后若端口被占用，应用会给出可操作的错误，而不是静默换端口。
+
+## 开发与构建
+
+### 前置条件（Windows）
 
 | 依赖 | 说明 |
 | --- | --- |
-| Rust 1.77+ | `rustup default stable`，需要 MSVC 工具链 |
-| Visual Studio Build Tools 2022 | 勾选“使用 C++ 的桌面开发” |
+| Rust 1.77+ | `rustup default stable`，MSVC 工具链 |
+| Visual Studio Build Tools 2022 | 勾选“使用 C++ 的桌面开发”（构建 pgvector 需要） |
 | WebView2 Runtime | Windows 10/11 通常自带 |
-| Node.js 18+ | 只用于安装 `@tauri-apps/cli` |
-| Python 3.11+ 与 `.venv` | 项目根目录下，已执行 `uv sync` |
-| PostgreSQL 16 | `docker compose up -d db`，并完成迁移与演示数据初始化 |
+| Node.js 18+ | 安装 `@tauri-apps/cli` |
+| Python 3.12+ 与 `uv` | 项目根目录执行 `uv sync` |
 
-首次准备：
+### 构建安装包
 
-```bash
-npm install                 # 在 desktop/ 下
-cargo check                 # 在 desktop/src-tauri/ 下，验证 Rust 环境
+```powershell
+uv sync
+uv pip install -r packaging/requirements.txt
+uv run python packaging/build.py          # PG + pgvector + sidecar + 资源汇总
+cd desktop
+npm install
+npm run build                             # 等价于 tauri build --bundles nsis
 ```
 
-## 运行
+产物：`desktop/src-tauri/target/release/bundle/nsis/*.exe`。
+`packaging/build.py` 同时在 `packaging/build/` 输出体积报告。
 
-在项目根目录先启动数据库：
+### 本地开发运行
 
-```bash
-docker compose up -d db
-uv run python scripts/seed.py        # 首次或重置演示数据时
-```
-
-再启动桌面壳：
-
-```bash
+```powershell
+uv run python packaging/build.py --skip-fetch --skip-pgvector   # 复用已构建的 PG 与 sidecar
 cd desktop
 npm run dev
 ```
 
-打包（生成安装包与可执行文件）：
+桌面壳从 `desktop/src-tauri/resources/` 读取 PostgreSQL 与 sidecar；修改 Python
+代码后需要重新执行 `packaging/build.py --skip-fetch --skip-pgvector --clean-sidecar`。
 
-```bash
-cd desktop
-npm run build
+建议开发时用独立的 `LS_HOME`，避免污染真实数据：
+
+```powershell
+$env:LS_HOME = "D:\build-cache\ls-dev-home"
+npm run dev
 ```
 
-产物在 `desktop/src-tauri/target/release/bundle/`。
+### 自检
 
-## 环境变量
+```powershell
+$env:LS_HOME = "D:\build-cache\ls-smoke-home"
+& ".\learning-space-desktop.exe" --smoke    # 在安装目录或 target\release 下执行
+```
+
+`--smoke` 会完成 initdb → 迁移 → 启动服务 → `/healthz` → 备份 → 停止，
+并在 `LS_HOME\smoke-report.json` 写入分步耗时；CI 用它验证安装包。
+
+## 环境变量（调试用）
 
 | 变量 | 默认值 | 作用 |
 | --- | --- | --- |
-| `LS_URL` | `http://127.0.0.1:8000` | 已存在的服务地址；填了就不再自动启动 |
-| `LS_AUTOSTART_SERVER` | `1` | 设为 `0` 时只等待外部服务，不自动拉起 uvicorn |
-| `LS_PYTHON` | `<项目>/.venv/Scripts/python.exe` | 指定 Python 解释器 |
-| `LS_PROJECT_ROOT` | 仓库根目录 | 指定 uvicorn 的工作目录 |
+| `LS_HOME` | 平台用户数据目录 | 覆盖数据目录 |
+| `LS_RESOURCE_DIR` | 安装目录 | 覆盖 `pgsql/`、`sidecar/`、`sql/` 所在目录 |
+| `LS_PG_BIN` | 内置 `pgsql/bin` | 覆盖 PostgreSQL 工具目录 |
+| `LS_PG_PORT` / `LS_PORT` | 55432 / 8765 | 覆盖端口（仅首次生成配置时生效） |
 | `LS_CLIPBOARD_MONITOR` | `1` | 设为 `0` 关闭剪贴板监听 |
 
-示例：服务跑到别的端口
+## 进程与数据安全
 
-```bash
-set LS_URL=http://127.0.0.1:8100
-npm run dev
-```
+- PostgreSQL 只监听 `127.0.0.1`，使用 `scram-sha-256`；密钥保存在 `LS_HOME/.env`。
+- 退出时先停 sidecar，再 `pg_ctl stop -m fast`；异常退出后下次启动会按 `run/state.json`
+  清理残留 sidecar，并复用仍在运行的数据库。
+- 启动失败时窗口会显示日志目录，也可从托盘选择“打开日志目录”。
+- 桌面模式是 HTTP（不是 HTTPS），只允许本机访问；局域网共享在后续版本加入，默认关闭。
 
-## 排障
+## 隐私
 
-- 窗口一直停在启动页：看 `data/desktop-server.log`，确认数据库、`.env`、依赖和演示数据都正常
-- 提示找不到 Python：设置 `LS_PYTHON` 指向实际解释器
-- 端口被占用：设置 `LS_URL` 指向已有服务，或换端口后重启
-- 快捷键无反应：可能被其他软件占用，托盘菜单仍可操作
-- 想完全退出：托盘菜单“退出”；直接关窗口只会隐藏
-
-## 隐私与分发说明
-
-- 剪贴板监听只比较文本长度是否达到 20 字，内容仅存在于内存中的局部变量，不会写盘或发往网络
-- 仓库内的演示账号与数据均为模拟数据；`.env` 只在本地使用，已被 git 忽略
-- 当前桌面壳依赖本机的 Python 与 PostgreSQL，属于“本地启动器”。若要打包成不依赖环境的安装包，需要把 Python 服务做成 Tauri sidecar，并把数据库改为内嵌或远程方案，这部分尚未实现
+- 剪贴板监听只比较文本长度是否达到 20 字，内容仅存在于内存，不会写盘或发往网络。
+- 仓库内演示账号与数据均为模拟数据；`.env` 只在本地使用，已被 git 忽略。

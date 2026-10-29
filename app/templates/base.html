@@ -49,12 +49,15 @@
     </a>
 
     <nav class="nav">
-      {% if current_user and current_user.system_role == 'admin' %}
+      {% if admin_user %}
         <span class="nav-label">管理</span>
-        <a class="nav-link {% if active_path == '/dashboard' %}active{% endif %}" href="/dashboard" {% if active_path == '/dashboard' %}aria-current="page"{% endif %}>概览</a>
+        {% if not can_learn %}
+          <a class="nav-link {% if active_path == '/dashboard' %}active{% endif %}" href="/dashboard" {% if active_path == '/dashboard' %}aria-current="page"{% endif %}>概览</a>
+        {% endif %}
         <a class="nav-link {% if active_path == '/admin' %}active{% endif %}" href="/admin" {% if active_path == '/admin' %}aria-current="page"{% endif %}>用户与系统</a>
         <a class="nav-link {% if active_path.startswith('/admin/observability') %}active{% endif %}" href="/admin/observability" {% if active_path.startswith('/admin/observability') %}aria-current="page"{% endif %}>数据库观测</a>
-      {% else %}
+      {% endif %}
+      {% if can_learn %}
         <span class="nav-label">学习</span>
         <a class="nav-link {% if active_path == '/dashboard' %}active{% endif %}" href="/dashboard" {% if active_path == '/dashboard' %}aria-current="page"{% endif %}>概览</a>
         <a class="nav-link {% if active_path.startswith('/inbox') %}active{% endif %}" href="/inbox" {% if active_path.startswith('/inbox') %}aria-current="page"{% endif %}>收件箱</a>
@@ -95,7 +98,7 @@
         <h1>{% block page_title %}概览{% endblock %}</h1>
         <p class="muted">{% block page_subtitle %}{% endblock %}</p>
       </div>
-      {% if current_user and current_user.system_role != 'admin' %}
+      {% if can_learn %}
         <button class="search-trigger" type="button" data-search-open
                 aria-haspopup="dialog" aria-controls="global-search">
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
@@ -137,7 +140,7 @@
         </svg>
         <span>概览</span>
       </a>
-      {% if current_user.system_role == 'admin' %}
+      {% if admin_user and not can_learn %}
         <a class="tab {% if active_path == '/admin' %}active{% endif %}" href="/admin"
            {% if active_path == '/admin' %}aria-current="page"{% endif %}>
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
@@ -184,7 +187,7 @@
     </nav>
   {% endif %}
 </div>
-{% if current_user and current_user.system_role != 'admin' %}
+{% if can_learn %}
   <dialog class="search-dialog" id="global-search" data-search-dialog aria-labelledby="global-search-title">
     <form method="get" action="/search" class="search-dialog-form" role="search">
       <label class="sr-only" id="global-search-title" for="global-search-input">全局搜索</label>

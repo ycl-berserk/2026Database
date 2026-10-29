@@ -7,10 +7,17 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
-from ..auth import ensure_csrf, require_scope, require_token, require_user, verify_csrf
+from ..auth import (
+    ensure_csrf,
+    require_learner,
+    require_scope,
+    require_token,
+    require_user,
+    verify_csrf,
+)
 from ..config import settings
 from ..db import get_conn
-from ..errors import NotFoundError, PermissionDenied, ValidationError
+from ..errors import NotFoundError, ValidationError
 from ..services import (
     ai_service,
     annotation_service,
@@ -26,8 +33,7 @@ REVIEW_ACTIONS = ("done", "mastered", "reset")
 
 
 def _require_student(user: dict) -> None:
-    if user["system_role"] == "admin":
-        raise PermissionDenied("管理员不阅读他人消息正文")
+    require_learner(user, "管理员不阅读他人消息正文")
 
 
 async def _json_body(request: Request) -> dict:

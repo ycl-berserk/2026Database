@@ -164,7 +164,17 @@ def render(
     status_code: int = 200,
     **context: Any,
 ):
-    context.setdefault("current_user", getattr(request.state, "user", None))
+    current_user = getattr(request.state, "user", None)
+    context.setdefault("current_user", current_user)
+    context.setdefault(
+        "admin_user",
+        bool(current_user) and current_user["system_role"] == "admin",
+    )
+    context.setdefault(
+        "can_learn",
+        bool(current_user)
+        and (current_user["system_role"] != "admin" or settings.desktop_mode),
+    )
     context.setdefault("csrf_token", ensure_csrf(request))
     context.setdefault("flashes", pop_flashes(request))
     context.setdefault("active_path", request.url.path)

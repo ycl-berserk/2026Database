@@ -6,7 +6,7 @@ from urllib.parse import urlencode, urlsplit
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 
-from ..auth import require_user, verify_csrf
+from ..auth import require_learner, require_user, verify_csrf
 from ..db import get_conn
 from ..errors import PermissionDenied, ValidationError
 from ..services import conversation_service, import_service
@@ -17,8 +17,7 @@ MAX_SHARE_CHARS = 200_000
 
 
 def _require_student(user: dict) -> None:
-    if user["system_role"] == "admin":
-        raise PermissionDenied("管理员不参与聊天记录采集")
+    require_learner(user, "管理员不参与聊天记录采集")
 
 
 def _check_origin(request: Request) -> None:

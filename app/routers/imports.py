@@ -6,10 +6,10 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 from starlette.datastructures import UploadFile
 
-from ..auth import require_user, verify_csrf
+from ..auth import require_learner, require_user, verify_csrf
 from ..config import settings
 from ..db import get_conn
-from ..errors import PermissionDenied, ValidationError
+from ..errors import ValidationError
 from ..importers.base import PLATFORMS
 from ..services import import_service
 from ..web import add_flash, form_file, form_text, form_text_list, render
@@ -18,8 +18,7 @@ router = APIRouter(prefix="/imports")
 
 
 def _require_student(user: dict) -> None:
-    if user["system_role"] == "admin":
-        raise PermissionDenied("管理员不参与聊天记录导入")
+    require_learner(user, "管理员不参与聊天记录导入")
 
 
 @router.get("")

@@ -451,7 +451,7 @@ Markdown 导入仍需走网站上传页，因为 CLI 只发送统一 JSON，避�
 同一套站点可以打成“装好即用”的桌面应用：每个用户的数据只保存在本机，不需要服务器、Docker 或本机 Python。安装包内置裁剪后的 PostgreSQL 16（含 `pg_trgm`、`pgvector`）与 PyInstaller onedir sidecar，Rust 壳负责进程编排：
 
 - 首次启动：读取/生成 `config.json` 与 `.env`（随机 `SESSION_SECRET` 及 `postgres`/`ls_app`/`t2s_reader` 密码），执行 `initdb --locale=C --encoding=UTF8`，写入受管 `postgresql.conf` 块（`listen_addresses='127.0.0.1'`、`max_connections=20`、`shared_buffers=128MB`）后 `pg_ctl start`。
-- `ls-server bootstrap` 建主库、schema、迁移、视图与角色，迁移前自动 `pg_dump` 备份；随后 `ls-server serve`，轮询 `/healthz` 返回 200 后打开页面。首次进入 `/setup` 创建本地管理员账号（直接设为 admin）。
+- `ls-server bootstrap` 建主库、schema、迁移、视图与角色，迁移前自动 `pg_dump` 备份；随后 `ls-server serve`，轮询 `/healthz` 返回 200 后打开页面。首次进入 `/setup` 创建本地管理员账号（直接设为 admin）。个人模式下这个账号同时是本机学习者，侧边栏保留“管理”和“学习”两组入口；演示模式的管理员仍只看聚合数据，两种模式的边界由 `LS_DESKTOP_MODE` 区分。
 - 数据目录：Windows `%LOCALAPPDATA%\com.learningspace.desktop`，macOS `~/Library/Application Support/com.learningspace.desktop`；备份保留 7 份，卸载默认保留数据。
 - 托盘“手机访问…”把 sidecar 以 `--host 0.0.0.0` 重启并显示 LAN URL 与二维码；关闭开关立即恢复 `127.0.0.1`。PostgreSQL 始终只监听回环地址，局域网是明文 HTTP，仅限可信 Wi-Fi。
 - 安装目录或用户名含中文时，不会把非 ASCII 路径直接交给 PostgreSQL：数据目录与安装目录各经一个 `subst` 盘符转发（Windows 版 PG 用 ANSI 代码页解析 junction 目标，junction 在英文系统上会失效）。

@@ -6,9 +6,8 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 
-from ..auth import require_user, verify_csrf
+from ..auth import require_learner, require_user, verify_csrf
 from ..db import get_conn
-from ..errors import PermissionDenied
 from ..services import ai_service, conversation_service
 from ..web import add_flash, form_text, form_text_list, render
 
@@ -16,8 +15,7 @@ router = APIRouter(prefix="/conversations")
 
 
 def _require_student(user: dict) -> None:
-    if user["system_role"] == "admin":
-        raise PermissionDenied("管理员不查看他人会话内容")
+    require_learner(user, "管理员不查看他人会话内容")
 
 
 def _to_int(value: str | None) -> int | None:

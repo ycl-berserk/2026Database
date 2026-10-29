@@ -288,3 +288,8 @@ MVP 不接入自动更新，按以下顺序手动发版：
 
 升级安装会覆盖程序资源，但保留 `LS_HOME`；首次启动检测到待执行迁移时先备份再迁移。
 
+2026-10-29 已按上述流程发布
+[v0.2.0](https://github.com/ycl-berserk/2026Database/releases/tag/v0.2.0)：NSIS 36.2 MiB
+（SHA-256 `7ff0b5ab…f379d`）、DMG 46.1 MiB（`3b5c414f…869b`），并附体积报告与
+`SHA256SUMS.txt`。人工验收（真机手机、干净 Windows 用户机、Mac Gatekeeper）仍待完成。
+

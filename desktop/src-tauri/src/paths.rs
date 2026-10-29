@@ -31,6 +31,13 @@ fn candidates(app: Option<&AppHandle>) -> Vec<PathBuf> {
         if let Some(parent) = dir.parent() {
             paths.push(parent.to_path_buf());
             paths.push(parent.join("resources"));
+            // macOS 下可执行文件在 Contents/MacOS，资源在 Contents/Resources；
+            // 无界面自检（--smoke）没有 AppHandle，需要自己补上这两个候选。
+            #[cfg(target_os = "macos")]
+            if let Some(contents) = parent.parent() {
+                paths.push(contents.join("Resources"));
+                paths.push(contents.join("Resources").join("resources"));
+            }
         }
     }
     paths.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources"));

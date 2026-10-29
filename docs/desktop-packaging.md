@@ -1,6 +1,6 @@
 # 桌面打包与个人模式
 
-> 状态：Phase 0 可行性、Phase 1 桌面运行时、Phase 2 Windows 打包、Phase 3 局域网共享完成（Windows x64）。macOS 在 Phase 4 验证。
+> 状态：Phase 0 可行性、Phase 1 桌面运行时、Phase 2 Windows 打包、Phase 3 局域网共享、Phase 4 macOS 打包脚本与 CI 完成；macOS 尚未人工验收。
 >
 > 目标：把同一套 FastAPI + PostgreSQL 应用打成 Windows / macOS 安装包，每个用户的数据只存在本机；演示模式（Docker + 源码）保持不变。
 
@@ -113,6 +113,31 @@ Tauri 配置（`desktop/src-tauri/tauri.conf.json`）：
 - `bundle.targets: ["nsis"]`；NSIS 使用 `currentUser`、简体中文/英文、不显示语言选择器。
 - WebView2 使用 `downloadBootstrapper`，缺失时由安装器下载。
 
+macOS 使用平台覆盖文件 `tauri.macos.conf.json`：`targets: ["app", "dmg"]`、
+`minimumSystemVersion: "13.0"`、图标加入 `icons/icon.icns`（由 `icons/icon.png`
+生成 16–1024 全部尺寸）。`tauri.conf.json` 本身保持 Windows 默认值。
+
+### 5.1 macOS 构建（Phase 4）
+
+macOS 侧没有可用的 arm64 PostgreSQL 预编译包，因此打包时从源码构建：
+
+| 步骤 | 脚本 | 说明 |
+| --- | --- | --- |
+| PostgreSQL 16.10 | `packaging/postgres/build_macos.sh --prefix packaging/build/pgsql` | 下载固定 SHA-256 的官方源码包，`--without-icu/-readline/-libxml/-lz4/-zstd --disable-nls` 最小化配置，`make install` 后安装 contrib `pg_trgm`、`pg_stat_statements` |
+| pgvector 0.8.0 | `packaging/postgres/build_pgvector_macos.sh --prefix …` | 用构建出的 `pg_config` 编译，安装到同一 prefix |
+| 裁剪 | `packaging/build.py:trim_macos()` | 删除 `include/`、`share/doc|man`、`lib/pgxs|pkgconfig`，`bin/` 只保留 `postgres initdb pg_ctl pg_isready psql pg_dump pg_restore pg_config` |
+| 依赖重定位 | `packaging/build.py:relocate_macos()` | PostgreSQL 的 dylib `install_name` 是构建时的绝对路径，安装到 `.app` 后失效；用 `install_name_tool` 改为 `@rpath/…`，可执行文件加 `@executable_path/../lib`（扩展加 `@loader_path/..`）。`postgres` 自己通过 `make_relative_path` 定位 share/lib，无需处理 |
+
+`packaging/build.py` 在 darwin 上自动选择上述脚本，产物布局与 Windows 完全一致
+（`pgsql/{bin,lib,share}`），因此 `paths.rs` 无需平台分支。副产物记录在
+`packaging/postgres/manifest-macos.json`（版本、URL、SHA-256、configure 参数）。
+
+签名：MVP 无 Apple Developer 证书，CI 对 app 内所有可执行文件、`*.dylib`、`*.so`
+逐个 `codesign --force --sign -`，再签 `.app`，最后 `codesign --verify --deep --strict`。
+DMG 用 `hdiutil` 从签名后的 app 生成（附 `/Applications` 快捷方式）。未签名/未公证
+的包在 Gatekeeper 下需要右键“打开”或 `xattr -dr com.apple.quarantine`，正式分发需
+证书与公证。
+
 ## 6. Sidecar 打包要点
 
 - 使用 onedir，不使用 onefile/UPX：启动更快、杀软误报更少，且保留 `_internal`。
@@ -163,8 +188,21 @@ CI（`.github/workflows/desktop.yml`，仅 `workflow_dispatch` 与 `v*` 触发�
 1. `windows-latest` 上同步依赖、安装 PyInstaller 与 Tauri CLI。
 2. 缓存并构建 PG/pgvector/sidecar，`tauri build --bundles nsis`。
 3. NSIS 静默安装到 `C:\ls-install`，用临时 `LS_HOME` 运行
-   `learning-space-desktop.exe --smoke`，失败时打印日志。
+   `learning-space-desktop.exe --smoke`，失败时打印日志；随后在含中文的安装目录
+   （`C:\ls-parent\安装测试`）与中文 `LS_HOME` 下重复一次。
 4. 上传安装包、体积报告与 `smoke-report.json`。
+
+`macos-14`（arm64）job 对应 Phase 4：
+
+1. 同步依赖、安装 PyInstaller 与 Tauri CLI，缓存 `packaging/build/pgsql` 与
+   `packaging/.cache`（键含 `manifest-macos.json` 与两个 macOS 脚本的 hash）。
+2. `uv run python packaging/build.py` 源码构建 PostgreSQL + pgvector + sidecar。
+3. `tauri build --bundles app --target aarch64-apple-darwin`，然后对 app 内嵌套二进制
+   逐个 ad-hoc 签名并 `codesign --verify --deep --strict`。
+4. 在 `.app` 内用临时 `LS_HOME` 运行 `Contents/MacOS/learning-space-desktop --smoke`，
+   输出 `smoke-report.json` 并打印日志。
+5. `hdiutil` 生成 DMG（附 `/Applications` 快捷方式）并 `hdiutil verify`；上传 DMG、
+   体积报告与 smoke 结果。
 
 ## 8. 局域网共享（Phase 3）
 
@@ -198,7 +236,7 @@ CI（`.github/workflows/desktop.yml`，仅 `workflow_dispatch` 与 `v*` 触发�
 | --- | --- | --- | --- |
 | Windows 安装包 | ≤120 MB | **35.8 MiB**（NSIS，x64，0.1.0） | 通过 |
 | Windows 安装后 | ≤350 MB | 约 111 MiB（资源 101.5 MiB + 主程序 9.6 MiB） | 通过 |
-| macOS DMG | ≤150 MB | 未验证 | Phase 4 |
+| macOS DMG | ≤150 MB | CI 构建，体积由 `size-report.md` 与上传产物记录 | Phase 4 待首次 CI 结果 |
 | 首次启动 | 可接受 | 安装后 `--smoke` 11.9–14.6 s（含 initdb）；热启动 3.5 s | 通过 |
 
 安装包与首次启动数据来自本机 Windows 11 x64 实测（2026-10-29）。安装到含中文的目录、
@@ -209,8 +247,10 @@ CI（`.github/workflows/desktop.yml`，仅 `workflow_dispatch` 与 `v*` 触发�
 ## 10. 风险与未决项
 
 - **中文路径**：资源与数据目录都已通过 ASCII junction 解决，并有中文路径 smoke；仍需在干净用户机上覆盖“中文用户名 + 默认安装目录”。
-- **macOS 扩展构建**：需要匹配 arm64 的 PostgreSQL 头文件与 pgvector；Phase 4 在 `macos-14` 上验证。
-- **签名**：MVP 不签名，Windows SmartScreen 和 macOS Gatekeeper 会提示；正式分发需证书与公证。
+- **macOS 扩展构建**：改为在 macOS 上从固定 SHA-256 的源码构建 PostgreSQL 16.10 与
+  pgvector 0.8.0，避免依赖不存在的 arm64 预编译包；CI 在 `macos-14` 上验证，尚未在真机人工验收。
+- **签名**：MVP 不签名（macOS 仅 ad-hoc），Windows SmartScreen 和 macOS Gatekeeper 会提示；
+  正式分发需证书与公证。
 - **局域网 HTTP**：手机访问走明文 HTTP，仅限可信 Wi-Fi，默认关闭；PG 端口永不对外。
   手机真机（扫描二维码、导入、复习）仍需在同一 Wi-Fi 下人工验收；访客网络/AP 隔离无法访问。
 - **体积报告**：`packaging/build.py` 与 desktop workflow 已输出资源与安装包体积；后续接入发布门槛。

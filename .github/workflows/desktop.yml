@@ -146,3 +146,128 @@ jobs:
             C:\ls-smoke-home\smoke-report.json
             C:\ls-smoke-home\logs\*.log
           if-no-files-found: warn
+
+  macos:
+    name: macOS arm64 DMG
+    runs-on: macos-14
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.6"
+          enable-cache: true
+
+      - name: Sync locked dependencies
+        run: uv sync --frozen
+
+      - name: Install packaging tools
+        run: uv pip install -r packaging/requirements.txt
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+          key: macos-arm64
+
+      - name: Cache PostgreSQL and pgvector build
+        uses: actions/cache@v4
+        with:
+          path: |
+            packaging/build/pgsql
+            packaging/.cache
+          key: macos-pg16-${{ hashFiles('packaging/postgres/manifest-macos.json', 'packaging/postgres/build_macos.sh', 'packaging/postgres/build_pgvector_macos.sh', 'packaging/build.py') }}
+
+      - name: Install Tauri CLI
+        run: npm install --global @tauri-apps/cli@^2
+
+      - name: Build desktop resources
+        run: uv run python packaging/build.py
+
+      - name: Build app bundle
+        working-directory: desktop
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "13.0"
+        run: tauri build --bundles app --target aarch64-apple-darwin
+
+      - name: Ad-hoc sign app bundle
+        run: |
+          APP="desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Learning Space.app"
+          if [ ! -d "$APP" ]; then
+            echo "app bundle not found: $APP" >&2
+            exit 1
+          fi
+          PG_BIN="$(find "$APP" -type d -path "*/pgsql/bin" -print -quit)"
+          SIDECAR="$(find "$APP" -type f -name "ls-server" -path "*/sidecar/*" -print -quit)"
+          if [ -z "$PG_BIN" ] || [ -z "$SIDECAR" ]; then
+            echo "bundled resources missing (pg=$PG_BIN sidecar=$SIDECAR)" >&2
+            exit 1
+          fi
+          chmod +x "$PG_BIN"/*
+          chmod +x "$SIDECAR"
+          find "$APP" -type f \( -perm -111 -o -name "*.dylib" -o -name "*.so" \) -print0 |
+            while IFS= read -r -d '' file; do
+              codesign --force --sign - --timestamp=none "$file"
+            done
+          codesign --force --sign - --timestamp=none "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+      - name: Smoke test
+        env:
+          LS_HOME: ${{ runner.temp }}/ls-smoke
+        run: |
+          APP="desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Learning Space.app"
+          ls -l "$APP/Contents/MacOS"
+          BIN="$(find "$APP/Contents/MacOS" -type f -perm -111 -print -quit)"
+          if [ -z "$BIN" ]; then
+            echo "main binary not found" >&2
+            exit 1
+          fi
+          mkdir -p "$LS_HOME"
+          "$BIN" --smoke
+          cat "$LS_HOME/smoke-report.json"
+
+      - name: Build DMG
+        run: |
+          APP="desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Learning Space.app"
+          VERSION="$(uv run python -c 'import json,pathlib;print(json.loads(pathlib.Path("desktop/src-tauri/tauri.conf.json").read_text())["version"])')"
+          DMG="Learning Space_${VERSION}_aarch64.dmg"
+          STAGE="$RUNNER_TEMP/dmg"
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE"
+          cp -R "$APP" "$STAGE/"
+          ln -s /Applications "$STAGE/Applications"
+          hdiutil create -volname "Learning Space" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+          hdiutil verify "$DMG"
+          ls -lh "$DMG"
+          SIZE="$(du -h "$DMG" | cut -f1)"
+          echo "DMG: $DMG - $SIZE" >> "$GITHUB_STEP_SUMMARY"
+          cat packaging/build/size-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          for log in "$RUNNER_TEMP"/ls-smoke/logs/*.log; do
+            [ -f "$log" ] || continue
+            echo "== $log =="
+            tail -n 120 "$log"
+          done
+          cat packaging/build/size-report.md 2>/dev/null || true
+
+      - name: Upload DMG and reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: |
+            Learning Space_*_aarch64.dmg
+            packaging/build/size-report.json
+            packaging/build/size-report.md
+            ${{ runner.temp }}/ls-smoke/smoke-report.json
+            ${{ runner.temp }}/ls-smoke/logs/*.log
+          if-no-files-found: warn

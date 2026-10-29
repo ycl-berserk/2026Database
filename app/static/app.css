@@ -1492,6 +1492,32 @@ mark { background: #f7e3a8; color: inherit; padding: 0 1px; border-radius: 2px; 
 }
 .skip-link:focus { top: 12px; text-decoration: none; }
 
+/* ---------- page transitions ---------- */
+@view-transition { navigation: auto; }
+
+.sidebar { view-transition-name: sidebar; }
+.mobile-bar { view-transition-name: mobile-bar; }
+.mobile-tabbar { view-transition-name: mobile-tabbar; }
+
+::view-transition-old(root) { animation: page-out 110ms ease-in both; }
+::view-transition-new(root) { animation: page-in 200ms cubic-bezier(.2, .7, .25, 1) both; }
+
+/* 侧栏与移动导航保持原位，只让内容区过渡。 */
+::view-transition-group(sidebar),
+::view-transition-group(mobile-bar),
+::view-transition-group(mobile-tabbar),
+::view-transition-old(sidebar),
+::view-transition-new(sidebar),
+::view-transition-old(mobile-bar),
+::view-transition-new(mobile-bar),
+::view-transition-old(mobile-tabbar),
+::view-transition-new(mobile-tabbar) {
+  animation: none;
+}
+
+@keyframes page-out { to { opacity: 0; transform: translateY(-3px); } }
+@keyframes page-in { from { opacity: 0; transform: translateY(6px); } }
+
 /* ---------- mobile shell ---------- */
 .mobile-bar, .mobile-tabbar, .nav-backdrop, .sidebar-close { display: none; }
 
@@ -1508,6 +1534,11 @@ mark { background: #f7e3a8; color: inherit; padding: 0 1px; border-radius: 2px; 
     animation-iteration-count: 1 !important;
     transition-duration: .01ms !important;
     scroll-behavior: auto !important;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
   }
 }
 

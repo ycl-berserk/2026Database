@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "学习空间桌面壳默认窗口能力",
-  "windows": ["main"],
+  "windows": ["main", "share"],
   "permissions": ["core:default"]
 }

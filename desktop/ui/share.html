@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>手机访问 · 学习空间</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body class="share-page">
+    <main class="card">
+      <div class="brand">
+        <span class="dot" id="dot"></span>
+        <span>学习空间 · 手机访问</span>
+      </div>
+
+      <h1>用手机打开学习空间</h1>
+      <p class="status" id="status" role="status" aria-live="polite">正在读取状态…</p>
+
+      <label class="switch-row" for="toggle">
+        <span>允许同一 Wi-Fi 下的手机访问</span>
+        <input type="checkbox" id="toggle" role="switch" disabled />
+      </label>
+      <p class="hint" id="toggle-hint">开启后，手机与电脑需要连接同一个 Wi-Fi。</p>
+
+      <p class="error" id="error" hidden></p>
+
+      <section class="access" id="access" hidden>
+        <div class="url-row">
+          <code id="url"></code>
+          <button type="button" id="copy">复制链接</button>
+        </div>
+        <div class="qr" id="qr"></div>
+        <p class="hint" id="qr-hint">用手机相机扫码，或手动输入上面的地址；登录时使用电脑上创建的同一个账号。</p>
+      </section>
+
+      <ul class="checks">
+        <li>只在可信的 Wi-Fi 下开启；同一网络中的其他人可能访问页面内容</li>
+        <li>桌面版通过 HTTP 明文传输，不做加密；离开家庭或办公室网络后请关闭</li>
+        <li>手机浏览器无法安装为应用或离线使用（HTTP 限制），功能本身不受影响</li>
+        <li>数据库只监听本机回环地址，手机无法直接连接 PostgreSQL</li>
+        <li>首次开启时 Windows 可能弹出防火墙授权，请允许“专用网络”</li>
+      </ul>
+
+      <p class="privacy">关闭开关或退出程序后，手机会立即失去访问；再次开启需要重新登录。</p>
+    </main>
+
+    <script>
+      const bridge = window.__TAURI_INTERNALS__;
+      const els = {
+        dot: document.getElementById("dot"),
+        status: document.getElementById("status"),
+        toggle: document.getElementById("toggle"),
+        hint: document.getElementById("toggle-hint"),
+        error: document.getElementById("error"),
+        access: document.getElementById("access"),
+        url: document.getElementById("url"),
+        qr: document.getElementById("qr"),
+        copy: document.getElementById("copy"),
+      };
+      let busy = false;
+      let last = null;
+
+      async function invoke(command, args) {
+        if (!bridge || !bridge.invoke) {
+          throw new Error("当前不在桌面应用中，请从托盘菜单“手机访问…”打开");
+        }
+        return bridge.invoke(command, args);
+      }
+
+      function showError(message) {
+        els.error.textContent = message;
+        els.error.hidden = false;
+      }
+
+      function clearError() {
+        els.error.hidden = true;
+        els.error.textContent = "";
+      }
+
+      function render(info) {
+        last = info;
+        const ready = info.running && info.initialized;
+        els.dot.classList.toggle("warn", !ready);
+        els.toggle.checked = Boolean(info.enabled);
+        els.toggle.disabled = !ready || busy;
+
+        if (!info.running) {
+          els.status.textContent = "本地服务未运行，请先在托盘菜单重新启动。";
+          els.hint.textContent = "服务就绪后才能开启手机访问。";
+        } else if (!info.initialized) {
+          els.status.textContent = "尚未创建账号：请先在电脑上完成首次设置。";
+          els.hint.textContent = "创建账号后即可开启，手机使用同一账号登录。";
+        } else if (info.enabled) {
+          els.status.textContent = "已开启：同一 Wi-Fi 下的手机可以访问。";
+          els.hint.textContent = "关闭开关会立即断开手机，并恢复仅本机访问。";
+        } else {
+          els.status.textContent = "未开启：目前只有这台电脑可以访问。";
+          els.hint.textContent = "开启后，手机与电脑需要连接同一个 Wi-Fi。";
+        }
+
+        const showAccess = Boolean(info.enabled && info.url);
+        els.access.hidden = !showAccess;
+        if (showAccess) {
+          els.url.textContent = info.url;
+          if (info.qr_svg) {
+            els.qr.innerHTML = info.qr_svg;
+          } else {
+            els.qr.textContent = "无法生成二维码，请复制链接手动输入。";
+          }
+        }
+      }
+
+      async function refresh(force) {
+        if (busy || (!force && document.hidden)) {
+          return;
+        }
+        try {
+          render(await invoke("share_info"));
+        } catch (error) {
+          els.status.textContent = "无法读取共享状态。";
+          showError(String(error && error.message ? error.message : error));
+        }
+      }
+
+      els.toggle.addEventListener("change", async () => {
+        const target = els.toggle.checked;
+        busy = true;
+        clearError();
+        if (last) {
+          last.enabled = target;
+          render(last);
+        }
+        els.status.textContent = target ? "正在开启手机访问…" : "正在关闭手机访问…";
+        try {
+          const info = await invoke("set_lan_share", { enabled: target });
+          busy = false;
+          render(info);
+        } catch (error) {
+          busy = false;
+          els.toggle.checked = !target;
+          showError(String(error && error.message ? error.message : error));
+          await refresh(true);
+        }
+      });
+
+      els.copy.addEventListener("click", async () => {
+        try {
+          const url = await invoke("copy_share_url");
+          els.copy.textContent = "已复制";
+          if (last) {
+            last.url = url || last.url;
+          }
+          setTimeout(() => (els.copy.textContent = "复制链接"), 1600);
+        } catch (error) {
+          showError(String(error && error.message ? error.message : error));
+        }
+      });
+
+      window.addEventListener("focus", () => refresh(true));
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) {
+          refresh(true);
+        }
+      });
+      refresh(true);
+      setInterval(() => refresh(false), 5000);
+    </script>
+  </body>
+</html>

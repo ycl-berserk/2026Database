@@ -11,6 +11,7 @@ const OUTPUT_TAIL: usize = 4000;
 
 pub struct Health {
     pub ok: bool,
+    pub initialized: bool,
 }
 
 pub struct Server {
@@ -178,6 +179,7 @@ impl Server {
         let compact: String = body.chars().filter(|ch| !ch.is_whitespace()).collect();
         Some(Health {
             ok: compact.contains("\"ok\":true"),
+            initialized: compact.contains("\"initialized\":true"),
         })
     }
 }

@@ -2,6 +2,7 @@ mod config;
 mod paths;
 mod postgres;
 mod server;
+mod share;
 mod smoke;
 
 use std::fs::{self, OpenOptions};
@@ -115,6 +116,105 @@ fn stop_child(state: &DesktopState) {
     }
 }
 
+fn make_server(state: &DesktopState, cfg: &DesktopConfig) -> server::Server {
+    server::Server::new(
+        state.resources.clone(),
+        state.home.clone(),
+        state.pg_bin.clone(),
+        cfg.app_port,
+        cfg.pg_port,
+    )
+}
+
+fn wait_for_health(state: &DesktopState, server: &server::Server) -> Result<(), String> {
+    let deadline = Instant::now() + Duration::from_secs(45);
+    while Instant::now() < deadline {
+        if server.health().is_some() {
+            return Ok(());
+        }
+        if let Ok(mut slot) = state.server.lock() {
+            if let Some(child) = slot.as_mut() {
+                if let Ok(Some(status)) = child.try_wait() {
+                    slot.take();
+                    return Err(format!(
+                        "本地服务已退出（{status}），请查看日志：{}",
+                        state.home.join("logs").display()
+                    ));
+                }
+            }
+        }
+        thread::sleep(Duration::from_millis(300));
+    }
+    Err(format!(
+        "本地服务启动超时，请查看日志：{}",
+        state.home.join("logs").display()
+    ))
+}
+
+/// 用新的绑定地址重启 sidecar；失败时调用方负责回滚。
+fn respawn_server(app: &AppHandle, host: &str) -> Result<(), String> {
+    let state = app.state::<DesktopState>();
+    let cfg = state
+        .config
+        .lock()
+        .map_err(|_| "配置被占用，请稍后重试".to_string())?
+        .clone();
+
+    stop_child(&state);
+    config::clear_state(&state.home);
+
+    let server = make_server(&state, &cfg);
+    let child = server.spawn(host, &state.home.join("logs").join("desktop.log"))?;
+    let pid = child.id();
+    let runtime = config::RuntimeState {
+        sidecar_pid: pid,
+        sidecar_exe: server.exe.to_string_lossy().to_string(),
+        pg_port: cfg.pg_port,
+    };
+    if let Ok(mut slot) = state.server.lock() {
+        *slot = Some(child);
+    }
+    config::write_state(&state.home, &runtime)?;
+    boot_note(&state.home, &format!("服务已在 {host} 重启：{pid}"));
+
+    let result = wait_for_health(&state, &server);
+    if result.is_err() {
+        stop_child(&state);
+        config::clear_state(&state.home);
+    }
+    result
+}
+
+fn build_share_info(app: &AppHandle) -> Result<share::ShareInfo, String> {
+    let state = app.state::<DesktopState>();
+    let cfg = state
+        .config
+        .lock()
+        .map_err(|_| "配置被占用，请稍后重试".to_string())?
+        .clone();
+    let health = make_server(&state, &cfg).health();
+    let running = health.is_some();
+    let initialized = health.map(|health| health.initialized).unwrap_or(false);
+
+    let url = share::local_ipv4().map(|ip| share::share_url(ip, cfg.app_port));
+    let qr_svg = url.as_deref().and_then(|url| share::qr_svg(url).ok());
+    Ok(share::ShareInfo {
+        enabled: cfg.lan_enabled,
+        running,
+        initialized,
+        port: cfg.app_port,
+        url,
+        qr_svg,
+    })
+}
+
+fn show_share_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("share") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
 fn stop_runtime(app: &AppHandle) {
     let state = app.state::<DesktopState>();
     stop_child(&state);
@@ -191,7 +291,8 @@ fn boot(app: &AppHandle) -> Result<(), String> {
     boot_note(&home, "迁移与角色配置完成");
 
     set_status(app, "启动本地服务…");
-    let child = server.spawn("127.0.0.1", &home.join("logs").join("desktop.log"))?;
+    let host = if cfg.lan_enabled { "0.0.0.0" } else { "127.0.0.1" };
+    let child = server.spawn(host, &home.join("logs").join("desktop.log"))?;
     boot_note(&home, &format!("服务进程已启动：{}", child.id()));
     let state_file = config::RuntimeState {
         sidecar_pid: child.id(),
@@ -257,17 +358,19 @@ fn ensure_and_open(app: AppHandle) {
 
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "打开学习空间", true, None::<&str>)?;
+    let share = MenuItem::with_id(app, "share", "手机访问…", true, None::<&str>)?;
     let paste = MenuItem::with_id(app, "paste", "打开粘贴导入", true, None::<&str>)?;
     let retry = MenuItem::with_id(app, "retry", "重新启动本地服务", true, None::<&str>)?;
     let logs = MenuItem::with_id(app, "logs", "打开日志目录", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &paste, &retry, &logs, &quit])?;
+    let menu = Menu::with_items(app, &[&open, &share, &paste, &retry, &logs, &quit])?;
 
     let mut builder = TrayIconBuilder::with_id("main")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => navigate(app, "/"),
+            "share" => show_share_window(app),
             "paste" => navigate(app, "/imports?mode=paste"),
             "retry" => ensure_and_open(app.clone()),
             "logs" => {
@@ -335,6 +438,82 @@ fn retry_start(app: AppHandle) {
 }
 
 #[tauri::command]
+fn share_info(app: AppHandle) -> Result<share::ShareInfo, String> {
+    build_share_info(&app)
+}
+
+#[tauri::command]
+fn set_lan_share(app: AppHandle, enabled: bool) -> Result<share::ShareInfo, String> {
+    let state = app.state::<DesktopState>();
+    if state.starting.load(Ordering::SeqCst) {
+        return Err("正在启动本地服务，请稍后再试".to_string());
+    }
+    let cfg = state
+        .config
+        .lock()
+        .map_err(|_| "配置被占用，请稍后重试".to_string())?
+        .clone();
+    if cfg.lan_enabled == enabled {
+        return build_share_info(&app);
+    }
+
+    if enabled {
+        let health = make_server(&state, &cfg)
+            .health()
+            .ok_or_else(|| "本地服务未运行，请先在托盘菜单重新启动".to_string())?;
+        if !health.ok {
+            return Err("本地服务尚未就绪，请稍后重试".to_string());
+        }
+        if !health.initialized {
+            return Err("请先在电脑上完成首次账号创建，再开启手机访问".to_string());
+        }
+    }
+
+    let (target, fallback) = if enabled {
+        ("0.0.0.0", "127.0.0.1")
+    } else {
+        ("127.0.0.1", "0.0.0.0")
+    };
+    if let Err(err) = respawn_server(&app, target) {
+        let _ = respawn_server(&app, fallback);
+        boot_note(&state.home, &format!("切换手机访问失败：{err}"));
+        return Err(err);
+    }
+
+    {
+        let mut slot = state
+            .config
+            .lock()
+            .map_err(|_| "配置被占用，请稍后重试".to_string())?;
+        slot.lan_enabled = enabled;
+        config::save(&state.home, &slot)?;
+    }
+    boot_note(
+        &state.home,
+        if enabled {
+            "已开启手机访问（仅应用端口监听 0.0.0.0，PostgreSQL 保持 127.0.0.1）"
+        } else {
+            "已关闭手机访问（恢复仅监听 127.0.0.1）"
+        },
+    );
+    build_share_info(&app)
+}
+
+#[tauri::command]
+fn copy_share_url(app: AppHandle) -> Result<String, String> {
+    let info = build_share_info(&app)?;
+    let url = info
+        .url
+        .ok_or_else(|| "未检测到局域网地址，请确认电脑已连接 Wi-Fi".to_string())?;
+    let mut clipboard =
+        arboard::Clipboard::new().map_err(|err| format!("无法访问剪贴板：{err}"))?;
+    clipboard
+        .set_text(url.clone())
+        .map_err(|err| format!("无法写入剪贴板：{err}"))?;
+    Ok(url)
+}
+
+#[tauri::command]
 fn quit_app(app: AppHandle) {
     app.exit(0);
 }
@@ -352,9 +531,14 @@ pub fn run() {
     if env::args().any(|arg| arg == "--smoke") {
         std::process::exit(smoke::run());
     }
+    let open_share = env::args().any(|arg| arg == "--share");
 
     let app = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if argv.iter().any(|arg| arg == "--share") {
+                show_share_window(app);
+                return;
+            }
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.set_focus();
@@ -377,8 +561,15 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![retry_start, quit_app, desktop_status])
-        .setup(|app| {
+        .invoke_handler(tauri::generate_handler![
+            retry_start,
+            quit_app,
+            desktop_status,
+            share_info,
+            set_lan_share,
+            copy_share_url
+        ])
+        .setup(move |app| {
             let home = paths::data_home(app.handle()).map_err(io::Error::other)?;
             paths::ensure_home(&home).map_err(io::Error::other)?;
 
@@ -418,6 +609,9 @@ pub fn run() {
             register_shortcuts(app.handle());
             start_clipboard_monitor(app.handle().clone());
             ensure_and_open(app.handle().clone());
+            if open_share {
+                show_share_window(app.handle());
+            }
             Ok(())
         })
         .on_window_event(|window, event| {

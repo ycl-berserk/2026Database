@@ -119,9 +119,13 @@ fn ascii_link(target: &Path, prefix: &str) -> Result<PathBuf, String> {
     let base = ascii_root()?;
     std::fs::create_dir_all(target)
         .map_err(|err| format!("无法创建 {}：{err}", target.display()))?;
-    let target = target
-        .canonicalize()
-        .map_err(|err| format!("无法解析 {}：{err}", target.display()))?;
+    // canonicalize 会返回 \\?\C:\...。把该前缀写进 junction 目标后，部分
+    // Win32/CRT 路径解析（如 PostgreSQL bootstrap）会报 ENOENT，必须先去前缀。
+    let target = strip_verbatim(
+        target
+            .canonicalize()
+            .map_err(|err| format!("无法解析 {}：{err}", target.display()))?,
+    );
     let mut hasher = DefaultHasher::new();
     target.hash(&mut hasher);
     let suffix = format!("{:x}", hasher.finish());
@@ -130,7 +134,7 @@ fn ascii_link(target: &Path, prefix: &str) -> Result<PathBuf, String> {
     let metadata = std::fs::symlink_metadata(&link);
     match metadata {
         Ok(_) => {
-            let existing = link.canonicalize();
+            let existing = link.canonicalize().map(strip_verbatim);
             if existing.as_ref().map(|path| path == &target).unwrap_or(false) {
                 return Ok(link);
             }

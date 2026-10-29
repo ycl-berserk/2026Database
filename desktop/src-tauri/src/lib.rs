@@ -1,4 +1,5 @@
 mod config;
+mod diagnostics;
 mod paths;
 mod postgres;
 mod server;
@@ -37,6 +38,7 @@ struct DesktopState {
     server: Mutex<Option<Child>>,
     starting: AtomicBool,
     status: Mutex<String>,
+    diagnostics: Mutex<Option<(Instant, diagnostics::ShareDiagnostics)>>,
     init_error: Option<String>,
 }
 
@@ -200,17 +202,29 @@ fn build_share_info(app: &AppHandle) -> Result<share::ShareInfo, String> {
         .clone();
     let health = make_server(&state, &cfg).health();
     let running = health.is_some();
-    let initialized = health.map(|health| health.initialized).unwrap_or(false);
+    let initialized = health
+        .as_ref()
+        .map(|health| health.initialized)
+        .unwrap_or(false);
+    let bind_host = health.and_then(|health| health.bind_host);
 
-    let url = share::local_ipv4().map(|ip| share::share_url(ip, cfg.app_port));
+    let candidates = share::lan_candidates();
+    let selected = share::select_candidate(&candidates, cfg.selected_lan_ip.as_deref());
+    let selected_ip = selected.as_ref().map(|candidate| candidate.ip.clone());
+    let url = selected
+        .as_ref()
+        .and_then(|candidate| share::url_for(&candidate.ip, cfg.app_port));
     let qr_svg = url.as_deref().and_then(|url| share::qr_svg(url).ok());
     Ok(share::ShareInfo {
         enabled: cfg.lan_enabled,
         running,
         initialized,
         port: cfg.app_port,
+        bind_host,
+        selected_ip,
         url,
         qr_svg,
+        candidates,
     })
 }
 
@@ -299,7 +313,11 @@ fn boot(app: &AppHandle) -> Result<(), String> {
     boot_note(&home, "迁移与角色配置完成");
 
     set_status(app, "启动本地服务…");
-    let host = if cfg.lan_enabled { "0.0.0.0" } else { "127.0.0.1" };
+    let host = if cfg.lan_enabled {
+        "0.0.0.0"
+    } else {
+        "127.0.0.1"
+    };
     let child = server.spawn(host, &home.join("logs").join("desktop.log"))?;
     boot_note(&home, &format!("服务进程已启动：{}", child.id()));
     let state_file = config::RuntimeState {
@@ -465,6 +483,8 @@ fn set_lan_share(app: AppHandle, enabled: bool) -> Result<share::ShareInfo, Stri
         return build_share_info(&app);
     }
 
+    let candidates = share::lan_candidates();
+    let selected = share::select_candidate(&candidates, cfg.selected_lan_ip.as_deref());
     if enabled {
         let health = make_server(&state, &cfg)
             .health()
@@ -474,6 +494,11 @@ fn set_lan_share(app: AppHandle, enabled: bool) -> Result<share::ShareInfo, Stri
         }
         if !health.initialized {
             return Err("请先在电脑上完成首次账号创建，再开启手机访问".to_string());
+        }
+        if selected.is_none() {
+            return Err(
+                "未检测到可用的局域网地址，请确认电脑已连接 Wi-Fi 或以太网后重试".to_string(),
+            );
         }
     }
 
@@ -488,13 +513,37 @@ fn set_lan_share(app: AppHandle, enabled: bool) -> Result<share::ShareInfo, Stri
         return Err(err);
     }
 
+    if let Some(candidate) = selected.as_ref() {
+        if enabled {
+            let reachable = make_server(&state, &cfg)
+                .health_via(&candidate.ip)
+                .map(|health| health.ok)
+                .unwrap_or(false);
+            if !reachable {
+                let _ = respawn_server(&app, "127.0.0.1");
+                let message = format!(
+                    "已尝试绑定 {}，但本机无法通过该地址访问服务，已恢复仅本机访问。请打开“连接检查”查看防火墙或 VPN 提示。",
+                    candidate.ip
+                );
+                boot_note(&state.home, &format!("手机访问校验失败：{message}"));
+                return Err(message);
+            }
+        }
+    }
+
     {
         let mut slot = state
             .config
             .lock()
             .map_err(|_| "配置被占用，请稍后重试".to_string())?;
         slot.lan_enabled = enabled;
+        if enabled {
+            slot.selected_lan_ip = selected.map(|candidate| candidate.ip);
+        }
         config::save(&state.home, &slot)?;
+    }
+    if let Ok(mut cache) = state.diagnostics.lock() {
+        *cache = None;
     }
     boot_note(
         &state.home,
@@ -505,6 +554,53 @@ fn set_lan_share(app: AppHandle, enabled: bool) -> Result<share::ShareInfo, Stri
         },
     );
     build_share_info(&app)
+}
+
+#[tauri::command]
+fn select_lan_ip(app: AppHandle, ip: String) -> Result<share::ShareInfo, String> {
+    let state = app.state::<DesktopState>();
+    let candidates = share::lan_candidates();
+    if !candidates.iter().any(|candidate| candidate.ip == ip) {
+        return Err("该地址已不在当前网卡列表中，请刷新后重试".to_string());
+    }
+    {
+        let mut slot = state
+            .config
+            .lock()
+            .map_err(|_| "配置被占用，请稍后重试".to_string())?;
+        slot.selected_lan_ip = Some(ip);
+        config::save(&state.home, &slot)?;
+    }
+    if let Ok(mut cache) = state.diagnostics.lock() {
+        *cache = None;
+    }
+    build_share_info(&app)
+}
+
+#[tauri::command]
+fn share_diagnostics(app: AppHandle) -> Result<diagnostics::ShareDiagnostics, String> {
+    let state = app.state::<DesktopState>();
+    if let Ok(cache) = state.diagnostics.lock() {
+        if let Some((generated, value)) = cache.as_ref() {
+            if generated.elapsed() < Duration::from_secs(10) {
+                return Ok(value.clone());
+            }
+        }
+    }
+
+    let cfg = state
+        .config
+        .lock()
+        .map_err(|_| "配置被占用，请稍后重试".to_string())?
+        .clone();
+    let server = make_server(&state, &cfg);
+    let candidates = share::lan_candidates();
+    let selected = share::select_candidate(&candidates, cfg.selected_lan_ip.as_deref());
+    let value = diagnostics::collect(&cfg, &server, &candidates, selected.as_ref());
+    if let Ok(mut cache) = state.diagnostics.lock() {
+        *cache = Some((Instant::now(), value.clone()));
+    }
+    Ok(value)
 }
 
 #[tauri::command]
@@ -560,9 +656,7 @@ pub fn run() {
                     }
                     if shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::Space) {
                         toggle_window(app);
-                    } else if shortcut
-                        .matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyV)
-                    {
+                    } else if shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyV) {
                         navigate(app, "/imports?mode=paste");
                     }
                 })
@@ -575,6 +669,8 @@ pub fn run() {
             desktop_status,
             share_info,
             set_lan_share,
+            select_lan_ip,
+            share_diagnostics,
             copy_share_url
         ])
         .setup(move |app| {
@@ -584,10 +680,7 @@ pub fn run() {
             let mut init_error = None;
             let (resources, home_pg, pg_bin, pg_data) =
                 match paths::resource_root(Some(app.handle())) {
-                    Ok(resources) => match (
-                        paths::home_view(&home),
-                        paths::pg_bin(&resources),
-                    ) {
+                    Ok(resources) => match (paths::home_view(&home), paths::pg_bin(&resources)) {
                         (Ok(home_pg), Ok(pg_bin)) => {
                             let pg_data = home_pg.join("pgdata");
                             (resources, home_pg, pg_bin, pg_data)
@@ -624,6 +717,7 @@ pub fn run() {
                 server: Mutex::new(None),
                 starting: AtomicBool::new(false),
                 status: Mutex::new(String::new()),
+                diagnostics: Mutex::new(None),
                 init_error,
             });
 

@@ -25,12 +25,49 @@
       <p class="error" id="error" hidden></p>
 
       <section class="access" id="access" hidden>
+        <div class="field">
+          <label for="ip-select">局域网地址</label>
+          <select id="ip-select"></select>
+          <p class="hint" id="ip-hint"></p>
+        </div>
         <div class="url-row">
           <code id="url"></code>
           <button type="button" id="copy">复制链接</button>
         </div>
         <div class="qr" id="qr"></div>
-        <p class="hint" id="qr-hint">用手机相机扫码，或手动输入上面的地址；登录时使用电脑上创建的同一个账号。</p>
+        <p class="hint">用手机相机扫码，或手动输入上面的地址；登录时使用电脑上创建的同一个账号。</p>
+      </section>
+
+      <section class="diagnose">
+        <div class="diagnose-head">
+          <div>
+            <strong>连接检查</strong>
+            <p class="hint">只读取绑定、网络位置、监听地址与防火墙状态，不会修改系统设置。</p>
+          </div>
+          <button type="button" id="diagnose" class="ghost">开始检查</button>
+        </div>
+        <p class="hint" id="diag-status">手机打不开时，先在这里确认问题出在哪一层。</p>
+
+        <div id="diag" hidden>
+          <dl class="diag-grid" id="diag-rows"></dl>
+
+          <div class="probe-row" id="probe-row" hidden>
+            <span class="hint">手机自检地址</span>
+            <code id="probe-url"></code>
+            <button type="button" id="copy-probe">复制</button>
+          </div>
+
+          <ul class="hints" id="diag-hints"></ul>
+
+          <details class="manual">
+            <summary>手机仍然打不开？查看只读排查命令</summary>
+            <p class="hint">以下命令需要你自己在管理员 PowerShell 中执行；程序不会自动修改防火墙或网络位置。</p>
+            <pre id="network-command"></pre>
+            <button type="button" id="copy-network">复制网络位置命令</button>
+            <pre id="firewall-command"></pre>
+            <button type="button" id="copy-firewall">复制防火墙命令</button>
+          </details>
+        </div>
       </section>
 
       <ul class="checks">
@@ -53,12 +90,27 @@
         hint: document.getElementById("toggle-hint"),
         error: document.getElementById("error"),
         access: document.getElementById("access"),
+        ipSelect: document.getElementById("ip-select"),
+        ipHint: document.getElementById("ip-hint"),
         url: document.getElementById("url"),
         qr: document.getElementById("qr"),
         copy: document.getElementById("copy"),
+        diagnose: document.getElementById("diagnose"),
+        diagStatus: document.getElementById("diag-status"),
+        diag: document.getElementById("diag"),
+        diagRows: document.getElementById("diag-rows"),
+        diagHints: document.getElementById("diag-hints"),
+        probeRow: document.getElementById("probe-row"),
+        probeUrl: document.getElementById("probe-url"),
+        copyProbe: document.getElementById("copy-probe"),
+        networkCommand: document.getElementById("network-command"),
+        firewallCommand: document.getElementById("firewall-command"),
+        copyNetwork: document.getElementById("copy-network"),
+        copyFirewall: document.getElementById("copy-firewall"),
       };
       let busy = false;
       let last = null;
+      let candidateSignature = "";
 
       async function invoke(command, args) {
         if (!bridge || !bridge.invoke) {
@@ -77,6 +129,80 @@
         els.error.textContent = "";
       }
 
+      function flash(button, text) {
+        const original = button.textContent;
+        button.textContent = text;
+        setTimeout(() => (button.textContent = original), 1600);
+      }
+
+      async function copyText(text, button) {
+        try {
+          await navigator.clipboard.writeText(text);
+          flash(button, "已复制");
+        } catch (error) {
+          showError("无法自动复制，请手动选择文本。");
+        }
+      }
+
+      function element(tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined) node.textContent = text;
+        return node;
+      }
+
+      function clearDiagnostics(message) {
+        els.diag.hidden = true;
+        els.diagRows.replaceChildren();
+        els.diagHints.replaceChildren();
+        els.diagStatus.textContent =
+          message || "地址已切换，请重新检查。";
+      }
+
+      function candidateLabel(candidate) {
+        const tags = [];
+        if (candidate.recommended) tags.push("推荐");
+        if (candidate.is_virtual) tags.push("不推荐");
+        const suffix = tags.length ? ` · ${tags.join(" / ")}` : "";
+        return `${candidate.ip} · ${candidate.interface} · ${candidate.if_type}${suffix}`;
+      }
+
+      function renderCandidates(info) {
+        const candidates = info.candidates || [];
+        const signature = JSON.stringify(
+          candidates.map((item) => [item.ip, item.interface, item.recommended, item.is_virtual])
+        );
+        if (signature !== candidateSignature) {
+          candidateSignature = signature;
+          els.ipSelect.replaceChildren();
+          if (!candidates.length) {
+            const option = document.createElement("option");
+            option.textContent = "未检测到局域网地址";
+            option.value = "";
+            els.ipSelect.append(option);
+          }
+          for (const candidate of candidates) {
+            const option = document.createElement("option");
+            option.value = candidate.ip;
+            option.textContent = candidateLabel(candidate);
+            els.ipSelect.append(option);
+          }
+        }
+
+        if (info.selected_ip) {
+          els.ipSelect.value = info.selected_ip;
+        }
+        const selected = candidates.find((item) => item.ip === els.ipSelect.value);
+        els.ipSelect.disabled = !info.enabled || !candidates.length;
+        if (!candidates.length) {
+          els.ipHint.textContent = "未检测到局域网地址，请确认电脑已连接 Wi-Fi 或以太网。";
+        } else if (selected && selected.reason) {
+          els.ipHint.textContent = selected.reason;
+        } else {
+          els.ipHint.textContent = "推荐地址与电脑当前上网网卡一致；请选择与手机同一 Wi-Fi 的地址。";
+        }
+      }
+
       function render(info) {
         last = info;
         const ready = info.running && info.initialized;
@@ -91,17 +217,20 @@
           els.status.textContent = "尚未创建账号：请先在电脑上完成首次设置。";
           els.hint.textContent = "创建账号后即可开启，手机使用同一账号登录。";
         } else if (info.enabled) {
-          els.status.textContent = "已开启：同一 Wi-Fi 下的手机可以访问。";
+          els.status.textContent = info.url
+            ? "已开启：同一 Wi-Fi 下的手机可以访问。"
+            : "已开启，但当前没有可用的局域网地址。";
           els.hint.textContent = "关闭开关会立即断开手机，并恢复仅本机访问。";
         } else {
           els.status.textContent = "未开启：目前只有这台电脑可以访问。";
           els.hint.textContent = "开启后，手机与电脑需要连接同一个 Wi-Fi。";
         }
 
-        const showAccess = Boolean(info.enabled && info.url);
+        const showAccess = Boolean(info.enabled);
         els.access.hidden = !showAccess;
         if (showAccess) {
-          els.url.textContent = info.url;
+          renderCandidates(info);
+          els.url.textContent = info.url || "未检测到可用地址";
           if (info.qr_svg) {
             els.qr.innerHTML = info.qr_svg;
           } else {
@@ -122,6 +251,58 @@
         }
       }
 
+      function addRow(label, value, ok) {
+        els.diagRows.append(element("dt", "", label));
+        const dd = element("dd", ok === false ? "bad" : ok === true ? "good" : "");
+        dd.textContent = value || "未获取";
+        els.diagRows.append(dd);
+      }
+
+      function renderDiagnostics(data) {
+        els.diag.hidden = false;
+        els.diagRows.replaceChildren();
+        addRow("服务运行", data.server_running ? "运行中" : "未运行", data.server_running);
+        addRow("绑定地址", data.bind_host || "未知", data.bind_host === "0.0.0.0");
+        addRow("本机探测", data.local_probe_ok ? "成功" : "失败", data.local_probe_ok);
+        addRow("局域网探测", data.lan_probe_ok ? "成功" : "失败", data.lan_probe_ok);
+
+        const profiles = (data.network_profiles || []).map(
+          (item) => `${item.Name || item.InterfaceAlias || "网络"} · ${item.NetworkCategory || "未知"}`
+        );
+        addRow("网络位置", profiles.join("；") || "未获取");
+        const listening = (data.listening || []).map(
+          (item) => `${item.LocalAddress || "?"}:${item.LocalPort || "?"}`
+        );
+        addRow("监听地址", listening.join("；") || "未获取");
+        const firewalls = (data.firewall_profiles || []).map(
+          (item) =>
+            `${item.Name || "?"}：${item.Enabled ? "已启用" : "关闭"} / 入站 ${item.DefaultInboundAction || "?"}`
+        );
+        addRow("防火墙", firewalls.join("；") || "未获取");
+
+        const generated = data.generated_at
+          ? new Date(data.generated_at * 1000).toLocaleTimeString()
+          : "刚刚";
+        els.diagStatus.textContent = `检查完成于 ${generated}。本机探测成功不代表手机可达，请用手机打开自检地址确认。`;
+
+        els.diagHints.replaceChildren();
+        for (const item of data.hints || []) {
+          const li = element("li", `hint-${item.level || "info"}`);
+          li.append(element("strong", "", item.title));
+          li.append(element("p", "", item.detail));
+          els.diagHints.append(li);
+        }
+
+        els.probeRow.hidden = !data.phone_probe_url;
+        els.probeUrl.textContent = data.phone_probe_url || "";
+        const networkAlias =
+          (data.network_profiles || [])[0]?.InterfaceAlias || "<接口名>";
+        els.networkCommand.textContent =
+          `Set-NetConnectionProfile -InterfaceAlias "${networkAlias}" -NetworkCategory Private`;
+        els.firewallCommand.textContent =
+          `New-NetFirewallRule -DisplayName "Learning Space LAN" -Direction Inbound -Action Allow -Protocol TCP -LocalPort ${last ? last.port : "<端口>"} -Profile Private`;
+      }
+
       els.toggle.addEventListener("change", async () => {
         const target = els.toggle.checked;
         busy = true;
@@ -134,12 +315,44 @@
         try {
           const info = await invoke("set_lan_share", { enabled: target });
           busy = false;
+          clearDiagnostics();
           render(info);
         } catch (error) {
           busy = false;
           els.toggle.checked = !target;
           showError(String(error && error.message ? error.message : error));
           await refresh(true);
+        }
+      });
+
+      els.ipSelect.addEventListener("change", async () => {
+        const ip = els.ipSelect.value;
+        if (!ip) return;
+        busy = true;
+        clearError();
+        clearDiagnostics("地址已切换，请重新检查。");
+        try {
+          const info = await invoke("select_lan_ip", { ip });
+          busy = false;
+          render(info);
+        } catch (error) {
+          busy = false;
+          showError(String(error && error.message ? error.message : error));
+          await refresh(true);
+        }
+      });
+
+      els.diagnose.addEventListener("click", async () => {
+        els.diagnose.disabled = true;
+        els.diagStatus.textContent = "正在读取系统状态…";
+        clearError();
+        try {
+          renderDiagnostics(await invoke("share_diagnostics"));
+        } catch (error) {
+          els.diagStatus.textContent = "连接检查失败。";
+          showError(String(error && error.message ? error.message : error));
+        } finally {
+          els.diagnose.disabled = false;
         }
       });
 
@@ -155,6 +368,16 @@
           showError(String(error && error.message ? error.message : error));
         }
       });
+
+      els.copyProbe.addEventListener("click", () =>
+        copyText(els.probeUrl.textContent, els.copyProbe)
+      );
+      els.copyNetwork.addEventListener("click", () =>
+        copyText(els.networkCommand.textContent, els.copyNetwork)
+      );
+      els.copyFirewall.addEventListener("click", () =>
+        copyText(els.firewallCommand.textContent, els.copyFirewall)
+      );
 
       window.addEventListener("focus", () => refresh(true));
       document.addEventListener("visibilitychange", () => {

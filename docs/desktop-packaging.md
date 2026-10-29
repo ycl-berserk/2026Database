@@ -228,12 +228,23 @@ CI（`.github/workflows/desktop.yml`，仅 `workflow_dispatch` 与 `v*` 触发�
 
 - 新增 Tauri `share` 窗口（`desktop/ui/share.html`）：显示局域网 URL、二维码、开关与风险提示。
   二维码由 Rust `qrcode` 生成 SVG，界面不依赖外部服务；`--share` 或托盘“手机访问…”打开。
-- LAN 地址来自 `sysinfo` 网卡枚举：跳过 VMware/WSL/Docker/utun 等虚拟网卡，优先
-  192.168/16、10/8、172.16/12。手机必须与这些地址互通（访客网络/AP 隔离会导致失败）。
+- LAN 地址来自 `netdev` 网卡枚举，跳过未启用、回环、链路本地地址；虚拟机/VPN/隧道
+  （VMware、VirtualBox、Hyper-V、WSL、Docker、Tailscale、ZeroTier、utun、TAP 等）
+  由接口类型与名称共同识别，标记为“虚拟”。排序规则：非虚拟优先，其次默认路由且有网关，
+  再次私有地址（192.168/16 → 10/8 → 172.16/12），同层按接口名与 IP 稳定排序。
+  界面列出所有候选地址并标出推荐项，可手动切换；选择写入 `config.json` 的
+  `selected_lan_ip`，网卡消失时自动回退到推荐项。手机必须与所选地址互通。
 - 开启前要求 `/healthz` 已就绪且 `initialized=true`，避免手机在创建账号前抢注。
 - 开关走 `respawn_server`：先停 sidecar，再以 `--host 0.0.0.0` 重启并轮询 `/healthz`，
-  成功后把 `config.json` 的 `lan_enabled` 持久化；失败时自动回滚到 `127.0.0.1`。
-  桌面窗口始终访问 `127.0.0.1`，不受影响。
+  成功后把 `config.json` 的 `lan_enabled` 与所选 IP 持久化；失败时自动回滚到 `127.0.0.1`。
+  重启后还会从本机用所选网卡地址探测 `/healthz`（带 `Host` 头），探测失败即回滚并提示，
+  避免出现“开关已开但手机必然连不上”的状态。桌面窗口始终访问 `127.0.0.1`，不受影响。
+- `/healthz` 增加 `bind_host` 字段，手机端可直接打开
+  `http://<电脑IP>:8765/healthz` 检查服务是否真的监听在局域网地址。
+- 分享窗口提供只读诊断：本机探测、局域网地址探测、当前网络配置文件（Public/Private）、
+  按端口过滤的监听地址、防火墙配置文件状态，以及网络位置、防火墙放行、AP 隔离等提示和
+  可复制的 PowerShell 命令。诊断仅使用 `Get-NetConnectionProfile`、`Get-NetTCPConnection`、
+  `Get-NetFirewallProfile` 等读取命令，不修改系统设置，也不提权。打开诊断时缓存 10 秒。
 - 关闭开关立即恢复 `127.0.0.1`；退出应用时 sidecar 与 PostgreSQL 一并停止。
 - 明文 HTTP 例外沿用 Phase 1：`LS_DESKTOP_MODE=1` 时关闭 Secure Cookie 与 HSTS；
   普通生产部署仍强制 Secure/HSTS。CSRF 与登录节流在 LAN 下照常生效。

@@ -269,7 +269,7 @@
 | 可维护性 | 关键 SQL 可定位、无 ORM 黑盒 | `sql/` + `services/` + 本文件映射 |
 | 工程质量 | 依赖可复现、静态检查、提交钩子、随机化与浏览器测试 | `uv.lock`、Ruff、pyright、pre-commit、Hypothesis、Playwright；CI 同步执行 |
 | 可演示性 | 离线可演示、模拟数据可复现 | mock Text2SQL、`make_samples.py`、`seed_demo.py` |
-| 可验收 | 自动化测试与端到端报告 | 334 个 pytest 用例 + 12 项 Playwright E2E + 42 项 `verify.py` 检查 |
+| 可验收 | 自动化测试与端到端报告 | 365 个 pytest 用例 + 12 项 Playwright E2E + 42 项 `verify.py` 检查 |
 | 可分发 | 普通用户无需 Docker/Python 即可安装使用，数据只在本机 | Windows NSIS（约 36 MiB）与 macOS DMG，内置 PostgreSQL + sidecar；`--smoke` 自检；体积报告进 CI |
 
 ## 需求到验收命令的映射

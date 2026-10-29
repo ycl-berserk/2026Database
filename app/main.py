@@ -164,6 +164,7 @@ def healthz():
         "db": "up",
         "t2s_db": "up",
         "desktop": settings.desktop_mode,
+        "bind_host": settings.bind_host,
         "initialized": False,
     }
     try:

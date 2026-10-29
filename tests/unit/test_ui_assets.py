@@ -50,6 +50,18 @@ def test_new_user_onboarding_has_next_steps():
         assert f"'{href}'" in welcome or f'href="{href}"' in welcome
 
 
+def test_page_transitions_keep_chrome_still_and_respect_reduced_motion():
+    css = _read(STATIC / "app.css")
+    assert "@view-transition { navigation: auto; }" in css
+    assert "view-transition-name: sidebar" in css
+    assert "::view-transition-old(root)" in css
+    assert "::view-transition-new(root)" in css
+    assert "@keyframes page-in" in css
+    reduced = css.split("@media (prefers-reduced-motion: reduce)")[1]
+    assert "::view-transition-group(*)" in reduced
+    assert "animation: none !important" in reduced
+
+
 def test_flash_and_toast_are_announced_and_dismissible():
     base = _read(TEMPLATES / "base.html")
     assert 'aria-live="polite"' in base

@@ -132,7 +132,11 @@ Tauri 配置（`desktop/src-tauri/tauri.conf.json`）：
 
 macOS 使用平台覆盖文件 `tauri.macos.conf.json`：`targets: ["app", "dmg"]`、
 `minimumSystemVersion: "13.0"`、图标加入 `icons/icon.icns`（由 `icons/icon.png`
-生成 16–1024 全部尺寸）。`tauri.conf.json` 本身保持 Windows 默认值。
+生成 16–1024 全部尺寸）。主窗口设置 `titleBarStyle: "Overlay"` 与
+`hiddenTitle: true`，让红绿灯悬浮在内容上；未设置 `trafficLightPosition`，
+保持系统默认位置与间距。页面顶部 30px 仅在 macOS 桌面壳内显示为拖拽区。
+分享窗口保留原生标题栏。Windows 继续使用系统原生标题栏与拖拽行为。
+`tauri.conf.json` 本身保持 Windows 默认值。
 
 ### 5.1 macOS 构建（Phase 4）
 

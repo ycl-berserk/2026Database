@@ -1,4 +1,33 @@
 {
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "学习空间",
+        "width": 1280,
+        "height": 860,
+        "minWidth": 390,
+        "minHeight": 640,
+        "center": true,
+        "resizable": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
+      },
+      {
+        "label": "share",
+        "title": "手机访问 · 学习空间",
+        "url": "share.html",
+        "width": 460,
+        "height": 640,
+        "minWidth": 380,
+        "minHeight": 520,
+        "center": true,
+        "resizable": true,
+        "visible": false
+      }
+    ]
+  },
   "bundle": {
     "targets": ["app", "dmg"],
     "icon": [

@@ -1,0 +1,10 @@
+<script>
+  (function (root) {
+    if (!window.__TAURI_INTERNALS__) return;
+    root.classList.add("is-desktop");
+    if ((navigator.userAgent || "").indexOf("Mac") !== -1) {
+      root.classList.add("is-macos");
+    }
+  })(document.documentElement);
+</script>
+<div class="desktop-drag" data-tauri-drag-region aria-hidden="true"></div>

@@ -40,6 +40,11 @@ if (Test-Path $pgLink) {
 }
 New-Item -ItemType Junction -Path $pgLink -Target $PgRoot | Out-Null
 
+# nmake's install rule creates this directory unconditionally; the raw tree is
+# reused across builds, so clear leftovers to keep the install repeatable.
+$headerDir = Join-Path $PgRoot "include\server\extension\vector"
+if (Test-Path $headerDir) { Remove-Item $headerDir -Recurse -Force }
+
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found; install Visual Studio Build Tools with C++." }
 $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
@@ -50,6 +55,10 @@ if (-not (Test-Path $vcvars)) { throw "vcvars64.bat not found under $vsPath" }
 $batch = Join-Path $WorkDir "build.bat"
 @"
 @echo off
+rem Git Bash (and the CI bash step) exports SHELL=/bin/bash.exe; nmake then
+rem runs rules through it, so mkdir would hit GNU coreutils (no parent dirs).
+set "SHELL="
+set "PATH=%SystemRoot%\System32;%SystemRoot%;%SystemRoot%\System32\Wbem;%SystemRoot%\System32\WindowsPowerShell\v1.0"
 call "$vcvars" >nul
 if errorlevel 1 exit /b 1
 cd /d "$source"

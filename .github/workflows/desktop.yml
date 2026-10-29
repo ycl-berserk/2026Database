@@ -210,11 +210,10 @@ jobs:
           fi
           chmod +x "$PG_BIN"/*
           chmod +x "$SIDECAR"
-          find "$APP" -type f \( -perm -111 -o -name "*.dylib" -o -name "*.so" \) -print0 |
-            while IFS= read -r -d '' file; do
-              codesign --force --sign - --timestamp=none "$file"
-            done
-          codesign --force --sign - --timestamp=none "$APP"
+          # Deep signing lets codesign treat Python.framework and the PG dylibs
+          # as bundles; signing individual files inside a framework fails with
+          # "bundle format is ambiguous".
+          codesign --force --deep --sign - --timestamp=none "$APP"
           codesign --verify --deep --strict --verbose=2 "$APP"
 
       - name: Smoke test

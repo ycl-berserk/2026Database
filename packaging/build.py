@@ -29,6 +29,10 @@ PACKAGING = ROOT / "packaging"
 BUILD = PACKAGING / "build"
 CACHE = PACKAGING / ".cache"
 PG_ROOT = BUILD / "pgsql"
+
+# CI's Windows console uses cp1252; the size report contains Chinese labels.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 RAW_PG = CACHE / "raw-16.10" / "pgsql"
 SIDECAR_DIST = BUILD / "sidecar"
 RESOURCES = ROOT / "desktop" / "src-tauri" / "resources"

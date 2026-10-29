@@ -57,6 +57,8 @@ jobs:
         with:
           version: "0.13.6"
           enable-cache: true
+          # 容器的共享缓存目录偶发残留锁，post 步骤 prune 会卡 300s 后失败。
+          prune-cache: false
 
       - name: Sync locked dependencies
         run: uv sync --frozen

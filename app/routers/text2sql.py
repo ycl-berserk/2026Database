@@ -3,9 +3,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
-from ..auth import require_user, verify_csrf
+from ..auth import require_learner, require_user, verify_csrf
 from ..db import get_conn, get_t2s_conn
-from ..errors import PermissionDenied, ValidationError
+from ..errors import ValidationError
 from ..services import text2sql_service
 from ..web import render
 
@@ -26,8 +26,7 @@ EXAMPLES = [
 
 
 def _require_student(user: dict) -> None:
-    if user["system_role"] == "admin":
-        raise PermissionDenied("管理员可使用系统统计页，不进入个人 Text2SQL")
+    require_learner(user, "管理员可使用系统统计页，不进入个人 Text2SQL")
 
 
 @router.get("/text2sql")

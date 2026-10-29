@@ -3,9 +3,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 
-from ..auth import require_user, verify_csrf
+from ..auth import require_learner, require_user, verify_csrf
 from ..db import get_conn
-from ..errors import AppError, PermissionDenied
+from ..errors import AppError
 from ..services import tag_graph_service, tag_service
 from ..web import add_flash, form_text, render
 
@@ -13,8 +13,7 @@ router = APIRouter(prefix="/tags")
 
 
 def _require_student(user: dict) -> None:
-    if user["system_role"] == "admin":
-        raise PermissionDenied("管理员不管理课程标签")
+    require_learner(user, "管理员不管理课程标签")
 
 
 @router.get("/graph")

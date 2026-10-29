@@ -3,9 +3,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 
-from ..auth import require_user, verify_csrf
+from ..auth import require_learner, require_user, verify_csrf
 from ..db import get_conn
-from ..errors import PermissionDenied
 from ..services import course_service
 from ..web import add_flash, form_text, render
 
@@ -13,8 +12,7 @@ router = APIRouter(prefix="/courses")
 
 
 def _require_student(user: dict) -> None:
-    if user["system_role"] == "admin":
-        raise PermissionDenied("管理员只访问系统聚合数据，不查看课程内容")
+    require_learner(user, "管理员只访问系统聚合数据，不查看课程内容")
 
 
 @router.get("")

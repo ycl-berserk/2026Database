@@ -7,6 +7,7 @@ The raw tree is kept so pgvector can be built against the matching headers.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import shutil
@@ -144,12 +145,10 @@ def prune_bin(bin_dir: Path) -> list[str]:
         try:
             pe = pefile.PE(str(files[name]), fast_load=True)
             directories = [pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_IMPORT"]]
-            try:
+            with contextlib.suppress(KeyError):
                 directories.append(
                     pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT"]
                 )
-            except KeyError:
-                pass
             pe.parse_data_directories(directories=directories)
         except pefile.PEFormatError:
             continue

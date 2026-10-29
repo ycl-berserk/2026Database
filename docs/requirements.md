@@ -256,6 +256,7 @@
 - 演示模式（Docker + 源码 + 种子数据）保持不变；桌面模式只换运行方式，不换 schema、视图、权限与业务代码。
 - 桌面模式是明文 HTTP 的唯一例外：必须同时满足 `LS_DESKTOP_MODE=1` 与 `LS_ALLOW_INSECURE_HTTP=1`，否则启动失败；生产部署仍强制 Secure Cookie 与 HSTS。
 - `/setup` 只在桌面模式且用户表为空时开放，创建的用户直接是管理员，避免手机在账号创建前抢注。
+- 桌面模式下该管理员同时是本机学习者：侧边栏同时展示“管理”和“学习”，`/dashboard` 为学习概览，学习路由不再返回 403；数据范围仍按课程成员过滤，不读取他人正文。演示模式的管理员保持聚合只读。
 - macOS 无 arm64 预编译 PostgreSQL，打包时从固定 SHA-256 的源码构建，并用 `install_name_tool` 把绝对 `install_name` 改为 `@rpath`；MVP 仅 ad-hoc 签名。
 
 ## 非功能需求

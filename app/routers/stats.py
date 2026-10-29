@@ -6,9 +6,8 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response
 
-from ..auth import require_user
+from ..auth import require_learner, require_user
 from ..db import get_conn
-from ..errors import PermissionDenied
 from ..services import backup_service, export_service, stats_service
 from ..web import render
 
@@ -16,8 +15,7 @@ router = APIRouter()
 
 
 def _require_student(user: dict) -> None:
-    if user["system_role"] == "admin":
-        raise PermissionDenied("管理员仅查看系统聚合统计，不进入个人统计页")
+    require_learner(user, "管理员仅查看系统聚合统计，不进入个人统计页")
 
 
 def _attachment(filename: str) -> str:

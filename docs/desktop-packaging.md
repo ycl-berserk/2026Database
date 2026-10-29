@@ -92,6 +92,7 @@ Windows CI（英文系统，ACP=1252）上进一步实测：
 - `APP_ENV=production`：登录页隐藏演示账号，密钥长度校验照常生效。
 - **明文 HTTP 例外仅限桌面模式**：只有同时设置 `LS_DESKTOP_MODE=1` 与 `LS_ALLOW_INSECURE_HTTP=1` 才关闭 Secure Cookie 与 HSTS；非桌面环境带该标志会直接启动失败。
 - `/setup` 仅在桌面模式且 `app.users` 为空时开放；创建的用户直接是管理员并自动登录。`/` 在未初始化时跳 `/setup`，已初始化跳 `/dashboard`。
+- **桌面模式的首个账号同时是学习者与管理者的例外**：`LS_DESKTOP_MODE=1` 时，管理员的侧边栏同时出现“管理”和“学习”两组入口，`/dashboard` 展示学习概览，各学习路由放行；查询仍按课程成员过滤，不会读取他人内容。演示模式不受影响，管理员依旧只看聚合数据。
 - `/healthz` 增加 `desktop` 与 `initialized` 字段，Tauri 壳用它决定打开 `/setup` 还是登录页。
 - 启动时每日首次备份、迁移前强制备份；迁移仍走 `app/migrations.py`，`scripts/init_db.py` 保留为演示模式薄 CLI。
 

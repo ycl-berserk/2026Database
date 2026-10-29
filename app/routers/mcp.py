@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
-from ..auth import require_scope, require_token
+from ..auth import require_learner, require_scope, require_token
 from ..db import get_conn
-from ..errors import PermissionDenied, ValidationError
+from ..errors import ValidationError
 from ..services import (
     annotation_service,
     conversation_service,
@@ -20,8 +20,7 @@ ANNOTATION_KINDS = ("note", "question", "correction", "summary")
 
 
 def _require_student(user: dict) -> None:
-    if user["system_role"] == "admin":
-        raise PermissionDenied("管理员不阅读他人消息正文")
+    require_learner(user, "管理员不阅读他人消息正文")
 
 
 def _limit(value: int, maximum: int) -> int:

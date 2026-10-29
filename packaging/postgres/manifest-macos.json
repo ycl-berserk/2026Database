@@ -1,0 +1,18 @@
+{
+  "name": "PostgreSQL",
+  "version": "16.10",
+  "edition": "source build (macOS arm64, minimal configure)",
+  "url": "https://ftp.postgresql.org/pub/source/v16.10/postgresql-16.10.tar.bz2",
+  "sha256": "de8485f4ce9c32e3ddfeef0b7c261eed1cecb54c9bcd170e437ff454cb292b42",
+  "configure": [
+    "--without-icu",
+    "--without-readline",
+    "--without-libxml",
+    "--without-lz4",
+    "--without-zstd",
+    "--disable-nls"
+  ],
+  "contrib": ["pg_trgm", "pg_stat_statements"],
+  "license": "PostgreSQL License",
+  "source": "https://www.postgresql.org/ftp/source/"
+}

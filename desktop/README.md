@@ -11,7 +11,10 @@
 
 ## 普通用户
 
-1. 运行安装包（Windows 首次会被 SmartScreen 提示，选择“更多信息 → 仍要运行”）。
+1. 运行安装包（Windows 首次会被 SmartScreen 提示，选择“更多信息 → 仍要运行”）；
+   macOS 打开 DMG 后把“Learning Space”拖进“应用程序”，首次启动若被 Gatekeeper
+   拦截，右键选择“打开”并确认，或执行
+   `xattr -dr com.apple.quarantine "/Applications/Learning Space.app"`。
 2. 启动“Learning Space”，首次启动会初始化本机数据库，随后进入设置向导。
 3. 在 `/setup` 创建本地账号（自动成为管理员）；之后手机或用同一账号登录。
 4. 关闭窗口会收进系统托盘；完全退出请用托盘菜单“退出”。
@@ -30,7 +33,7 @@
 ## 手机访问（同一 Wi-Fi）
 
 1. 先在电脑上完成首次设置，创建本地账号。
-2. 托盘菜单 →“手机访问…”，打开开关（也可以运行 `learning-space-desktop.exe --share`）。
+2. 托盘菜单 →“手机访问…”，打开开关（Windows 也可运行 `learning-space-desktop.exe --share`）。
 3. 手机扫窗口里的二维码，或手动打开 `http://<电脑IP>:8765/`。
 4. 手机与电脑使用同一个账号登录，可以同时操作。
 
@@ -47,29 +50,49 @@
 
 ## 开发与构建
 
-### 前置条件（Windows）
+### 前置条件
 
-| 依赖 | 说明 |
-| --- | --- |
-| Rust 1.77+ | `rustup default stable`，MSVC 工具链 |
-| Visual Studio Build Tools 2022 | 勾选“使用 C++ 的桌面开发”（构建 pgvector 需要） |
-| WebView2 Runtime | Windows 10/11 通常自带 |
-| Node.js 18+ | 安装 `@tauri-apps/cli` |
-| Python 3.12+ 与 `uv` | 项目根目录执行 `uv sync` |
+| 依赖 | Windows | macOS（arm64） |
+| --- | --- | --- |
+| Rust 1.77+ | MSVC 工具链 | Xcode Command Line Tools |
+| C/C++ 编译器 | Visual Studio Build Tools 2022（“使用 C++ 的桌面开发”） | Xcode CLT 自带 clang |
+| WebView2 | Windows 10/11 通常自带 | 系统自带 WKWebView |
+| Node.js 18+ | 安装 `@tauri-apps/cli` | 同左 |
+| Python 3.12+ 与 `uv` | 项目根目录执行 `uv sync` | 同左 |
+
+macOS 额外依赖 `curl`、`make`、`bzip2`（Xcode CLT 已包含）；PostgreSQL 在打包时从
+固定 SHA-256 的源码包本地编译，不需要 Homebrew。
 
 ### 构建安装包
 
-```powershell
+```bash
 uv sync
 uv pip install -r packaging/requirements.txt
 uv run python packaging/build.py          # PG + pgvector + sidecar + 资源汇总
 cd desktop
 npm install
-npm run build                             # 等价于 tauri build --bundles nsis
+npm run build                             # Windows: tauri build --bundles nsis
 ```
 
-产物：`desktop/src-tauri/target/release/bundle/nsis/*.exe`。
-`packaging/build.py` 同时在 `packaging/build/` 输出体积报告。
+macOS 上需要先构建 app 再打 DMG（让 ad-hoc 签名覆盖嵌套二进制）：
+
+```bash
+cd desktop
+npx tauri build --bundles app --target aarch64-apple-darwin
+APP="src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Learning Space.app"
+find "$APP" -type f \( -perm -111 -o -name '*.dylib' -o -name '*.so' \) -print0 |
+  while IFS= read -r -d '' f; do codesign --force --sign - "$f"; done
+codesign --force --sign - "$APP"
+hdiutil create -volname "Learning Space" -srcfolder "$APP" -ov -format UDZO Learning\ Space.dmg
+```
+
+产物：Windows 为 `desktop/src-tauri/target/release/bundle/nsis/*.exe`，
+macOS 为 `desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Learning Space.app`
+与自行生成的 DMG。`packaging/build.py` 同时在 `packaging/build/` 输出体积报告
+（安装后资源预算 ≤350 MiB；NSIS ≤120 MB、DMG ≤150 MB）。
+
+CI 也会在 `macos-14` 上重复上述过程并上传 DMG；未签名版本只能通过右键“打开”
+绕过 Gatekeeper，正式分发仍需 Apple Developer 证书与公证。
 
 ### 本地开发运行
 
@@ -96,6 +119,12 @@ $env:LS_HOME = "D:\build-cache\ls-smoke-home"
 & ".\learning-space-desktop.exe" --smoke    # 在安装目录或 target\release 下执行
 ```
 
+```bash
+LS_HOME="$TMP/ls-smoke-home" \
+  "src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Learning Space.app/Contents/MacOS/learning-space-desktop" \
+  --smoke
+```
+
 `--smoke` 会完成 initdb → 迁移 → 启动服务 → `/healthz` → 备份 → 停止，
 并在 `LS_HOME\smoke-report.json` 写入分步耗时；CI 用它验证安装包。
 
@@ -117,7 +146,7 @@ $env:LS_HOME = "D:\build-cache\ls-smoke-home"
 - 退出时先停 sidecar，再 `pg_ctl stop -m fast`；异常退出后下次启动会按 `run/state.json`
   清理残留 sidecar，并复用仍在运行的数据库。
 - 启动失败时窗口会显示日志目录，也可从托盘选择“打开日志目录”。
-- 桌面模式是 HTTP（不是 HTTPS），只允许本机访问；局域网共享在后续版本加入，默认关闭。
+- 桌面模式是 HTTP（不是 HTTPS）；局域网共享默认关闭，开启后仅应用端口对外，数据库仍只监听 `127.0.0.1`。
 
 ## 隐私
 

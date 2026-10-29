@@ -42,6 +42,7 @@ def test_desktop_frame_only_draws_titlebar_on_macos_tauri():
     assert ".desktop-drag { display: none; }" in css
     assert "html.is-desktop.is-macos .desktop-drag" in css
     assert "html.is-desktop.is-macos .app-shell { padding-top: 30px; }" in css
+    assert "html.is-desktop.is-macos .sidebar { top: 30px;" in css
 
 
 def test_macos_overlay_keeps_traffic_lights_in_default_position():

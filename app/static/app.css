@@ -1486,7 +1486,7 @@ html.is-desktop.is-macos .desktop-drag {
   border-bottom: 1px solid #151a16;
 }
 html.is-desktop.is-macos .app-shell { padding-top: 30px; }
-html.is-desktop.is-macos .sidebar { height: calc(100vh - 30px); }
+html.is-desktop.is-macos .sidebar { top: 30px; height: calc(100vh - 30px); }
 
 /* ---------- page transitions ---------- */
 @view-transition { navigation: auto; }

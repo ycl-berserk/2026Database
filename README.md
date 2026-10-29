@@ -29,6 +29,7 @@
 | MCP 接口 | stdio JSON-RPC 服务：`search`、`get_conversation`、`list_due_reviews` 只读；令牌显式授予 `annotate` 后才开放 `add_annotation` |
 | 管理 | 用户启停、系统聚合统计、数据库观测；审计时间线只记录课程/成员/账号的结构变更（对象、动作、主键、变更列名），不读取正文；支持按 90 天保留期清理 |
 | 移动端与安装 | 390px 优先的底部标签栏 / 抽屉导航、列表卡片化、专注阅读模式；PWA manifest + Service Worker 应用壳缓存、离线页、桌面安装、分享快捷方式 |
+| 桌面端 | Tauri v2 本地启动器：自动拉起 uvicorn、健康检查后打开窗口、托盘菜单、`Ctrl+Shift+Space` 显隐、`Ctrl+Shift+V` 粘贴导入、剪贴板长度提示；关闭窗口收进托盘 |
 | 离线学习 | 会话快照、离线阅读与搜索、离线批注草稿、复习打卡 outbox，恢复联网后按事件 ID 幂等同步 |
 | 体验与可访问性 | 演示账号一键登录、空账号三步引导、删除类操作 5 秒撤销、可关闭且可播报的提示、错误页原因与恢复路径、键盘焦点可见、`prefers-reduced-motion` |
 | 性能 | GZip 压缩、静态资源版本化与长缓存、首屏 JS < 10KB、移动端 LCP < 0.5s（本地实测） |
@@ -84,6 +85,20 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 使用 pip 时把 `uv run python` 换成 `.venv/Scripts/python.exe` 即可。
+
+### 方式 C：桌面壳（Tauri v2，可选）
+
+已装 Rust、MSVC Build Tools 2022 与 WebView2 时，可以用桌面窗口承载同一套站点：
+
+```bash
+docker compose up -d db                 # 数据库仍需先启动
+uv run python scripts/seed_demo.py      # 首次或重置演示数据
+cd desktop
+npm install
+npm run dev
+```
+
+桌面壳会在启动时自动拉起 `uvicorn app.main:app`，健康检查通过后打开登录页；关闭窗口收进托盘，托盘菜单提供“打开 / 粘贴导入 / 重启服务 / 退出”，全局快捷键为 `Ctrl+Shift+Space`（显示或隐藏）与 `Ctrl+Shift+V`（粘贴导入）。剪贴板监听只在本机判断文本长度并更新托盘提示，不保存、不上传内容。完整条件、环境变量与排障见 [desktop/README.md](desktop/README.md)。当前是“本地启动器”形态，仍依赖本机 Python 与 PostgreSQL；独立安装包的 sidecar 方案尚未实现。
 
 > `docker-compose.yml` 为 db 服务传入 `shared_preload_libraries=pg_stat_statements`，供管理员观测页读取慢查询；扩展本身由迁移 008 在演示库与测试库中条件创建。若数据库未预加载该库，页面会显示降级提示，其余指标不受影响。
 
@@ -238,6 +253,7 @@ learning-space/
 │   ├── roles.sql            # ls_app / t2s_reader 最小权限
 │   ├── migrations/          # 增量迁移（review_logs、api_tokens、tag_edges、audit_log、观测扩展等，记录到 meta.schema_migrations）
 │   └── showcase.sql         # 报告用关键 SQL（带注释）
+├── desktop/                 # Tauri v2 桌面壳：自动拉起本地服务、托盘、全局快捷键、剪贴板提示
 ├── extension/               # Chrome MV3 扩展：内容脚本、弹窗、隐私与回退说明
 ├── scripts/                 # 初始化、迁移、种子、样例、验收、E-R、截图、扩展冒烟
 ├── data/samples/            # 模拟导入样例（含三种平台原生导出）

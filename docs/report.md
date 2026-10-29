@@ -446,6 +446,18 @@ Markdown 导入仍需走网站上传页，因为 CLI 只发送统一 JSON，避�
 
 ![数据库观测](screenshots/28-observability.png)
 
+### 6.18 桌面壳（Tauri v2，可选）
+
+`desktop/` 用 Tauri v2 把同一套站点包进桌面窗口，定位是“本地启动器”，页面、权限与数据库不变：
+
+- 启动时先探测 `LS_URL`（默认 `http://127.0.0.1:8000`）；不可达且允许自动启动时，用项目 `.venv` 的 Python 以隐藏窗口方式拉起 `uvicorn app.main:app`，输出写入 `data/desktop-server.log`；健康检查通过后窗口跳转登录页。
+- 托盘菜单提供“打开学习空间 / 粘贴导入 / 重启本地服务 / 退出”；关闭窗口只隐藏，避免误退出。
+- 全局快捷键 `Ctrl+Shift+Space` 显示或隐藏窗口，`Ctrl+Shift+V` 直达 `/imports?mode=paste`。
+- 剪贴板监听每 1.2 秒比较文本是否变化，只有超过 20 字时才把托盘提示改为“剪贴板有新内容”，内容不落盘、不上传；可用 `LS_CLIPBOARD_MONITOR=0` 关闭。
+- 应用退出时结束自己拉起的子进程；若服务是外部启动的，则不干预。
+
+本机验证（Windows 11，Rust 1.91，MSVC Build Tools 2022，WebView2，Node 24）：`cargo check` 与 `npm run dev` 通过；窗口标题为“学习空间”，`/healthz` 返回 200 且日志显示 uvicorn 由桌面壳拉起；两次发送 `Ctrl+Shift+Space` 后窗口可见性依次为“显示 → 隐藏 → 显示”；按 `Ctrl+Shift+V` 后服务日志出现 `GET /imports?mode=paste`；向窗口发送 `WM_CLOSE` 后进程仍存活且窗口隐藏，快捷键可再次唤出。前置条件、环境变量与排障见 [desktop/README.md](../desktop/README.md)。当前壳仍依赖本机 Python 与 PostgreSQL，独立安装包需要 sidecar 化，属于后续工作。
+
 ## 7. 关键 SQL
 
 完整 23 条关键 SQL 及真实结果见 [sql-showcase.md](sql-showcase.md)，可执行脚本见 [../sql/showcase.sql](../sql/showcase.sql)。覆盖：
@@ -630,6 +642,14 @@ node scripts/extension_smoke.mjs
 node scripts/screenshots.mjs
 ```
 
+桌面演示（可选，需 Rust、MSVC Build Tools 2022 与 WebView2）：
+
+```bash
+cd desktop
+npm install
+npm run dev        # 自动拉起 uvicorn 并打开登录页
+```
+
 演示账号：`alice / Alice123!`、`bob / Bob123!`、`admin / Admin123!`。完整演示脚本见 [demo-script.md](demo-script.md)。
 
 ## 13. 限制与改进方向
@@ -643,6 +663,7 @@ node scripts/screenshots.mjs
 7. **扩展 DOM 依赖**：ChatGPT / DeepSeek / Qoder 的页面结构随时可能改版；扩展提供预览与回退提示，但长期仍以平台导出文件和适配器为主。
 8. **令牌与离线边界**：令牌限流是单机固定窗口，多实例部署需要换成共享计数器；离线数据只保存在当前浏览器，换设备需重新保存。
 9. **整理建议的质量与成本**：建议依赖外部模型，输出不保证稳定；服务端只做清洗与长度限制，25 秒超时后返回可读错误。启用前需要部署方提供 Key，并明确该会话节选会被发送到模型服务；结果永远需要用户确认，不会自动写入。
+10. **桌面分发**：Tauri 壳目前是本地启动器，仍要求本机有 Python、`.venv` 与 PostgreSQL；要做成双击即用的安装包，需要把服务改为 sidecar 并解决数据库的嵌入式或托管方案，本次未实现。
 
 ## 14. 结论
 
@@ -679,6 +700,7 @@ node scripts/screenshots.mjs
 | `app/services/text2sql_service.py` | 生成、守卫、只读执行、审计 |
 | `app/permissions.py` | 课程角色与会话可见性 |
 | `extension/` | Chrome MV3 扩展、隐私说明与回退指引 |
+| `desktop/` | Tauri v2 桌面壳：自动启动服务、托盘、全局快捷键与剪贴板提示 |
 | `scripts/verify.py` | 42 项端到端验收 |
 | `scripts/rls_experiment.py` | 隔离对比实验 CLI 与 JSON 报告 |
 | `scripts/extension_smoke.mjs` | 扩展提取与发送契约冒烟 |

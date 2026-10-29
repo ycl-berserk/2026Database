@@ -4,6 +4,8 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
 .pytest_cache/
 .ruff_cache/
 node_modules/

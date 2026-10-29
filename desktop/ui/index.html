@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>学习空间 · 桌面启动器</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="card">
+      <div class="brand">
+        <span class="dot" id="dot"></span>
+        <span>学习空间 · 桌面启动器</span>
+      </div>
+
+      <h1 id="title">正在准备本地服务</h1>
+      <p class="status" id="status" role="status" aria-live="polite">
+        首次启动需要几秒钟，请稍候。
+      </p>
+
+      <div class="progress" aria-hidden="true"><span></span></div>
+
+      <div class="actions">
+        <button type="button" id="retry">重新启动</button>
+        <button type="button" class="ghost" id="quit">退出</button>
+      </div>
+
+      <p class="hint">
+        如长时间无法打开，请确认：
+      </p>
+      <ul class="checks">
+        <li>Docker 中的 PostgreSQL 已启动（<code>docker compose up -d db</code>）</li>
+        <li>已安装依赖并初始化演示数据（<code>uv sync</code>、<code>uv run python scripts/seed.py</code>）</li>
+        <li>服务日志：<code>data/desktop-server.log</code></li>
+      </ul>
+
+      <p class="privacy">
+        剪贴板监听仅在本机内存中做长度判断，用于提示“可粘贴导入”，不上传任何内容。
+      </p>
+    </main>
+    <script>
+      const statusEl = document.getElementById("status");
+      const titleEl = document.getElementById("title");
+      const dot = document.getElementById("dot");
+
+      window.__setStatus = function (text) {
+        statusEl.textContent = text;
+        titleEl.textContent = "需要处理一下";
+        dot.classList.add("warn");
+      };
+
+      async function invoke(command) {
+        const bridge = window.__TAURI_INTERNALS__;
+        if (bridge && bridge.invoke) {
+          return bridge.invoke(command);
+        }
+        return null;
+      }
+
+      (async () => {
+        const pending = await invoke("desktop_status");
+        if (pending) {
+          window.__setStatus(pending);
+        }
+      })();
+
+      document.getElementById("retry").addEventListener("click", async () => {
+        titleEl.textContent = "正在准备本地服务";
+        statusEl.textContent = "正在重试…";
+        dot.classList.remove("warn");
+        await invoke("retry_start");
+      });
+
+      document.getElementById("quit").addEventListener("click", async () => {
+        await invoke("quit_app");
+      });
+    </script>
+  </body>
+</html>

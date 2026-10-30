@@ -267,12 +267,13 @@ CI（`.github/workflows/desktop.yml`，仅 `workflow_dispatch` 与 `v*` 触发�
 
 | 项目 | 预算 | 当前实测 | 判断 |
 | --- | --- | --- | --- |
-| Windows 安装包 | ≤120 MB | **35.9 MiB**（NSIS，x64，0.2.0） | 通过 |
-| Windows 安装后 | ≤350 MB | 约 111 MiB（资源 101.5 MiB + 主程序 9.6 MiB） | 通过 |
-| macOS DMG | ≤150 MB | CI 构建，体积由 `size-report.md` 与上传产物记录 | Phase 4 待首次 CI 结果 |
-| 首次启动 | 可接受 | 安装后 `--smoke` 12–17 s（含 initdb 9–10 s）；热启动 3.5 s | 通过 |
+| Windows 安装包 | ≤120 MB | **36.9 MiB**（NSIS，x64，0.3.0） | 通过 |
+| Windows 安装后 | ≤350 MB | 约 114 MiB（资源 104.8 MiB + 主程序约 9.6 MiB） | 通过 |
+| macOS DMG | ≤150 MB | **47.1 MiB**（DMG，arm64，0.3.0） | 通过 |
+| 首次启动 | 可接受 | 构建内 `--smoke` 7–8 s（含 initdb）；安装后首次启动 12–17 s，热启动 3.5 s | 通过 |
 
-安装包与首次启动数据来自本机 Windows 11 x64 实测（2026-10-29）。安装到含中文的目录、
+安装包体积与构建内 `--smoke` 耗时来自 0.3.0 的 Windows 构建（2026-10-30）；安装后首次启动
+与热启动数据来自本机 Windows 11 x64 安装实测（2026-10-29，0.2.0，流程未变）。安装到含中文的目录、
 数据目录也使用中文路径时，`--smoke` 同样通过；`initdb` 前会为两者建立 `subst` 盘符。
 
 如果后续版本超预算，按顺序降级：去掉 ICU/NLS 词典与未使用 contrib → 换更小的 PostgreSQL 发行版 → 最后才考虑首次启动下载。当前不需要降级。
@@ -308,4 +309,10 @@ MVP 不接入自动更新，按以下顺序手动发版：
 [v0.2.0](https://github.com/ycl-berserk/2026Database/releases/tag/v0.2.0)：NSIS 36.2 MiB
 （SHA-256 `7ff0b5ab…f379d`）、DMG 46.1 MiB（`3b5c414f…869b`），并附体积报告与
 `SHA256SUMS.txt`。人工验收（真机手机、干净 Windows 用户机、Mac Gatekeeper）仍待完成。
+
+2026-10-30 发布 [v0.3.0](https://github.com/ycl-berserk/2026Database/releases/tag/v0.3.0)：
+NSIS 36.9 MiB（SHA-256 `1d3fc674…503115`）、DMG 47.1 MiB（`d173d524…668629`），
+体积报告与 `SHA256SUMS.txt` 一并上传。构建内 smoke：Windows 7.3–7.7 s、macOS 2.2 s。
+本版新增本地工具会话直读（Codex CLI / opencode / Qoder CLI），从 0.2.0 升级时首次启动
+自动备份并执行迁移 011；Mac 真机人工验收仍待完成。
 

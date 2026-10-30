@@ -462,7 +462,7 @@ Markdown 导入仍需走网站上传页，因为 CLI 只发送统一 JSON，避�
 - 安装目录或用户名含中文时，不会把非 ASCII 路径直接交给 PostgreSQL：数据目录与安装目录各经一个 `subst` 盘符转发（Windows 版 PG 用 ANSI 代码页解析 junction 目标，junction 在英文系统上会失效）。
 - 桌面模式是唯一的明文 HTTP 例外（`LS_DESKTOP_MODE=1` 且 `LS_ALLOW_INSECURE_HTTP=1` 才关闭 Secure Cookie 与 HSTS）；普通生产部署仍强制 Secure/HSTS。
 
-本机实测（Windows 11 x64，0.2.0）：安装后资源约 101 MiB，NSIS 安装包 35.9 MiB；首次启动 `--smoke`（initdb → 迁移 → 启动服务 → `/healthz` → 备份 → 停止）12–17 s，热启动 3.5 s；开启局域网后 `http://10.47.125.30:8765/` 可登录，`55432` 从局域网不可达，关闭开关后立即失效；安装到含中文的目录、`LS_HOME` 也为中文时 smoke 通过。macOS（Apple Silicon）由 CI 构建 DMG 并执行 `.app` 内 smoke，尚未人工验收。完整构建、目录结构、体积预算与安全边界见 [desktop-packaging.md](desktop-packaging.md)。
+本机实测（Windows 11 x64）：0.3.0 安装后资源约 105 MiB，NSIS 安装包 36.9 MiB；构建内 `--smoke`（initdb → 迁移 → 启动服务 → `/healthz` → 备份 → 停止）7–8 s（安装后首次启动 12–17 s、热启动 3.5 s 为 0.2.0 实测，流程未变）；开启局域网后 `http://10.47.125.30:8765/` 可登录，`55432` 从局域网不可达，关闭开关后立即失效；安装到含中文的目录、`LS_HOME` 也为中文时 smoke 通过。macOS（Apple Silicon）由 CI 构建 DMG（0.3.0 为 47.1 MiB）并执行 `.app` 内 smoke，尚未人工验收。完整构建、目录结构、体积预算与安全边界见 [desktop-packaging.md](desktop-packaging.md)。
 
 ## 7. 关键 SQL
 

@@ -10,7 +10,7 @@ import urllib.request
 from typing import Any
 
 PROTOCOL_VERSION = "2024-11-05"
-SERVER_INFO = {"name": "learning-space", "version": "0.2.0"}
+SERVER_INFO = {"name": "learning-space", "version": "0.3.0"}
 REQUEST_TIMEOUT = 20
 MAX_TOOL_TEXT = 20_000
 ANNOTATION_KINDS = ("note", "question", "correction", "summary")

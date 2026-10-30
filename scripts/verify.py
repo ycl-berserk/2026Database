@@ -133,10 +133,10 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             conn,
             "SELECT count(*) AS n FROM pg_views WHERE schemaname = 't2s'",
         )
-        _ok(tables == 16, f"app 表数量应为 16，实际 {tables}")
+        _ok(tables == 17, f"app 表数量应为 17，实际 {tables}")
         _ok(views == 15, f"t2s 视图数量应为 15，实际 {views}")
-        return "16 张表（15 业务 + 1 审计）、15 个权限视图"
-    report.run("schema.tables", "Schema：16 张表与 15 个 t2s 视图", schema_tables)
+        return "17 张表（15 业务 + 1 审计 + 1 引导状态）、15 个权限视图"
+    report.run("schema.tables", "Schema：17 张表与 15 个 t2s 视图", schema_tables)
 
     def schema_constraints():
         constraints = {

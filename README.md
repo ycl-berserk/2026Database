@@ -12,7 +12,7 @@
 
 | 模块 | 能力 |
 | --- | --- |
-| 记录导入 | JSON / Markdown 上传、裸文本粘贴、三步导入向导（上传/粘贴 → 预览勾选 → 结果摘要）、解析校验、持久化预览、查重、课程映射、单事务入库、失败回滚 |
+| 记录导入 | JSON / Markdown 上传、裸文本粘贴、本地工具会话直读（Codex CLI / opencode / Qoder CLI）、三步导入向导（选择会话 → 预览勾选 → 结果摘要）、解析校验、持久化预览、查重、课程映射、单事务入库、失败回滚 |
 | 快速采集 | PWA Share Target、裸文本粘贴、ChatGPT `conversations.json` / Qoder 会话 / DeepSeek Markdown 原生导出适配；采集令牌 + Bearer `POST /api/ingest`；MV3 扩展仅在点击发送时读取当前会话 |
 | 收件箱 | 未归类会话队列、批量归类到课程、分享落地页与高亮定位 |
 | 课程与标签 | 课程 CRUD、成员共享（owner / editor / viewer）、标签 CRUD、会话归类与打标签 |
@@ -264,6 +264,7 @@ learning-space/
 │   ├── routers/             # 页面与 JSON API
 │   ├── services/            # 业务 SQL、事务与导出
 │   ├── importers/           # JSON / Markdown / 裸文本解析与校验
+│   ├── harness/             # 本地工具只读连接器（Codex / opencode / Qoder）
 │   ├── templates/           # Jinja2 页面
 │   └── static/              # CSS / JS / PWA manifest、Service Worker、离线页与图标
 ├── sql/
@@ -286,6 +287,7 @@ learning-space/
 
 - **模拟数据**：`data/samples/*.json|md` 与 `scripts/seed_demo.py` 生成的内容均为模拟问答，不含真实个人信息。每个导出的 Markdown 和页面页脚都带有“演示数据不含真实个人信息”声明。
 - **导入格式**：JSON 为主（`platform`、`account_label`、`conversations[]`），Markdown 与裸文本为辅（`# 会话标题` + `- 课程:` / `- 标签:` + `## 用户/助手 [时间]`，或直接粘贴 `我：… / 助手：…` 对话）。平台原生导出由 `app/importers/adapters.py` 归一：ChatGPT `conversations.json` 沿 `current_node` 取主线，Qoder 会话导出做字段别名映射，DeepSeek Markdown 识别 `### User/Assistant` 与英文元信息。
+- **本地工具导入**：`/imports/local` 直接读取本机 Codex CLI（`~/.codex/sessions`）、opencode（`~/.local/share/opencode/opencode.db`，只读打开）与 Qoder CLI（`~/.qoder-cn/projects`）的会话列表，用户勾选后进入同一套预览与入库流程。只提取用户/助手对话文本：工具调用、思考过程、命令输出与文件内容一律跳过；会话 ID 必须命中实时列出的列表才会读取，避免路径穿越。桌面模式下默认开启，服务器部署需显式设置 `LS_HARNESS_IMPORT=1`；可用 `LS_HARNESS_CODEX_DIR` / `LS_HARNESS_OPENCODE_DB` / `LS_HARNESS_QODER_DIR` 覆盖数据目录。
 - **采集令牌**：`/tokens` 创建的令牌形如 `ls_…`，明文只显示一次，服务端仅存 SHA-256 与可读前缀；每令牌每分钟最多 60 次请求，可随时撤销。管理员无法读取令牌，令牌也应只放在本机脚本或扩展中，不要提交到仓库。
 - **浏览器扩展**：`extension/` 使用 MV3，固定权限只有 `activeTab` 与 `storage`；仅当用户在弹窗点击「发送到学习空间」时读取当前标签页并调用 `/api/ingest`，令牌保存在 `chrome.storage.local`。平台 DOM 改版时回退到平台导出文件。
 - **分享采集**：`POST /share` 复用 `import_batches` 暂存解析结果（30 分钟有效），不把长文本写入 Cookie；最终保存仍需登录会话与 CSRF Token，并校验批次所有权。

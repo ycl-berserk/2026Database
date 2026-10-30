@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 CST = timezone(timedelta(hours=8))
-PLATFORMS = ("qoder", "chatgpt", "deepseek", "claude", "other")
+PLATFORMS = ("qoder", "chatgpt", "deepseek", "claude", "codex", "opencode", "other")
 SENDERS = {"user": "user", "human": "user", "me": "user", "我": "user", "用户": "user",
            "提问": "user",
            "assistant": "assistant", "ai": "assistant", "bot": "assistant",

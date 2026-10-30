@@ -75,6 +75,8 @@ PLATFORM_LABELS = {
     "chatgpt": "ChatGPT",
     "deepseek": "DeepSeek",
     "claude": "Claude",
+    "codex": "Codex",
+    "opencode": "opencode",
     "other": "其他",
 }
 

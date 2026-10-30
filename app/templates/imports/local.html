@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}本地工具导入{% endblock %}
+{% block page_title %}从本地工具导入{% endblock %}
+{% block page_subtitle %}直接读取已经装在这台电脑上的 Codex、opencode、Qoder 会话{% endblock %}
+
+{% block topbar_actions %}
+  <a class="btn btn-ghost" href="/imports">文件 / 粘贴导入</a>
+{% endblock %}
+
+{% block content %}
+<section class="panel wizard-panel">
+  <ol class="wizard-steps" aria-label="导入步骤">
+    <li class="active"><span>1</span><div><strong>选择会话</strong><small>从本地工具读取</small></div></li>
+    <li><span>2</span><div><strong>预览确认</strong><small>勾选并归类课程</small></div></li>
+    <li><span>3</span><div><strong>完成</strong><small>查看导入结果</small></div></li>
+  </ol>
+
+  <nav class="import-tabs" aria-label="导入方式">
+    <a class="import-tab" href="/imports?mode=upload">上传文件</a>
+    <a class="import-tab" href="/imports?mode=paste">粘贴聊天</a>
+    <a class="import-tab active" href="/imports/local" aria-current="page">本地工具</a>
+  </nav>
+
+  <p class="muted">
+    只读取对话文本：工具调用、思考过程、命令输出和文件内容都会跳过，不会写入数据库。
+    读取是只读的，不会修改这些工具自己的数据。
+  </p>
+</section>
+
+{% for source in sources %}
+  <section class="panel">
+    <div class="panel-head">
+      <h2>{{ source.label }}</h2>
+      <span class="muted">
+        {% if source.available and source.sessions %}
+          {{ source.sessions | length }} 个会话
+        {% elif source.available %}
+          未找到会话
+        {% else %}
+          未检测到
+        {% endif %}
+      </span>
+    </div>
+
+    {% if not source.available %}
+      <div class="empty-block">
+        <p>没有在这台电脑上找到 {{ source.label }} 的数据目录。</p>
+        <p class="muted">安装并用它聊过至少一次后，这里会自动出现会话列表。</p>
+      </div>
+    {% elif not source.sessions %}
+      <div class="empty-block">
+        <p>数据目录存在，但还没有可读取的会话。</p>
+        <p class="muted mono">{{ source.location }}</p>
+      </div>
+    {% else %}
+      <form method="post" action="/imports/local/stage" data-harness-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="harness" value="{{ source.key }}">
+        <div class="table-wrap">
+          <table class="table table-stack">
+            <thead>
+              <tr>
+                <th class="col-check">
+                  <input type="checkbox" data-select-all aria-label="全选 {{ source.label }} 会话">
+                </th>
+                <th>会话</th>
+                <th>消息</th>
+                <th>更新时间</th>
+                <th>状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for session in source.sessions %}
+                <tr>
+                  <td data-label="选择">
+                    <input type="checkbox" name="session" value="{{ session.session_id }}"
+                           aria-label="选择「{{ session.title }}」">
+                  </td>
+                  <td data-label="会话">
+                    <div class="record-title">{{ session.title }}</div>
+                    <small class="muted mono">{{ session.session_id }}</small>
+                  </td>
+                  <td data-label="消息">
+                    {% if session.message_count %}
+                      {{ session.message_count | num }}
+                    {% else %}
+                      <span class="muted">—</span>
+                    {% endif %}
+                  </td>
+                  <td data-label="更新时间" class="muted">{{ session.updated_at | dt }}</td>
+                  <td data-label="状态">
+                    {% if session.imported %}
+                      <span class="badge badge-ok">已导入</span>
+                    {% else %}
+                      <span class="badge">未导入</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">读取选中会话</button>
+          <span class="muted">下一步会显示预览，可以逐个会话选择课程后再入库。</span>
+        </div>
+      </form>
+    {% endif %}
+  </section>
+{% endfor %}
+
+{% if not sources %}
+  <section class="panel">
+    <div class="empty-block">
+      <p>本地工具导入当前未启用。</p>
+      <p class="muted">桌面模式下默认开启；服务器部署需要显式设置 <code>LS_HARNESS_IMPORT=1</code>。</p>
+    </div>
+  </section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    document.querySelectorAll("[data-select-all]").forEach(function (master) {
+      var form = master.closest("form");
+      if (!form) return;
+      var boxes = form.querySelectorAll('input[name="session"]');
+      master.addEventListener("change", function () {
+        boxes.forEach(function (box) { box.checked = master.checked; });
+      });
+    });
+  })();
+</script>
+{% endblock %}

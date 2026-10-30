@@ -35,6 +35,7 @@
        {% if active_mode != 'paste' %}aria-current="page"{% endif %}>上传文件</a>
     <a class="import-tab {% if active_mode == 'paste' %}active{% endif %}" href="/imports?mode=paste"
        {% if active_mode == 'paste' %}aria-current="page"{% endif %}>粘贴聊天</a>
+    <a class="import-tab" href="/imports/local">本地工具</a>
   </nav>
 
   {% if active_mode == 'paste' %}

@@ -141,6 +141,7 @@
 | R09-F06 | 采集令牌与 Bearer 入库 | 用途名称；`Authorization: Bearer`；统一 JSON | 明文只显示一次；按 `course_code` 归课；每分钟 60 次 | 无效/撤销令牌 401；超限 429；管理员拒绝；跨用户课程拒绝 | `token_service.py`、`routers/tokens.py`、`routers/api.py`、`import_service.ingest_json` | `tests/integration/test_tokens.py`、`test_api_tokens.py`、`verify.token.ingest` |
 | R09-F07 | 平台原生导出适配 | ChatGPT `conversations.json`、Qoder `sessions`、DeepSeek Markdown | 归一为统一 DTO；保留警告并复用导入流水线 | 缺平台/缺消息/时间非法仍按原校验拒绝 | `app/importers/adapters.py`、`json_importer.py`、`markdown_importer.py` | `tests/unit/test_platform_adapters.py`、`verify.import.adapters` |
 | R09-F08 | MV3 浏览器扩展 | 当前标签页会话、学习空间地址、令牌、课程/标签 | 预览后点击发送；Bearer 调用 `/api/ingest` | 无令牌禁用发送；401/429 提示；无法提取时回退导出文件 | `extension/` | `tests/unit/test_extension_assets.py`、`scripts/extension_smoke.mjs` |
+| R09-F09 | 本地工具会话直读 | 本机 Codex CLI / opencode / Qoder CLI 的数据目录 | `/imports/local` 列出会话（标题、消息数、更新时间、已导入标记），勾选后暂存预览并复用导入流水线 | 目录不存在时显示未检测；会话 ID 必须命中实时列表；只读打开 SQLite；工具调用/思考/命令输出被过滤；最多 20 个会话、总预算 4000 条消息；非学生或功能未启用 403 | `app/harness/*`、`services/harness_service.py`、`routers/harness.py`、`templates/imports/local.html` | `tests/unit/test_harness_connectors.py`、`tests/integration/test_harness_import.py` |
 
 ## R10 离线学习
 
@@ -269,7 +270,7 @@
 | 可维护性 | 关键 SQL 可定位、无 ORM 黑盒 | `sql/` + `services/` + 本文件映射 |
 | 工程质量 | 依赖可复现、静态检查、提交钩子、随机化与浏览器测试 | `uv.lock`、Ruff、pyright、pre-commit、Hypothesis、Playwright；CI 同步执行 |
 | 可演示性 | 离线可演示、模拟数据可复现 | mock Text2SQL、`make_samples.py`、`seed_demo.py` |
-| 可验收 | 自动化测试与端到端报告 | 369 个 pytest 用例 + 12 项 Playwright E2E + 42 项 `verify.py` 检查 |
+| 可验收 | 自动化测试与端到端报告 | 386 个 pytest 用例 + 12 项 Playwright E2E + 42 项 `verify.py` 检查 |
 | 可分发 | 普通用户无需 Docker/Python 即可安装使用，数据只在本机 | Windows NSIS（约 36 MiB）与 macOS DMG，内置 PostgreSQL + sidecar；`--smoke` 自检；体积报告进 CI |
 
 ## 需求到验收命令的映射

@@ -64,7 +64,7 @@ CREATE TABLE app.sources (
     platform        varchar(20)  NOT NULL,
     account_label   varchar(100) NOT NULL DEFAULT 'default',
     created_at      timestamptz  NOT NULL DEFAULT now(),
-    CONSTRAINT sources_platform_check CHECK (platform IN ('qoder', 'chatgpt', 'deepseek', 'claude', 'other')),
+    CONSTRAINT sources_platform_check CHECK (platform IN ('qoder', 'chatgpt', 'deepseek', 'claude', 'codex', 'opencode', 'other')),
     CONSTRAINT sources_owner_platform_label_unique UNIQUE (owner_id, platform, account_label)
 );
 

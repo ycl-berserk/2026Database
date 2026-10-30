@@ -226,6 +226,7 @@ from .routers import (  # noqa: E402
     conversations,
     courses,
     dashboard,
+    harness,
     imports,
     mcp,
     onboarding,
@@ -250,6 +251,7 @@ app.include_router(courses.router)
 app.include_router(conversations.router)
 app.include_router(tags.router)
 app.include_router(imports.router)
+app.include_router(harness.router)
 app.include_router(tokens.router)
 app.include_router(annotations.router)
 app.include_router(reviews.router)

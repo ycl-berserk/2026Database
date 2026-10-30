@@ -61,6 +61,13 @@ class Settings:
     )
     app_env: str = field(default_factory=lambda: os.getenv("APP_ENV", "dev"))
     desktop_mode: bool = field(default_factory=lambda: env_flag("LS_DESKTOP_MODE"))
+    harness_import_enabled: bool = field(
+        default_factory=lambda: env_flag(
+            "LS_HARNESS_IMPORT",
+            default=env_flag("LS_DESKTOP_MODE")
+            or os.getenv("APP_ENV", "dev").strip().lower() != "production",
+        )
+    )
     bind_host: str = field(
         default_factory=lambda: os.getenv("LS_BIND_HOST", "127.0.0.1").strip()
         or "127.0.0.1"

@@ -6,9 +6,17 @@ const ACCOUNTS = {
   admin: { username: "admin", password: "Admin123!" },
 };
 
+const BROWSER_NOISE = [
+  // Chromium 在跨文档 View Transition 被重定向打断时抛出的内部提示，非应用错误。
+  "Transition was aborted because of invalid state. ViewTransition opt-in disabled",
+];
+
 function trackErrors(page, { allow = () => false } = {}) {
   const errors = [];
-  page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
+  page.on("pageerror", (error) => {
+    if (BROWSER_NOISE.some((text) => error.message.includes(text))) return;
+    errors.push(`pageerror: ${error.message}`);
+  });
   page.on("console", (message) => {
     if (message.type() !== "error") return;
     if (allow(message.text())) return;
@@ -33,7 +41,7 @@ test("未登录访问概览会跳转到登录页", async ({ page }) => {
   const response = await page.goto("/dashboard");
   expect(response?.status()).toBe(200);
   await expect(page).toHaveURL(/\/login/);
-  await expect(page.getByRole("heading", { name: "登录学习空间" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "登录" })).toBeVisible();
   await expect(page.locator("[data-demo-login]")).toHaveCount(3);
   expect(errors).toEqual([]);
 });

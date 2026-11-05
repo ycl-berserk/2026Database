@@ -7,6 +7,7 @@ ROOT = Path(SPECPATH).resolve().parent.parent
 hiddenimports = (
     collect_submodules("app")
     + collect_submodules("uvicorn")
+    + collect_submodules("sqlglot.dialects")
     + [
         "psycopg",
         "psycopg_pool",

@@ -33,6 +33,29 @@ def test_single_owner_per_course(conn, base):
         )
 
 
+def test_last_owner_cannot_be_removed(conn, base):
+    with pytest.raises(psycopg.errors.CheckViolation):
+        conn.execute(
+            "DELETE FROM app.course_members WHERE course_id = %s AND role = 'owner'",
+            (base["courses"]["DB"],),
+        )
+    owners = conn.execute(
+        "SELECT count(*) AS n FROM app.course_members "
+        "WHERE course_id = %s AND role = 'owner'",
+        (base["courses"]["DB"],),
+    ).fetchone()["n"]
+    assert owners == 1
+
+
+def test_owner_cannot_be_demoted(conn, base):
+    with pytest.raises(psycopg.errors.CheckViolation):
+        conn.execute(
+            "UPDATE app.course_members SET role = 'viewer' "
+            "WHERE course_id = %s AND role = 'owner'",
+            (base["courses"]["DB"],),
+        )
+
+
 def test_message_seq_unique(conn, base):
     with pytest.raises(psycopg.errors.UniqueViolation):
         conn.execute(

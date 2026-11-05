@@ -362,13 +362,14 @@ Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查�
 
 | 触发器 | 时机 | 作用 |
 | --- | --- | --- |
-| `trg_courses_owner_required` | 课程 INSERT 后，延迟到事务结束 | 每门课必须恰好一个 owner |
+| `trg_courses_owner_required` | 课程 INSERT 后，延迟到事务结束 | 新课程在事务结束时必须有 owner |
+| `trg_course_members_owner_required` | 成员 INSERT/UPDATE/DELETE 后，延迟到事务结束 | 每门课必须恰好一个 owner（防止删除或降级最后一个 owner） |
 | `trg_conversation_tags_access` | 会话标签 INSERT/UPDATE | 标签属于标注人；标注人有会话或课程编辑权 |
 | `trg_annotations_access` | 批注 INSERT/UPDATE | 批注人必须有会话或课程编辑权 |
 | `trg_review_items_access` | 复习项 INSERT/UPDATE | 复习人必须对批注所属会话有编辑权 |
 | `trg_annotations_updated_at` | 批注 UPDATE 前 | 自动维护 `updated_at` |
 
-`trg_courses_owner_required` 使用 `CONSTRAINT TRIGGER ... DEFERRABLE INITIALLY DEFERRED`，允许“先插课程、再插 owner 成员”在同一事务内完成。
+两个 owner 约束触发器都使用 `CONSTRAINT TRIGGER ... DEFERRABLE INITIALLY DEFERRED`：前者允许“先插课程、再插 owner 成员”在同一事务内完成；后者在成员增删改后同样延迟到事务结束，重复校验该课程 owner 恰好为 1，因此删除或降级最后一个 owner 会在 `COMMIT` 时以 SQLSTATE 23514 失败并整体回滚。两者共用 `app.check_course_owner_count()`，对已被删除的课程跳过检查，避免级联删除误报。
 
 ## 6. 索引设计
 
@@ -587,4 +588,4 @@ v1 的基线结构保存在 `sql/schema.sql`。v2 起所有结构变更以编号
 - 每个迁移在单独事务中执行，失败整体回滚且不写版本记录。
 - 初始化顺序为 `schema.sql → migrations → views.sql → roles.sql`，保证 `t2s` 视图始终基于最新结构创建。
 - 业务表仍集中在 `app` schema（17 张，含审计表与引导状态表），迁移登记表放在独立的 `meta` schema，不参与业务计数与权限视图。
-- 当前迁移：`001_add_review_logs`（复习事件流水）、`002_add_annotation_event_id`（批注客户端事件 ID）、`003_add_api_tokens`（采集令牌）、`004_add_message_embeddings`（可选向量）、`005_add_tag_edges`（知识先修关系）、`006_add_token_scopes`（令牌作用域）、`007_add_audit_log`（审计历史与通用触发器）、`008_add_observability`（观测扩展）、`009_add_fsrs_state`（FSRS 状态）、`010_user_onboarding`（新手指南状态）。
+- 当前迁移：`001_add_review_logs`（复习事件流水）、`002_add_annotation_event_id`（批注客户端事件 ID）、`003_add_api_tokens`（采集令牌）、`004_add_message_embeddings`（可选向量）、`005_add_tag_edges`（知识先修关系）、`006_add_token_scopes`（令牌作用域）、`007_add_audit_log`（审计历史与通用触发器）、`008_add_observability`（观测扩展）、`009_add_fsrs_state`（FSRS 状态）、`010_user_onboarding`（新手指南状态）、`011_extend_platforms`（Codex / opencode 来源平台）、`012_enforce_course_owner`（成员级 owner 延迟约束触发器）。

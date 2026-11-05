@@ -203,7 +203,7 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
         }
         missing_trg = required_triggers - triggers
         _ok(not missing_trg, f"缺少触发器：{sorted(missing_trg)}")
-        return "唯一键、CHECK、部分唯一索引与 9 个触发器齐全"
+        return "唯一键、CHECK、部分唯一索引与 10 个触发器齐全"
     report.run("schema.constraints", "Schema：主外键、唯一/检查约束、索引与触发器", schema_constraints)
 
     def index_health():

@@ -1,11 +1,13 @@
-# 演示脚本：个人学习空间（5–8 分钟）
+# 演示脚本：个人学习空间（数据库版 · 8 分钟）
 
-> 目标：在 8 分钟内讲清「聊天记录 → 课程资料 → 检索批注 → 复习统计」的完整闭环，并让数据库设计点可见、可验证。
+> 目标：8 分钟内按「概念模型 → 逻辑设计 → 关键 SQL → 索引与计划 → 访问控制 → 事务 → 触发器与审计」讲清数据库设计。
+> 讲法：只讲数据库，不展开桌面打包、扩展、AI 协作和测试数量；每条结论都能用 `sql/showcase.sql` 现场复现。
 > 演示数据全部为模拟问答，不含真实个人信息；管理员只展示聚合信息，不读取他人正文。
+> PPT 页脚带有每节计时，本脚本的时间轴与之对齐，总计约 7:40。
 
 ## 0. 演示前检查（不在视频中出镜）
 
-在项目根目录 `learning-space/` 执行。推荐用 Docker 一条命令起全栈（`app` 容器会自动迁移，空库时播种，以非 root 用户运行）：
+在项目根目录执行。推荐用 Docker 一条命令起全栈（`app` 容器会自动迁移，空库时播种，以非 root 用户运行）：
 
 ```bash
 docker compose up -d --build
@@ -27,13 +29,23 @@ docker compose exec db pg_isready -U postgres
 curl -s http://127.0.0.1:8000/healthz
 ```
 
+提前跑一遍关键 SQL，确认终端输出与 `docs/sql-showcase.md` 一致：
+
+```bash
+docker compose exec -T db psql -U postgres -d learning_space -f /dev/stdin < sql/showcase.sql
+```
+
 确认：
 
 - <http://127.0.0.1:8000> 可打开登录页；
 - `alice / Alice123!`、`bob / Bob123!`、`admin / Admin123!` 可登录；
-- 导入页「最近导入批次」为 5 条已导入记录；
 - 统计页显示 5 门课程、30 个会话、420 条消息、66 条批注、59 个标签；
-- Text2SQL 页显示「本地规则模式（未配置大模型 Key）」，无 Key 也能完整演示。
+- 导入页「最近导入批次」为 5 条已导入记录；
+- bob 直接访问 `/courses/1/edit` 得到 403；
+- psql 里 `SELECT count(*) FROM pg_tables WHERE schemaname = 'app';` 返回 17。
+
+> 演示库播种于 2026-10-29。`showcase.sql` 里 `#3` 的月份窗口、`#6/#18` 的逾期标签都依赖 `current_date`，
+> 数值随演示日期滚动；口播时不要念死数字，以现场输出为准。
 
 录屏建议：1280×720 或 1440×900，浏览器缩放 100%，关闭无关通知；终端字号 16–18 px。
 
@@ -41,329 +53,286 @@ curl -s http://127.0.0.1:8000/healthz
 
 | 时间 | 场景 | 页面 / 文件 | 要讲清的数据库点 |
 | --- | --- | --- | --- |
-| 0:00–0:35 | 开场与选题 | 登录页 | 业务问题、模拟数据声明 |
-| 0:35–1:15 | 登录与概览 | `/login` → `/dashboard` | Session、PBKDF2、按用户过滤 |
-| 1:15–2:00 | 课程与共享 | `/courses`、`/courses/1` | 课程成员 M:N、owner/editor/viewer |
-| 2:00–2:50 | 检索、上下文与整理 | `/conversations?q=隔离级别`、会话详情 | trgm + ILIKE、可选 pgvector + RRF、游标分页、seq_no 上下文；新标签 `ON CONFLICT`、摘要复用“总结”批注 |
-| 2:50–3:50 | 导入与查重 | `/imports`、预览页、`/tokens` | 解析校验、JSONB 预览、唯一键、单事务、原生导出适配、Bearer 令牌与作用域 |
-| 3:50–4:35 | 批注与复习 | `/annotations`、`/reviews` | 1:N、UNIQUE(user_id, annotation_id)、间隔重复 |
-| 4:35–5:05 | 知识先修图 | `/tags/graph` | DAG、触发器递归防环、递归闭包、SVG 布局 |
-| 5:05–5:45 | 统计与导出 | `/stats`、CSV / Markdown | JOIN、GROUP BY、FILTER、窗口函数、CTE |
-| 5:45–6:45 | Text2SQL | `/text2sql` | 权限视图、只读角色、SQL 守卫、审计 |
-| 6:45–7:20 | 权限边界 | bob 403、admin | 应用层 + SQL 作用域 + 数据库权限 + 审计元数据 |
-| 7:20–7:50 | 设计与验收 | E-R 图、`verify.py` | 8 实体、12 联系、17 张表、42 项验收 |
-| 7:50–8:00 | 收尾 | 报告 / README | 可复现命令与限制 |
+| 0:00–0:15 | 开场 | 标题页 | 选题、数据声明、讲法（只讲数据库） |
+| 0:15–1:00 | 概念模型 | E-R 图 | 8 实体、12 联系、弱实体、三条删除策略 |
+| 1:00–2:00 | 逻辑设计 | `docs/design.md` / psql | 17 表、3NF、受控冗余、唯一约束 |
+| 2:00–3:15 | 关键 SQL | psql `#2 #3 #21` | 窗口、补零、递归闭包 |
+| 3:15–4:15 | 索引与执行计划 | psql `#16` | 54 索引、trgm、部分索引、规划器取舍 |
+| 4:15–5:25 | 访问控制 | 浏览器 403 + psql `#12` | 三层防护、`security_barrier` 视图、只读角色 |
+| 5:25–6:25 | 事务与并发 | 导入预览 + psql `#14 #15` | 预览不落库、单事务、两个锁、幂等、`FOR UPDATE` |
+| 6:25–7:15 | 触发器与审计 | psql `#19 #22` | 防环、恰好一个 owner、只记元数据 |
+| 7:15–7:40 | 结论 | 结尾页 | 可复现命令、已知限制 |
 
-如果时间紧，优先保留：**检索 → 导入查重 → 批注复习 → 知识先修图 → Text2SQL → 权限 403**；统计和 E-R 可各用 20 秒带过。
-
----
+时间不够时，优先保留：**#2 排名 → #16 执行计划 → 403/视图过滤 → 导入判重 → owner 约束**；
+`#3 补零`、`#21 闭包`、`#22 审计` 可以各用一句带过或直接跳到结论。
 
 ## 2. 逐段脚本
 
-### 0:00–0:35 开场
+### 0:00–0:15 开场
 
-**画面**：登录页（`docs/screenshots/00-login.png` 可作为封面）。
+**画面**：PPT 标题页（或登录页）。
 
 **口播**：
 
-> 这是《数据库系统概论》大作业选题 2「个人学习空间」。平时我们和 Qoder、ChatGPT、DeepSeek 的问答很分散，这个系统把导出记录解析后，按课程、来源、标签整理，支持检索、批注、间隔复习和统计；另外做了一个受只读权限视图保护的 Text2SQL 页面。
+> 这是《数据库系统概论》选题 2「个人学习空间」。今天只讲数据库：模型怎么设计、关键 SQL 怎么写、索引和权限怎么落到 PostgreSQL、事务与触发器怎么保证正确性。
 >
-> 特别说明：演示数据是我围绕课程知识点生成的模拟聊天记录，不含真实个人信息；系统里也会明确标注这一点。
-
-**操作**：不点击，停留在登录页。
+> 演示数据是围绕课程知识点生成的模拟聊天记录，不含真实个人信息；所有数字都可以用 `sql/showcase.sql` 现场复跑。
 
 ---
 
-### 0:35–1:15 登录与概览
+### 0:15–1:00 概念模型
 
-**操作**：
+**画面**：`docs/er-chen.svg`（或 `docs/screenshots/16-er-chen.png`、PPT 第 2 页）。
 
-1. 输入 `alice` / `Alice123!`，点击登录。
-2. 停在 `/dashboard`，鼠标依次划过四个统计卡片。
+**操作**：不点击，鼠标依次指「用户—课程」「来源—会话—消息」「标签—先修边」三块。
 
 **口播**：
 
-> 登录使用 Session Cookie，密码只存 PBKDF2-HMAC-SHA256 哈希，并带 CSRF 校验。
+> 8 个核心实体：用户、课程、来源、会话、消息、标签、批注、复习项；12 组联系。
 >
-> 概览上的课程、会话、消息、待复习数量都是按当前用户实时聚合的，没有在表里存冗余计数。alice 是 5 门课程的 owner，能看到 30 个会话、420 条消息。
+> 用户和课程是多对多，桥表 `course_members` 带角色 owner / editor / viewer；会话和标签也是多对多；批注和复习项按弱实体处理，依附消息存在。
+>
+> 三条删除策略是有意区分的：消息随会话 CASCADE，因为它是弱实体；课程删除时会话的 `course_id` 置空，保留学习记录；来源下还有会话时 RESTRICT，防止误删整条数据链。
+>
+> 属主和课程只在来源/会话上存一次，消息不重复存，避免传递依赖。
+
+**可指出的细节**：E-R 图右下角的图例；`docs/design.md` 的删除策略表。
+
+---
+
+### 1:00–2:00 逻辑设计
+
+**画面**：`docs/design.md` 的表清单，或 psql 执行：
+
+```sql
+SELECT count(*) FROM pg_tables WHERE schemaname = 'app';
+\d app.course_members
+```
+
+**口播**：
+
+> 逻辑设计落到 17 张表：15 张业务表，加审计表 `audit_log` 和引导状态表 `user_onboarding`。核心表用单列代理键，关联表用复合主键。
+>
+> 范式上做到 3NF：会话不冗余属主，消息不冗余课程和来源；表里不存可派生计数，统计全部实时 `count(*)`。
+>
+> 只有两处受控冗余：`import_batches.payload` 是预览期的 JSONB，确认后清理；`row_count` 是 Text2SQL 审计快照，属于有意的历史记录。
+>
+> 业务约束尽量交给数据库：会话按 `(source_id, external_id)` 唯一，消息按 `(conversation_id, seq_no)` 唯一，复习项按 `(user_id, annotation_id)` 唯一。
+>
+> “每门课恰好一个 owner”拆成两半：部分唯一索引保证最多一个；延迟约束触发器在事务结束时检查至少一个，破坏时返回 SQLSTATE 23514。
+
+**可指出的细节**：`course_members` 的复合主键与角色 CHECK；`review_items_queue_idx` 的部分索引条件。
+
+---
+
+### 2:00–3:15 关键 SQL
+
+**画面**：终端 psql，运行 `sql/showcase.sql` 后滚动到对应节（或提前把输出存到文本文件备用）。
+
+**操作**：保持只读，不现场改数据；按 `#2 → #3 → #21` 顺序指结果。
+
+**口播**：
+
+> 这三条查询代表课程里的三类难点。
+>
+> `#2` 课程排名：`RANK() OVER` 按消息数排名，`FILTER (WHERE sender = 'user')` 同时统计提问和助手消息；窗口函数不会丢明细行。当前输出 5 门课，DB/ML/NET/OS 各 84 条、DS 42 条。
+>
+> `#3` 活跃度补零：`generate_series` 生成连续 8 个月的骨架，再 `LEFT JOIN` 实际消息桶；没有消息的月份显示 0，而不是少一行。最后两个月是 0，因为种子数据只到 10 月底。
+>
+> `#21` 先修闭包：`WITH RECURSIVE` 沿 `tag_edges` 展开，`path` 数组防止成环，`DISTINCT ON` 只保留最短深度。32 条边目前得到 10 对间接先修关系，比如「B+树 ← SQL」深度 2、「锁 ← 事务」深度 3。
+>
+> 这些结果不是截图，都是刚才这条命令现场算出来的。
 
 **可指出的细节**：
 
-- 右上角显示当前用户与「退出」；
-- 下方「近 8 个月学习活跃度」用 `date_trunc` + `generate_series` 补零；
-- 「今日复习」直接链接到复习队列。
-
-**备用画面**：`docs/screenshots/01-dashboard.png`。
+- `#2` 的 `count(DISTINCT ...)`：多表 JOIN 后避免重复计数；
+- `#3` 的 `coalesce(..., 0)`；
+- `#21` 的 `NOT from_tag_id = ANY(path)` 是防环关键。
 
 ---
 
-### 1:15–2:00 课程与共享
+### 3:15–4:15 索引与执行计划
 
-**操作**：
+**画面**：终端 psql，运行 `#16`（`EXPLAIN (ANALYZE, BUFFERS)`）。
 
-1. 点击「课程」进入 `/courses`。
-2. 打开「DB · 数据库系统概论」。
-3. 指向成员区，说明 alice 是 owner，bob 是 viewer。
-4. 回到课程详情，展示该课程下的会话、消息和最近活动。
+**操作**：先看默认计划，再执行 `SET enable_seqscan = off` 看 Bitmap 计划，最后 `RESET enable_seqscan`。
 
 **口播**：
 
-> 课程和用户是多对多，`course_members` 上带角色：owner 可以改课程和共享成员，editor 可以导入、归类、写批注，viewer 只读。
+> 全库 54 个索引，按访问模式设计：消息正文用 `pg_trgm` GIN 支持中文子串 `ILIKE`；`md5(content)` 用表达式索引做跨会话查重；复习队列用 `(user_id, status, due_date)` 的部分索引，掌握后的条目不再进入扫描；唯一和部分唯一索引还承担业务约束。
 >
-> 数据库里用部分唯一索引保证每门课最多一个 owner，并用延迟约束触发器保证不能把最后一个 owner 移除。`courses.created_by` 和当前 owner 是两件事：创建者不等于永久所有者，所有权可以转移。
+> 执行计划要诚实：420 行的小表上，规划器选择顺序扫描 `messages`，扫了 419 行才留 1 行，耗时约 0.26 ms；强制关闭顺序扫描后走 trigram 位图索引，约 0.03 ms。
+>
+> 两个计划都是亚毫秒级，耗时随缓存变化。所以我不宣称“所有查询都走索引”——索引是为数据量增长保留的，小表上顺序扫描是代价模型的正常选择。
 
-**如果要展示共享关系**：在课程详情页停留即可，不必现场新增成员，避免改动演示数据。
-
-**备用画面**：`docs/screenshots/02-courses.png`、`03-course-detail.png`。
+**可指出的细节**：`Rows Removed by Filter: 419`；`Buffers: shared hit=9` 对 `Heap Blocks: exact=1`；
+`docs/sql-showcase.md` 里记录的实测值。
 
 ---
 
-### 2:00–2:50 检索与上下文
+### 4:15–5:25 访问控制（现场操作 A）
 
-**操作**：
+**画面**：浏览器 bob 会话 + 终端 psql `#12`。
 
-1. 点击「会话」，在关键词框输入 `隔离级别`，提交。
-2. 结果中打开「事务与隔离级别」。
-3. 在会话详情中展示消息序号、发送者、时间、关键词高亮，以及每条消息下的批注。
-4. 可选：返回列表搜索 `锁` 再点进结果，或在详情地址后手动加 `?q=锁`，展示高亮效果。
-5. 可选（配置了 LLM Key 时）：在会话详情的整理面板点击「生成 AI 建议」，展示摘要与标签回填；说明必须点击保存才写库，然后保存并指出新的“总结”批注。
+**操作**：见第 3 节「现场操作 A」。若时间紧，只看 403 页面和一条视图对比查询。
 
 **口播**：
 
-> 检索不是只搜标题：会话标题和消息正文都会匹配。中文没有天然分词，所以这里用 PostgreSQL 的 `pg_trgm` GIN 索引配合 `ILIKE` 做子串检索，查询参数全部参数化。
+> 权限做了三层。
 >
-> 如果部署方配置了嵌入模型，这里会自动叠加 pgvector 语义召回：词法和向量各取 100 个候选，用 RRF 融合排名，纯语义命中的会话会标“语义相近”。没有配置模型时页面标“词法检索”，功能完全不受影响。
+> 应用层判断角色，越权直接 403；SQL 查询再按 `sources.owner_id` 和 `course_members` 限制作用域；数据库层用 `security_barrier` 视图和只读角色兜底。
 >
-> 打开会话后按 `seq_no` 排序，能围绕命中的消息看上下文；消息和会话是 1:N，`(conversation_id, seq_no)` 唯一，保证同一会话内顺序不重复。
+> 同一个 `t2s.v_my_course_stats`，设置 `app.user_id = alice` 看到 5 门课，设置成 bob 只看到 2 门：数据库课程 viewer、操作系统课程 editor。过滤在视图内部完成，不依赖前端拼 WHERE。
 >
-> 整理面板里，标签是个人数据：新标签按 `(owner_id, name)` 唯一键去重；摘要复用批注表的“总结”类型，同一会话只保留最新一条，不会额外新增一张建议表。配置大模型时可以一键生成建议，但建议只填表单，保存才写库；没有 Key 时按钮隐藏，手动整理照常可用。
-
-**可补充**：
-
-- 左侧可以按课程、标签、日期过滤；
-- 首页用 `count(*) OVER()` 取总数并写入游标；翻页按 `(最近消息时间, id)` 做 keyset 比较，不再使用 OFFSET；混合检索按融合结果位置生成游标。
-- 命中片段由 SQL 侧截取，避免把整段长回答传到页面。
-
-**备用画面**：`docs/screenshots/04-conversations.png`、`05-conversation-detail.png`。
+> Text2SQL 用 `t2s_reader` 执行，它对 `app` schema 没有权限，只能读 15 个 `t2s` 视图，所以模型即使生成越权 SQL 也拿不到别人的数据。我们还做了 RLS 对比实验，用同一规则验证数据库层过滤。
+>
+> 管理员只看到聚合计数和结构变更审计，不读取会话正文；直接访问个人会话页同样 403。
 
 ---
 
-### 2:50–3:50 导入与查重
+### 5:25–6:25 事务与并发（现场操作 B）
 
-**操作**：
+**画面**：导入页预览 + 终端 psql `#14 #15`。
 
-1. 点击「导入记录」。
-2. 选择 `data/samples/duplicate_db.json`，平台保持「跟随文件 / 手动选择」，点击「上传并解析」。
-3. 在预览页指出：6 个会话、84 条消息、新增 0、可更新 0、完全重复 6。
-4. **不点击确认**，直接返回导入页。
-5. 选择 `data/samples/broken.json`，点击「上传并解析」，展示「文件未被接受」和字段级错误。
-6. 返回导入页，展示最近 5 条已导入批次。
-7. 可选（各 15 秒）：上传 `deepseek_export.md` 展示原生 Markdown 识别；打开 `/tokens` 说明令牌只显示一次、可撤销，作用域列默认只有 `read` / `ingest`；展示扩展弹窗截图，强调“点击才读取、点击才上传”。
-8. 可选（30 秒）：在终端用只读令牌运行 `LS_TOKEN=... .venv/Scripts/python.exe -m app.mcp_server`，输入 `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`，指出没有 `annotate` 时只列出三个只读工具。
+**操作**：见第 3 节「现场操作 B」；随后运行 `#15` 的 `FOR UPDATE` 演示（内含 `ROLLBACK`，不改数据）。
 
 **口播**：
 
-> 导入分两阶段。第一阶段只解析和校验，把候选会话写进 `import_batches` 的 JSONB 预览，带 30 分钟有效的 token，此时不会碰会话和消息表。
+> 导入分两阶段。第一阶段只解析和校验，把候选会话写进 `import_batches` 的 JSONB 预览，带 30 分钟有效的 token，此时不碰会话和消息表。
 >
-> 这个文件是之前已经导入过的同一批记录，系统按 `(source_id, external_id)` 和 `(conversation_id, seq_no)` 判重，所以 6 个会话全部标成重复；即使确认，也只会新增 0 条消息。
+> 这个样例是之前导入过的同一批记录，系统按 `(source_id, external_id)` 和 `(conversation_id, seq_no)` 判重，6 个会话全部标成重复；即使确认，也只新增 0 条消息。损坏文件在解析阶段就会被拒绝，进不了预览。
 >
-> 损坏文件在解析阶段就被拒绝：平台枚举不合法、缺少 external_id、消息角色未知、内容为空，都会逐条返回，不会进入预览，更不会入库。
+> 真正确认时是一个事务：先 `SELECT ... FOR UPDATE` 锁住批次行防重复确认，再对来源加 `pg_advisory_xact_lock` 串行化同一来源；会话 UPSERT，消息 `ON CONFLICT DO NOTHING`，任一步失败整体回滚。
 >
-> 真正确认时是一个事务：先锁住来源，再 upsert 来源、会话、消息和标签；任何一步失败整体回滚，并把批次标成 failed。
->
-> 除了文件上传，系统也能直接识别 ChatGPT、Qoder、DeepSeek 的原生导出格式；扩展和脚本则通过一次性显示的采集令牌调用同一个 Bearer 接口，复用同一套预览、查重与事务，不会出现两套入库逻辑。
->
-> 令牌默认只有读取与导入作用域；MCP 客户端想写批注必须在创建时显式勾选 annotate，服务端会逐端点校验，客户端也会因此看不到写工具。
+> 复习打卡同样是先锁行再写回：应用层用 FSRS 算出新间隔，数据库只保存结果。示例里逾期 8 天后按 good 评分，间隔从 1 天变成 16 天，stability 16.0835；`FOR UPDATE` 避免并发打卡互相覆盖。
 
-**注意**：这一步会产生一个 preview 批次；录像结束后按第 4 节清理。
-
-**备用画面**：`docs/screenshots/07-imports.png`、`08-import-preview.png`。
+**可指出的细节**：预览页的「新增 0 / 完全重复 6」；`#14` 的 `INSERT 0 1` 与 `INSERT 0 0`；
+`#15` 的 `BEGIN/ROLLBACK` 说明数据未被修改。
 
 ---
 
-### 3:50–4:40 批注与复习
+### 6:25–7:15 触发器与审计
+
+**画面**：终端 psql `#19`，再演示一次约束拒绝，最后看 `#22`。
 
 **操作**：
 
-1. 点击「批注」进入 `/annotations`。
-2. 展示四类批注（笔记 / 疑问 / 纠错 / 总结）和 open / resolved 状态。
-3. 找一条还没有复习项的批注（例如网络课程的一条 summary），点击「加入复习」。
-4. 进入「复习队列」，指出「今日到期 / 逾期」标记。
-5. 对一条到期项点击「复习一次」，展示间隔从 1 天变为 2 天、复习次数加 1。
-6. 可选：点击「标记掌握」，展示它从待复习列表消失。
+```sql
+-- 1) 每门课当前恰好一个 owner
+SELECT c.code, count(*) AS owner_count
+  FROM app.courses c
+  JOIN app.course_members cm ON cm.course_id = c.id AND cm.role = 'owner'
+ GROUP BY c.code ORDER BY c.code;
 
-**口播**：
-
-> 批注挂在具体消息上，一条消息可以有多条批注，一个用户也可以批注别人共享课程里的消息。
->
-> 复习项和批注是独立的：同一条批注，alice 和 bob 可以各自加入自己的复习队列，所以唯一键是 `(user_id, annotation_id)`，而不是只约束 annotation_id。
->
-> 复习一次会在事务里更新到期日、间隔天数和复习次数；间隔按 1、2、4、8 天递增。复习项到期的查询用了 `(user_id, status, due_date)` 的部分索引，掌握后的条目不再进入热点扫描。
-
-**备用画面**：`docs/screenshots/09-annotations.png`、`10-reviews.png`。
-
----
-
-### 4:35–5:05 知识先修图
-
-**操作**：
-
-1. 点击「标签」，再点右上角「知识先修图」。
-2. 展示六张按课程分组的卡片：数据库、操作系统、计算机网络、机器学习、数据结构、跨课程。
-3. 选中「最短路径」，展示右侧详情：直接先修「图」、递归先修链深度 2、解锁的后续标签、关联会话。
-4. 在表单里尝试添加「最短路径 → 图」，展示被拒绝的提示；随后添加一条合法边并删除，说明增删即时生效。
-5. 可选：在 Text2SQL 提问「我的标签有哪些先修关系？」，指出结果来自递归视图。
-
-**口播**：
-
-> 标签不仅能筛选，还能表达先学什么、后学什么。`tag_edges` 是一张有向无环图，一条边表示先修关系。
->
-> 环不是靠页面挡的：数据库上的触发器会用递归 CTE 检查从后继出发能否回到先修，如果能就拒绝写入；跨用户的标签也会被拒绝。这样脚本、接口和页面共享同一个正确性边界。
->
-> 页面显示的先修链是实时递归出来的，不落闭包表，避免边变了闭包没更新；每个标签只保留最短深度。布局在服务层按最长路径分层，输出 SVG，不引入前端图库。
-
-**备用画面**：`docs/screenshots/27-tag-graph.png`、`27b-tag-graph-detail.png`。
-
----
-
-### 5:05–5:45 统计与导出
-
-**操作**：
-
-1. 点击「统计」。
-2. 从上到下快速指：课程排名、近 8 个月活跃度、标签 Top 12、批注解决率、复习状态。
-3. 指向「重复消息检测」，说明这是刻意保留的模板句。
-4. 点击右上角「导出统计 CSV」，展示下载。
-5. 回到某个会话详情，点击「导出 Markdown」，展示带声明的导出文件。
-
-**口播**：
-
-> 统计页基本覆盖了课程里的聚合知识点：多表 JOIN、GROUP BY、`COUNT(*) FILTER` 算解决率、`RANK() OVER` 做课程排名、`generate_series` 补齐没有消息的月份，以及 `GROUP BY md5(content) HAVING count(*) > 1` 做重复内容检测。
->
-> 这里所有计数都是实时查询，不落冗余计数列；Text2SQL 日志里的 `row_count` 是执行结果快照，属于有意的审计字段。
->
-> 导出 CSV 和 Markdown 都只导出当前用户有权访问的数据，导出文件里也带模拟数据声明。
-
-**备用画面**：`docs/screenshots/11-stats.png`。
-
----
-
-### 5:45–6:45 Text2SQL
-
-**操作**：
-
-1. 点击「Text2SQL」。
-2. 指出页面顶部的「本地规则模式（未配置大模型 Key）」。
-3. 点击示例 chip「每个课程有多少会话和消息？」，提交。
-4. 展示：生成的 SQL、解释、结果表格、耗时 / 行数。
-5. 再提交「哪些复习项今天到期？」。
-6. 刷新页面，向下滚动到历史记录，指出刚才两次查询已写入审计。
-7. 口播安全设计，不需要现场输入恶意 SQL；可切到 `tests/integration/test_text2sql.py` 或报告第 8 节展示拒绝用例。
-
-**口播**：
-
-> 没有配置大模型 Key 时，走本地规则映射，保证离线也能演示；配置 Key 后走 OpenAI 兼容接口，失败会自动回退。
->
-> 生成 SQL 后不是直接执行：先要求恰好一条 SELECT/WITH，拒绝 DDL/DML、系统表、`pg_` 函数和注释；再包一层 200 行上限，交给 `t2s_reader` 在只读事务里执行，语句超时 3 秒。
->
-> 最关键的是权限兜底：`t2s_reader` 对 `app` schema 没有任何权限，只能读 `t2s` 下 15 个 `security_barrier` 视图；视图通过 `current_setting('app.user_id')` 过滤。所以即使模型生成了越权 SQL，数据库层也拿不到别人的数据，更写不进去。
->
-> 每次成功、拒绝或异常都会写 `text2sql_log`，包括问题、SQL、状态、耗时和行数。
-
-**备用画面**：`docs/screenshots/12-text2sql.png`、`13-text2sql-result.png`、`13b-text2sql-history.png`。
-
----
-
-### 6:45–7:20 权限边界
-
-**操作**：
-
-1. 退出 alice，登录 `bob` / `Bob123!`。
-2. 打开「数据库系统概论」课程详情，指出 bob 是 viewer，没有编辑入口。
-3. 地址栏直接访问 `/courses/1/edit`，展示 403 页面（`docs/screenshots/15-permission-denied.png`）。
-4. 可选：退出 bob，登录 `admin` / `Admin123!`，进入 `/admin`，指出只有用户状态、聚合计数与审计时间线，没有会话正文。
-5. 可选：向下滚动到「审计历史」，按对象筛选“课程”，指出版本记录只含操作者、记录主键和变更列名（如 `description`），没有列值；说明消息/批注/复习表不在审计范围。
-6. 可选：点击「数据库观测」，展示库大小、缓存命中率、连接/事务、I/O、表访问与索引使用；切换执行计划到“到期复习”，指出只使用白名单查询与 `EXPLAIN (FORMAT JSON)`，页面没有任意 SQL 输入框，慢查询只显示归一化语句和指标。
-6. 可选：admin 直接访问 `/conversations`，同样 403。
-
-**口播**：
-
-> 权限做了三层：页面和服务层先判角色；SQL 查询再按 `course_members` 和 `sources.owner_id` 限制作用域；数据库层还有外键、CHECK、触发器和只读角色兜底。viewer 直接改 URL 也会被服务层拦截。
->
-> 管理员只做账号启停、系统聚合统计、结构变更审计和数据库观测，不读取他人消息正文、批注或复习内容；管理员访问个人会话页会得到 403。停用账号也不会删除历史数据。
->
-> 审计只覆盖课程、课程成员和账号三张表：谁在什么时候改了哪条记录、改了哪些列；不记录列值，密码列被显式排除，学习内容表根本不建触发器。审计行由 `SECURITY DEFINER` 触发器写入，应用角色只能读；清理函数最少保留 90 天。
-
-**备用画面**：`docs/screenshots/14-admin.png`、`14b-admin-audit.png`、`28-observability.png`、`15-permission-denied.png`。
-
----
-
-### 7:20–7:50 设计与验收
-
-**操作**：
-
-1. 打开 `docs/er-chen.svg` 或 `docs/screenshots/16-er-chen.png`，指出 8 个核心实体和 12 组联系。
-2. 打开 `docs/design.md`，快速展示 17 张表、范式分析、删除策略、审计边界与观测页设计。
-3. 在终端执行验收脚本：
-
-```bash
-.venv/Scripts/python.exe scripts/verify.py --json data/verification/report.json
+-- 2) 尝试删掉唯一的 owner，提交时报 23514（事务整体回滚）
+BEGIN;
+DELETE FROM app.course_members WHERE course_id = 1 AND role = 'owner';
+COMMIT;
 ```
 
-4. 指出输出 `42/42 PASS` 与报告路径。
-5. 可选：讲解 Text2SQL 金标准评测，指出 30 题中 mock 准确率 56.7%，但合法率与越权拦截率均为 100%。
-
 **口播**：
 
-> 概念设计有 8 个核心实体：用户、课程、来源、会话、消息、标签、批注、复习项；另外还有课程成员、导入批次、Text2SQL 日志、复习事件、采集令牌和审计日志这些操作型实体。批注和复习项按弱实体处理。
+> 约束不只写在应用里。
 >
-> 逻辑设计上，标签、课程成员、会话标签都拆成关联表，满足 1NF；核心表用单列代理键，关联表的非键属性依赖整个复合键；会话不冗余 owner，消息不冗余课程和来源，避免传递依赖。`import_batches.payload` 是预览期的受控冗余，导入完成后清理。标签之间的先修关系单独建边表，闭包实时递归，不存冗余路径。审计表只记录结构变更的元数据，不复制业务内容。
+> 先修边上的触发器在写入前从后继递归展开，能回到先修就 RAISE，所以脚本、接口和页面共享同一个防环边界；32 条边构成 DAG，闭包实时算，不落冗余表。
 >
-> 验收脚本覆盖表与约束、演示数据、登录权限、导入幂等、平台适配、检索、批注复习、整理建议、知识先修图、统计、采集令牌与作用域、Text2SQL 守卫/预检/金标准评测/拒绝与跨用户隔离、导出、混合检索、RLS 视图对比、审计元数据与角色边界、数据库观测指标与事务回滚，共 42 项。
+> “恰好一个 owner”的第二半由延迟约束触发器完成：删掉唯一 owner 后事务可以继续，但 COMMIT 时检查失败，返回 23514，整个事务回滚。
+>
+> 审计只记元数据：课程、课程成员、账号三张表的 AFTER 触发器记录表名、动作、主键和变更列名；列值不保存，`password_hash` 显式排除。应用角色对 `audit_log` 可读不可写。
+>
+> 所有触发器合计 10 个：课程创建与成员变更两道 owner 约束、标签/批注/复习项的访问校验、`updated_at`、先修边防环，以及三张结构表的审计；
+> 管理员还能看 `pg_stat_*` 和白名单 `EXPLAIN (FORMAT JSON)`，但没有任意 SQL 输入框。
 
-**备用画面**：`docs/screenshots/16-er-chen.png`、`docs/verification/report.json`（实际路径 `data/verification/report.json`）。
+**可指出的细节**：`#19` 的 `owner_count = 1`；错误码 `23514`；`#22` 的 `changed_columns` 只有列名；
+`has_table_privilege` 返回 `can_read = t`、`can_insert = f`。
 
 ---
 
-### 7:50–8:00 收尾
+### 7:15–7:40 结论
 
-**画面**：README 的「快速开始」或报告结论页。
+**画面**：PPT 结尾页或 README「快速开始」。
 
 **口播**：
 
-> 整个项目可以用 README 里的五条命令从零复现：启动数据库、初始化 schema、写入模拟数据、跑测试、启动网站。报告、E-R 图、需求拆解、关键 SQL、测试与 AI 协作记录都在 `docs/` 下。
+> 项目规模：17 张表、15 个 `security_barrier` 视图、10 个触发器、54 个索引、23 条 showcase SQL、42 项验收检查。
 >
-> 已知限制是单机课程项目，没有做高并发；中文检索在 420 条消息的规模下规划器通常选顺序扫描，索引能力通过关闭顺序扫描的执行计划对比来验证。谢谢。
+> 从零复现只要五条命令：起数据库、初始化 schema、写入模拟数据、跑测试、启动网站。关键 SQL 和实测输出都在 `docs/sql-showcase.md`。
+>
+> 已知限制：单机课程项目，没做分布式与高并发；420 行数据下多数查询走顺序扫描，索引能力用强制计划对比来验证；数据为模拟；AI 能力可选，未配置时走规则模式。谢谢。
 
 ---
 
-## 3. 现场故障与备用方案
+## 3. 两个现场操作
+
+### A. 越权与视图过滤（4:15–5:25）
+
+**步骤**：
+
+1. 登录 `bob / Bob123!`，打开「数据库系统概论」课程详情，指出 bob 是 viewer，没有编辑入口。
+2. 地址栏直接访问 `/courses/1/edit`，展示 403 页面（`docs/screenshots/15-permission-denied.png`）。
+3. 终端执行 `#12` 的前半段（alice）和后半段（bob），对比行数：
+
+```bash
+docker compose exec -T db psql -U postgres -d learning_space -f /dev/stdin <<'SQL'
+BEGIN;
+SELECT set_config('app.user_id',
+                  (SELECT id::text FROM app.users WHERE username = 'alice'), true);
+SELECT count(*) AS alice_courses FROM t2s.v_my_course_stats;
+COMMIT;
+
+BEGIN;
+SELECT set_config('app.user_id',
+                  (SELECT id::text FROM app.users WHERE username = 'bob'), true);
+SELECT count(*) AS bob_courses FROM t2s.v_my_course_stats;
+COMMIT;
+SQL
+```
+
+预期：alice 5 门，bob 2 门（DB viewer、OS editor）。
+
+**备用方案**：若浏览器不便切换账号，只跑 psql 对比，口播说明 bob 的 403 截图在 `docs/screenshots/15-permission-denied.png`。
+
+### B. 重复导入预览（5:25–6:25）
+
+**步骤**：
+
+1. 用 alice 登录，点击「导入记录」。
+2. 选择 `data/samples/duplicate_db.json`，平台保持「跟随文件 / 手动选择」，点击「上传并解析」。
+3. 在预览页指出：6 个会话、84 条消息、新增 0、完全重复 6。
+4. **不点击确认**，直接返回导入页；展示最近 5 条已导入批次。
+5. 可选：上传 `data/samples/broken.json`，展示字段级错误与「文件未被接受」。
+
+**备用方案**：若文件选择器不方便，直接展示 `docs/screenshots/08-import-preview.png`，并在 psql 跑 `#13` 看历史批次的 `messages_skipped`。
+
+> 这一操作会留下一个 preview 批次，录像结束后按第 5 节清理。
+
+## 4. 现场故障与备用方案
 
 | 现象 | 处理 |
 | --- | --- |
 | 网站打不开 | 检查 uvicorn 是否在 8000 端口；`curl http://127.0.0.1:8000/healthz` |
 | 数据库未启动 | `docker compose up -d db`，等待 healthy；必要时 `docker compose logs db` |
 | 登录失败 | 确认使用 `Alice123!` 等演示密码；若演示库被改乱，重置后再 seed |
-| 文件选择器找不到样例 | 直接把 `data/samples/duplicate_db.json` 拖进文件选择器；或提前复制到桌面 |
-| 重复导入不是全重复 | 说明演示库已被重置或样例被改过；重新 seed 后再演示 |
-| Text2SQL 没有真实模型 | 页面会明确显示本地规则模式；按示例 chip 提问即可 |
-| 大模型调用超时 | 自动回退本地规则，页面仍能出结果；口播说明回退机制 |
-| 终端验收脚本失败 | 先跑 `pytest -q` 定位；演示时可直接展示 `data/verification/report.json` 的已有结果 |
-| 现场网络不稳定 | 全站不依赖外网；只要本地 PostgreSQL 和 uvicorn 正常即可 |
-| 时间不够 | 跳过 admin、Markdown 导出和 E-R 细讲，保留导入查重、复习、Text2SQL、403 |
+| psql 找不到命令 | 一律用 `docker compose exec -T db psql ...`，不依赖宿主机安装 |
+| showcase 输出太长 | 只用 `#2 #3 #16 #21` 四段；其余展示 `docs/sql-showcase.md` |
+| 月份/逾期数字与文档不同 | `#3 #6 #18` 依赖 `current_date`；以现场输出为准，口播说“窗口随日期滚动” |
+| 重复导入不是全重复 | 演示库被重置或样例被改过；重新 seed 后再演示 |
+| owner 约束演示报错后会话中断 | 属正常：事务整体回滚；新开一个 psql 会话继续 |
+| Text2SQL 没有真实模型 | 页面明确显示本地规则模式；按示例 chip 提问即可 |
+| 终端验收脚本失败 | 先跑 `pytest -q` 定位；演示时可直接展示已有 `data/verification/report.json` |
+| 时间不够 | 跳过 `#3`、`#21`、`#22` 细讲，保留 `#2`、`#16`、403、导入判重、owner 约束 |
 
-## 4. 录像后的清理
+## 5. 录像后的清理
 
-截图或演示可能留下预览批次、采集令牌和 Text2SQL 审计记录，不影响业务数据，但会让「最近导入批次」多出一条 preview。需要恢复干净演示库时执行：
+现场操作 B 会留下 preview 批次，可能还有 Text2SQL 审计。清理命令：
 
 ```bash
 docker compose exec -T db psql -U postgres -d learning_space \
   -c "DELETE FROM app.import_batches WHERE status = 'preview';" \
-  -c "DELETE FROM app.api_tokens;" \
   -c "DELETE FROM app.text2sql_log;"
 ```
 
-如果演示中点击了「确认导入」「加入复习」「复习一次」、新增先修边或停用了账号，建议直接重置：
+如果演示中点击了「确认导入」「加入复习」「复习一次」或改了先修边，建议直接重置：
 
 ```bash
 .venv/Scripts/python.exe scripts/init_db.py --reset
@@ -373,7 +342,7 @@ docker compose exec -T db psql -U postgres -d learning_space \
 
 > `init_db.py --reset` 会删除并重建 `learning_space` 与 `learning_space_test`，只用于本地演示环境。
 
-## 5. 录屏实现（可选）
+## 6. 录屏实现（可选）
 
 已有 Playwright 巡览脚本，可自动录制一段无讲解的页面漫游：
 
@@ -383,21 +352,20 @@ npx playwright install chromium
 node scripts/screenshots.mjs --record
 ```
 
-产物：`docs/demo.webm`。自动巡览只覆盖页面切换，正式提交建议按本脚本配音；两者可以叠加：先用自动录屏做底片，再按时间轴补口播。
+产物：`docs/demo.webm`。自动巡览只覆盖页面切换，正式提交建议按本脚本配音；
+也可以先用自动录屏做底片，再按时间轴补口播。
 
-## 6. 页面与截图对照
+## 7. 页面与截图对照
 
-| 脚本段落 | 页面 | 截图 |
+| 脚本段落 | 页面 / 文件 | 截图 |
 | --- | --- | --- |
 | 开场 / 登录 | `/login` | `00-login.png` |
-| 概览 | `/dashboard` | `01-dashboard.png` |
-| 课程 | `/courses`、`/courses/1` | `02-courses.png`、`03-course-detail.png` |
-| 检索 | `/conversations`、`/conversations/{id}` | `04-conversations.png`、`05-conversation-detail.png` |
-| 标签 | `/tags` | `06-tags.png` |
-| 导入 | `/imports`、预览页 | `07-imports.png`、`08-import-preview.png` |
-| 批注 / 复习 | `/annotations`、`/reviews` | `09-annotations.png`、`10-reviews.png` |
-| 知识先修图 | `/tags/graph` | `27-tag-graph.png`、`27b-tag-graph-detail.png` |
-| 统计 | `/stats` | `11-stats.png` |
-| Text2SQL | `/text2sql` | `12-text2sql.png`、`13-text2sql-result.png`、`13b-text2sql-history.png` |
-| 管理 / 越权 | `/admin`、`/admin/observability`、403 页 | `14-admin.png`、`14b-admin-audit.png`、`28-observability.png`、`15-permission-denied.png` |
-| 概念设计 | E-R 图 | `16-er-chen.png` |
+| 概念模型 | E-R 图 | `16-er-chen.png` |
+| 逻辑设计 | `docs/design.md`、psql | — |
+| 关键 SQL | psql `#2 #3 #21` | `docs/sql-showcase.md` |
+| 索引与计划 | psql `#16` | `docs/sql-showcase.md` |
+| 越权 | `/courses/1/edit` 403 | `15-permission-denied.png` |
+| 视图过滤 | psql `#12` | `docs/sql-showcase.md` |
+| 导入判重 | `/imports`、预览页 | `07-imports.png`、`08-import-preview.png` |
+| 复习写回 | psql `#15` | `docs/sql-showcase.md` |
+| owner 约束 / 审计 | psql `#19 #22` | `docs/sql-showcase.md` |

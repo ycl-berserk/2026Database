@@ -266,20 +266,28 @@ RETURNING id;
 ROLLBACK;
 
 -- ---------------------------------------------------------------------------
--- 15. 复习间隔：单条 UPDATE 完成读改写，间隔 1 → 2 天
+-- 15. 复习：先用 FOR UPDATE 加锁，再写回应用层算出的新间隔
+--     应用默认用 FSRS 调度（REVIEW_ALGORITHM=fsrs），数据库只保存结果
 -- ---------------------------------------------------------------------------
 BEGIN;
-SELECT id, interval_days, due_date, review_count, status
-  FROM app.review_items WHERE id = 17;
+SELECT id, interval_days, due_date, review_count, status,
+       fsrs_stability, fsrs_difficulty, fsrs_lapses
+  FROM app.review_items WHERE id = 17 FOR UPDATE;
+-- 应用层按评分 good 调用 fsrs.schedule()，按距上次复习 8 天计算：
+--   interval = 16, stability = 16.0835, difficulty = 4.9960, lapses = 0
 UPDATE app.review_items
    SET review_count = review_count + 1,
-       interval_days = LEAST(interval_days * 2, 60),
-       due_date = current_date + LEAST(interval_days * 2, 60),
+       interval_days = 16,
+       due_date = current_date + 16,
        status = CASE WHEN status = 'pending' THEN 'reviewing' ELSE status END,
-       last_reviewed_at = now()
+       last_reviewed_at = now(),
+       fsrs_stability = 16.0835,
+       fsrs_difficulty = 4.9960,
+       fsrs_lapses = 0
  WHERE id = 17
    AND user_id = (SELECT id FROM app.users WHERE username = 'alice')
- RETURNING interval_days, due_date, review_count, status;
+ RETURNING interval_days, due_date, review_count, status,
+           fsrs_stability, fsrs_difficulty, fsrs_lapses;
 ROLLBACK;
 
 -- ---------------------------------------------------------------------------

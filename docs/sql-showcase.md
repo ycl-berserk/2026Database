@@ -1,6 +1,6 @@
 # 关键 SQL 与执行结果
 
-完整可执行脚本见 [../sql/showcase.sql](../sql/showcase.sql)。以下结果来自演示库 `learning_space`（3 用户、5 课程、30 会话、420 消息、59 标签、66 批注、39 复习项）。带 `BEGIN/ROLLBACK` 的示例不会改变演示库。
+完整可执行脚本见 [../sql/showcase.sql](../sql/showcase.sql)。以下结果来自演示库 `learning_space`（3 用户、5 课程、30 会话、420 消息、59 标签、66 批注、39 复习项），采集于 2026-11-05。带 `BEGIN/ROLLBACK` 的示例不会改变演示库。涉及 `current_date` 的“逾期 / 今日到期”和月度窗口随运行日期变化，日期列则是播种数据的固定值。
 
 ## 1. 数据范围：本人来源或共享课程
 
@@ -57,10 +57,10 @@ SELECT c.code, c.name, cm.role,
 | code | name | role | conversations | messages | user_messages | assistant_messages | annotations | msg_rank |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | DB | 数据库系统概论 | owner | 6 | 84 | 42 | 42 | 12 | 1 |
-| DS | 数据结构 | owner | 6 | 84 | 42 | 42 | 12 | 2 |
-| ML | 机器学习 | owner | 6 | 84 | 42 | 42 | 12 | 3 |
-| NET | 计算机网络 | owner | 6 | 84 | 42 | 42 | 12 | 4 |
-| OS | 操作系统 | owner | 6 | 84 | 42 | 42 | 18 | 5 |
+| ML | 机器学习 | owner | 6 | 84 | 42 | 42 | 12 | 2 |
+| NET | 计算机网络 | owner | 6 | 84 | 42 | 42 | 12 | 3 |
+| OS | 操作系统 | owner | 6 | 84 | 42 | 42 | 18 | 4 |
+| DS | 数据结构 | owner | 3 | 42 | 21 | 21 | 6 | 5 |
 
 覆盖知识点：`LEFT JOIN` 保留零数据课程、`COUNT(DISTINCT)` 防止多表连接放大计数、`FILTER` 条件聚合、窗口函数 `RANK()`。
 
@@ -88,7 +88,6 @@ SELECT to_char(mo.month_start, 'YYYY-MM') AS month,
 
 | month | messages |
 | --- | ---: |
-| 2026-03 | 42 |
 | 2026-04 | 42 |
 | 2026-05 | 56 |
 | 2026-06 | 70 |
@@ -96,8 +95,9 @@ SELECT to_char(mo.month_start, 'YYYY-MM') AS month,
 | 2026-08 | 56 |
 | 2026-09 | 42 |
 | 2026-10 | 0 |
+| 2026-11 | 0 |
 
-`generate_series` 生成月份骨架，`LEFT JOIN` 后 `coalesce` 补零；2026-10 没有模拟消息，因此显示 0，而不是缺行。
+`generate_series` 生成月份骨架，`LEFT JOIN` 后 `coalesce` 补零；窗口是“当前月往前 7 个月”，随运行日期滚动。2026-10 与 2026-11 没有模拟消息，因此显示 0，而不是缺行。
 
 ## 4. 标签 TopN
 
@@ -122,10 +122,10 @@ SELECT t.name, t.kind,
 | --- | --- | ---: | ---: |
 | TCP | topic | 2 | 28 |
 | AVL | topic | 1 | 14 |
-| B+树 | topic | 1 | 14 |
 | BFS | topic | 1 | 14 |
-| DNS | topic | 1 | 14 |
+| B+树 | topic | 1 | 14 |
 | Dijkstra | topic | 1 | 14 |
+| DNS | topic | 1 | 14 |
 | FCFS | topic | 1 | 14 |
 | HTTPS | topic | 1 | 14 |
 
@@ -162,11 +162,11 @@ SELECT status, count(*) AS total,
 
 | status | total | overdue | due_today | earliest |
 | --- | ---: | ---: | ---: | --- |
-| mastered | 7 | 7 | 0 | 2026-10-25 |
-| pending | 19 | 5 | 5 | 2026-10-26 |
-| reviewing | 9 | 2 | 2 | 2026-10-26 |
+| mastered | 7 | 7 | 0 | 2026-10-27 |
+| pending | 19 | 19 | 0 | 2026-10-28 |
+| reviewing | 9 | 9 | 0 | 2026-10-28 |
 
-`mastered` 项的过期日期只用于历史展示，不进入“待复习”筛选；页面的“今日复习”只取未掌握且 `due_date <= current_date` 的项。
+`mastered` 项的过期日期只用于历史展示，不进入“待复习”筛选；页面的“今日复习”只取未掌握且 `due_date <= current_date` 的项。演示库于 2026-10-29 播种，此后所有未掌握项都计为逾期，因此示例中 `due_today` 为 0。
 
 ## 7. 每个会话的最新消息：DISTINCT ON
 
@@ -299,10 +299,10 @@ alice 结果：
 | code | name | conversation_count | message_count | annotation_count |
 | --- | --- | ---: | ---: | ---: |
 | DB | 数据库系统概论 | 6 | 84 | 12 |
-| DS | 数据结构 | 6 | 84 | 12 |
 | ML | 机器学习 | 6 | 84 | 12 |
 | NET | 计算机网络 | 6 | 84 | 12 |
 | OS | 操作系统 | 6 | 84 | 18 |
+| DS | 数据结构 | 3 | 42 | 6 |
 
 bob 结果：
 
@@ -374,36 +374,37 @@ INSERT 0 0
 
 事务结束后 `ROLLBACK`，演示库标题保持不变。实际导入服务还会计数 `messages_skipped` 与内容冲突 `conflicts`。
 
-## 15. 复习间隔：FSRS 稳定性与四档评分
+## 15. 复习：锁住一行，再写回 FSRS 算出的新间隔
 
 ```sql
 BEGIN;
 SELECT id, interval_days, due_date, review_count, status,
        fsrs_stability, fsrs_difficulty, fsrs_lapses
-  FROM app.review_items WHERE id = 17 FOR UPDATE;  -- 2 天，已复习 1 次
--- 应用层按评分 good 调用 fsrs.schedule()，得到：
---   interval = 7, stability = 6.7513, difficulty = 2.1170, lapses = 0
+  FROM app.review_items WHERE id = 17 FOR UPDATE;  -- 1 天，已复习 1 次
+-- 应用层按评分 good 调用 fsrs.schedule(state=(1.0, 5.0, 0), elapsed_days=8)：
+--   interval = 16, stability = 16.0835, difficulty = 4.9960, lapses = 0
 UPDATE app.review_items
    SET review_count = review_count + 1,
-       interval_days = :interval,
-       due_date = current_date + :interval,
+       interval_days = 16,
+       due_date = current_date + 16,
        status = CASE WHEN status = 'pending' THEN 'reviewing' ELSE status END,
        last_reviewed_at = now(),
-       fsrs_stability = :stability,
-       fsrs_difficulty = :difficulty,
-       fsrs_lapses = :lapses
- WHERE id = 17 AND user_id = :uid
+       fsrs_stability = 16.0835,
+       fsrs_difficulty = 4.9960,
+       fsrs_lapses = 0
+ WHERE id = 17
+   AND user_id = (SELECT id FROM app.users WHERE username = 'alice')
  RETURNING interval_days, due_date, review_count, status,
            fsrs_stability, fsrs_difficulty, fsrs_lapses;
 ROLLBACK;
 ```
 
-| 阶段 | interval_days | due_date | review_count | status | stability |
-| --- | ---: | --- | ---: | --- | ---: |
-| 更新前 | 2 | 2026-10-30 | 1 | reviewing | 2.3065 |
-| 更新后 | 7 | 2026-11-04 | 2 | reviewing | 6.7513 |
+| 阶段 | interval_days | due_date | review_count | status | stability | difficulty |
+| --- | ---: | --- | ---: | --- | ---: | ---: |
+| 更新前 | 1 | 2026-10-28 | 1 | pending | 1.0000 | 5.0000 |
+| 更新后 | 16 | 2026-11-21 | 2 | reviewing | 16.0835 | 4.9960 |
 
-调度在应用层完成，数据库只保存结果；同一复习项先用 `FOR UPDATE` 加锁，避免并发打卡时稳定性被覆盖。
+调度在应用层完成，数据库只保存结果；同一复习项先用 `FOR UPDATE` 加锁，避免并发打卡时稳定性被覆盖。`elapsed_days` 取上次复习到今天的天数（示例为 8 天），因此 `due_date` 随运行日期变化；应用默认 `REVIEW_ALGORITHM=fsrs`，可切换为简单翻倍模式。
 
 ## 16. 中文检索执行计划
 
@@ -414,7 +415,7 @@ Seq Scan on messages (actual rows=1 loops=1)
   Filter: (content ~~* '%MVCC%'::text)
   Rows Removed by Filter: 419
   Buffers: shared hit=9
-  Execution Time: 0.236 ms
+  Execution Time: 0.257 ms
 ```
 
 强制关闭顺序扫描后，`pg_trgm` GIN 索引生效：
@@ -422,12 +423,13 @@ Seq Scan on messages (actual rows=1 loops=1)
 ```text
 Bitmap Heap Scan on messages (actual rows=1 loops=1)
   Recheck Cond: (content ~~* '%MVCC%'::text)
+  Heap Blocks: exact=1
   ->  Bitmap Index Scan on messages_content_trgm (actual rows=1 loops=1)
         Index Cond: (content ~~* '%MVCC%'::text)
-  Execution Time: 0.160 ms
+  Execution Time: 0.026 ms
 ```
 
-这是数据规模导致的正常现象：小表顺序扫描成本更低；索引为数据量增长保留。报告中应如实说明，而不是声称所有查询都走索引。
+这是数据规模与代价模型共同作用的结果：420 行的估算下规划器认为顺序扫描代价更低，强制关闭 `enable_seqscan` 后才走 GIN 索引；两者都在亚毫秒级，索引主要为数据量增长保留。报告中应如实说明，而不是声称所有查询都走索引。耗时随缓存与运行环境变化，以现场执行结果为准。
 
 ## 17. 提问人与助手消息比例
 
@@ -441,7 +443,7 @@ SELECT co.name AS course, m.sender, count(*) AS messages
  GROUP BY co.name, m.sender ORDER BY co.name, m.sender;
 ```
 
-五门课程均为 42 条 user + 42 条 assistant；模拟数据按“提问—回答”成对生成，比例 1:1。
+四门有 6 个会话的课程均为 42 条 user + 42 条 assistant；数据结构只有 3 个会话（21 + 21），另有 3 个会话留在待整理区（`course_id IS NULL`，21 + 21）。模拟数据按“提问—回答”成对生成，因此比例恒为 1:1。
 
 ## 18. 到期复习清单
 
@@ -462,14 +464,14 @@ SELECT ri.id, co.code AS course, a.kind, left(a.content, 24) AS annotation,
 
 | id | course | kind | due_date | status | urgency |
 | ---: | --- | --- | --- | --- | --- |
-| 2 | DB | question | 2026-10-26 | pending | 逾期 |
-| 7 | DB | correction | 2026-10-26 | reviewing | 逾期 |
-| 12 | DB | summary | 2026-10-26 | pending | 逾期 |
-| 17 | OS | note | 2026-10-26 | pending | 逾期 |
-| 22 | OS | question | 2026-10-26 | reviewing | 逾期 |
-| 27 | NET | correction | 2026-10-26 | pending | 逾期 |
-| 32 | NET | summary | 2026-10-26 | pending | 逾期 |
-| 3 | DB | correction | 2026-10-27 | pending | 今日到期 |
+| 2 | DB | question | 2026-10-28 | pending | 逾期 |
+| 7 | DB | correction | 2026-10-28 | reviewing | 逾期 |
+| 12 | DB | summary | 2026-10-28 | pending | 逾期 |
+| 17 | OS | note | 2026-10-28 | pending | 逾期 |
+| 22 | OS | question | 2026-10-28 | reviewing | 逾期 |
+| 27 | NET | correction | 2026-10-28 | pending | 逾期 |
+| 32 | NET | summary | 2026-10-28 | pending | 逾期 |
+| 3 | DB | correction | 2026-10-29 | pending | 逾期 |
 
 ## 19. 每门课恰好一个 owner
 
@@ -528,10 +530,18 @@ SELECT rt.name AS tag, pt.name AS prerequisite, b.depth
 
 | tag | prerequisite | depth |
 | --- | --- | ---: |
+| AVL | 二叉树 | 2 |
 | B+树 | SQL | 2 |
 | Dijkstra | 图 | 2 |
+| LRU | 分页 | 2 |
+| LRU | 虚拟内存 | 3 |
+| 并发 | 事务 | 2 |
+| 查询执行 | SQL | 2 |
+| 锁 | 隔离级别 | 2 |
+| 锁 | 事务 | 3 |
+| 页面置换 | 虚拟内存 | 2 |
 
-直接先修的深度是 1（如 `索引 → SQL`、`最短路径 → 图`），这里过滤 `depth >= 2` 以展示递归展开的间接依赖。`path` 数组既用于防止环路重复展开，也保证闭包不会无限递归；`DISTINCT ON` 让同一对“标签—先修”只保留最短路径。生产查询 `t2s.v_my_tag_prerequisites` 就是这一结构，并额外用 `me.uid` 限定当前用户。
+直接先修的深度是 1（如 `SQL → 索引`、`图 → 最短路径`，箭头表示“先学 → 后学”），这里过滤 `depth >= 2` 以展示递归展开的间接依赖。`path` 数组既用于防止环路重复展开，也保证闭包不会无限递归；`DISTINCT ON` 让同一对“标签—先修”只保留最短路径。生产查询 `t2s.v_my_tag_prerequisites` 就是这一结构，并额外用 `me.uid` 限定当前用户。
 
 ## 22. 审计元数据与只读边界
 
@@ -558,9 +568,9 @@ SELECT occurred_at::date AS day, coalesce(u.username, 'system') AS actor,
 
 | day | actor | table_name | action | row_pk | changed_columns |
 | --- | --- | --- | --- | --- | --- |
-| 2026-10-28 | system | users | insert | `{"id": 1}` | created_at, display_name, id, is_active, system_role, username |
-| 2026-10-28 | alice | courses | insert | `{"id": 1}` | code, created_at, created_by, description, id, instructor, name, semester |
-| 2026-10-28 | alice | course_members | insert | `{"user_id": 1, "course_id": 1}` | course_id, joined_at, role, user_id |
+| 2026-10-29 | system | users | insert | `{"id": 1}` | created_at, display_name, id, is_active, system_role, username |
+| 2026-10-29 | alice | courses | insert | `{"id": 1}` | code, created_at, created_by, description, id, instructor, name, semester |
+| 2026-10-29 | alice | course_members | insert | `{"user_id": 1, "course_id": 1}` | course_id, joined_at, role, user_id |
 
 应用角色只能读、不能改；清理函数最少保留 90 天：
 
@@ -588,7 +598,9 @@ SELECT pg_size_pretty(pg_database_size(current_database())) AS size,
 
 | size | hit_pct | numbackends | xact_commit | xact_rollback |
 | --- | --- | --- | --- | --- |
-| 11 MB | 99.62 | 3 | 998 | 16 |
+| 11 MB | 98.16 | 1 | 244 | 6 |
+
+数值随运行时间与缓存状态变化，以现场查询为准。
 
 表访问与膨胀，按总大小排序（只取 `app` schema 前 3 行）：
 
@@ -603,9 +615,9 @@ SELECT relname, seq_scan, idx_scan, n_live_tup, n_dead_tup,
 
 | relname | seq_scan | idx_scan | n_live_tup | n_dead_tup | size |
 | --- | --- | --- | --- | --- | --- |
-| messages | 157 | 5217 | 420 | 32 | 1008 kB |
-| import_batches | 20 | 87 | 5 | 21 | 200 kB |
-| annotations | 223 | 1894 | 66 | 9 | 112 kB |
+| messages | 27 | 298 | 420 | 24 | 992 kB |
+| import_batches | 4 | 2 | 5 | 17 | 200 kB |
+| annotations | 12 | 410 | 66 | 8 | 112 kB |
 
 慢查询来自可选的 `pg_stat_statements`，只保留 DML/SELECT，排除扩展自身与 `EXPLAIN`，不展示参数值：
 

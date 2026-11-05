@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
 from PIL import Image
@@ -22,6 +23,8 @@ RUST = RGBColor(0xB4, 0x69, 0x3F)
 LINE = RGBColor(0xD8, 0xD1, 0xC0)
 WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 SOFT = RGBColor(0xEC, 0xE7, 0xDA)
+CREAM = RGBColor(0xD9, 0xC8, 0xA8)
+PALE = RGBColor(0xE8, 0xE3, 0xD3)
 
 FONT = "Microsoft YaHei"
 MONO = "Consolas"
@@ -74,8 +77,7 @@ def text(
     frame.margin_top = Inches(margins[1])
     frame.margin_right = Inches(margins[2])
     frame.margin_bottom = Inches(margins[3])
-    lines = value.split("\n")
-    for index, line in enumerate(lines):
+    for index, line in enumerate(value.split("\n")):
         paragraph = frame.paragraphs[0] if index == 0 else frame.add_paragraph()
         paragraph.alignment = align
         paragraph.line_spacing = spacing
@@ -88,7 +90,7 @@ def text(
     return box
 
 
-def bullets(slide, x, y, w, h, items, *, size=16, color=INK, gap=8, bullet_color=GREEN):
+def bullets(slide, x, y, w, h, items, *, size=14, color=INK, gap=8, bullet_color=GREEN):
     box = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
     frame = box.text_frame
     frame.word_wrap = True
@@ -113,46 +115,58 @@ def bullets(slide, x, y, w, h, items, *, size=16, color=INK, gap=8, bullet_color
 
 
 def chip(slide, x, y, w, label, *, fill=SOFT, color=GREEN, size=11):
-    shape = rect(slide, x, y, w, 0.32, fill, radius=True)
+    rect(slide, x, y, w, 0.32, fill, radius=True)
     text(slide, x, y + 0.015, w, 0.29, label, size=size, color=color,
          align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
-    return shape
 
 
 def header(slide, kicker, title, page):
     rect(slide, 0, 0, W, H, PAPER)
     text(slide, 0.72, 0.42, 9.8, 0.28, kicker, size=11, bold=True, color=RUST)
-    text(slide, 0.72, 0.70, 11.9, 0.62, title, size=27, bold=True, color=INK)
+    text(slide, 0.72, 0.70, 11.9, 0.62, title, size=26, bold=True, color=INK)
     rect(slide, 0.72, 1.36, 11.9, 0.018, LINE)
     text(slide, 11.65, 7.06, 0.9, 0.25, f"{page:02d}", size=10, color=MUTED,
          align=PP_ALIGN.RIGHT)
-    text(slide, 0.72, 7.06, 6.8, 0.25,
-         "个人学习空间 · 《数据库系统概论》大作业", size=9, color=MUTED)
+    text(slide, 0.72, 7.06, 8.0, 0.25,
+         "个人学习空间 · 《数据库系统概论》阶段性汇报", size=9, color=MUTED)
 
 
 def notes(slide, value):
     slide.notes_slide.notes_text_frame.text = value
 
 
-def picture_fit(slide, filename, x, y, w, h, *, frame=True):
+def picture_fit(slide, filename, x, y, w, h, *, frame=True, crop=None):
     path = SHOTS / filename
     if not path.exists():
         raise FileNotFoundError(path)
+    source: str | io.BytesIO = str(path)
     with Image.open(path) as image:
-        iw, ih = image.size
-    ratio = min(w / iw, h / ih)
-    pw, ph = iw * ratio, ih * ratio
-    px, py = x + (w - pw) / 2, y + (h - ph) / 2
-    if frame:
-        rect(slide, x - 0.05, y - 0.05, w + 0.1, h + 0.1, WHITE, radius=True, line=LINE, width=0.8)
-    slide.shapes.add_picture(str(path), Inches(px), Inches(py), Inches(pw), Inches(ph))
+        image.load()
+        if crop is None:
+            iw, ih = image.size
+        else:
+            left, top, right, bottom = crop
+            iw, ih = image.size
+            cropped = image.crop((int(iw * left), int(ih * top), int(iw * right), int(ih * bottom)))
+            iw, ih = cropped.size
+            stream = io.BytesIO()
+            cropped.save(stream, format="PNG")
+            stream.seek(0)
+            source = stream
+        ratio = min(w / iw, h / ih)
+        pw, ph = iw * ratio, ih * ratio
+        px, py = x + (w - pw) / 2, y + (h - ph) / 2
+        if frame:
+            rect(slide, px - 0.05, py - 0.05, pw + 0.1, ph + 0.1, WHITE, radius=True,
+                 line=LINE, width=0.8)
+        slide.shapes.add_picture(source, Inches(px), Inches(py), Inches(pw), Inches(ph))
     return px, py, pw, ph
 
 
-def code_block(slide, x, y, w, h, code, *, size=10):
-    rect(slide, x, y, w, h, GREEN_DARK, radius=True)
-    text(slide, x + 0.16, y + 0.12, w - 0.32, h - 0.24, code, size=size,
-         color=RGBColor(0xEC, 0xF2, 0xEA), font=MONO, spacing=1.1)
+def code_block(slide, x, y, w, h, code, *, size=10, fill=GREEN_DARK, color=PALE):
+    rect(slide, x, y, w, h, fill, radius=True)
+    text(slide, x + 0.16, y + 0.11, w - 0.32, h - 0.22, code, size=size,
+         color=color, font=MONO, spacing=1.1)
 
 
 def table(slide, x, y, w, h, rows, widths, *, font_size=10.5, header_size=10.5):
@@ -186,19 +200,19 @@ def table(slide, x, y, w, h, rows, widths, *, font_size=10.5, header_size=10.5):
     return tbl
 
 
-def card(slide, x, y, w, h, title, body, *, number=None, accent=GREEN):
+def card(slide, x, y, w, h, title, body, *, number=None, accent=GREEN, title_size=15, body_size=11.5):
     rect(slide, x, y, w, h, WHITE, radius=True, line=LINE, width=0.7)
     rect(slide, x, y, 0.08, h, accent, radius=False)
-    top = y + 0.18
+    top = y + 0.16
     if number is not None:
-        text(slide, x + 0.24, top, 0.7, 0.42, number, size=25, bold=True, color=accent)
-        text(slide, x + 0.95, top + 0.02, w - 1.15, 0.34, title, size=15, bold=True, color=INK)
-        text(slide, x + 0.24, top + 0.52, w - 0.46, h - 0.7, body, size=12,
-             color=MUTED, spacing=1.1)
-    else:
-        text(slide, x + 0.24, top, w - 0.46, 0.34, title, size=15, bold=True, color=accent)
-        text(slide, x + 0.24, top + 0.42, w - 0.46, h - 0.58, body, size=12,
+        text(slide, x + 0.24, top, 0.7, 0.42, number, size=24, bold=True, color=accent)
+        text(slide, x + 0.92, top + 0.02, w - 1.1, 0.32, title, size=title_size, bold=True, color=INK)
+        text(slide, x + 0.24, top + 0.5, w - 0.44, h - 0.66, body, size=body_size,
              color=MUTED, spacing=1.12)
+    else:
+        text(slide, x + 0.24, top, w - 0.44, 0.32, title, size=title_size, bold=True, color=accent)
+        text(slide, x + 0.24, top + 0.4, w - 0.44, h - 0.56, body, size=body_size,
+             color=MUTED, spacing=1.14)
 
 
 def title_slide(prs):
@@ -206,401 +220,185 @@ def title_slide(prs):
     rect(slide, 0, 0, W, H, GREEN_DARK)
     rect(slide, 8.9, -1.2, 6.2, 6.2, RGBColor(0x2B, 0x50, 0x44), radius=True)
     rect(slide, 10.6, 3.4, 4.6, 4.6, RGBColor(0x37, 0x5E, 0x50), radius=True)
-    text(slide, 0.85, 0.82, 7.8, 0.3, "数据库系统概论 · 大作业汇报", size=12, bold=True,
-         color=RGBColor(0xD9, 0xC8, 0xA8))
+    text(slide, 0.85, 0.82, 8.4, 0.3, "数据库系统概论 · 阶段性汇报（8 分钟）", size=12,
+         bold=True, color=CREAM)
     text(slide, 0.85, 1.55, 8.6, 1.25, "个人学习空间", size=46, bold=True, color=WHITE)
-    text(slide, 0.85, 2.85, 7.4, 1.0,
-         "把与大模型的聊天记录\n变成可查阅、可批注、可复习的课程资料",
-         size=22, color=RGBColor(0xE8, 0xE3, 0xD3), spacing=1.22)
+    text(slide, 0.85, 2.85, 7.8, 1.0,
+         "把与大模型的聊天记录\n变成可查询、可批注、可复习的课程数据",
+         size=21, color=PALE, spacing=1.22)
     chip(slide, 0.85, 4.55, 1.85, "PostgreSQL 16")
-    chip(slide, 2.82, 4.55, 1.75, "FastAPI SSR")
-    chip(slide, 4.69, 4.55, 1.45, "Text2SQL")
-    text(slide, 0.85, 6.35, 7.6, 0.32,
-         "选题 2 · 模拟数据演示 · 汇报人：____________", size=12,
+    chip(slide, 2.82, 4.55, 1.95, "17 表 · 15 视图")
+    chip(slide, 4.89, 4.55, 1.45, "模拟数据")
+    text(slide, 0.85, 6.35, 8.2, 0.32,
+         "选题 2 · 汇报人：____________ · 2026-11-10", size=12,
          color=RGBColor(0xC9, 0xD3, 0xCB))
-    notes(slide, "开场 20 秒：介绍选题、两个界面形态（传统网站 + Text2SQL）以及模拟数据声明。")
+    notes(slide, "0:15 开场：这是数据库课设，今天只讲数据库——模型、SQL、索引、权限、事务与触发器；"
+                 "每条结论都能用 sql/showcase.sql 现场复现。")
 
 
-def slide_why(prs):
+def slide_model(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "01 / 问题与目标", "问答很零散，复习时却找不到上下文", 2)
+    header(slide, "01 / 概念模型 · 0:45", "8 个核心实体：聊天记录被拆成可查询的关系", 2)
 
-    text(slide, 0.72, 1.62, 5.2, 0.35, "三个真实痛点", size=13, bold=True, color=GREEN)
-    card(slide, 0.72, 2.05, 3.7, 1.55, "记录分散", "Qoder、ChatGPT、DeepSeek 各有一套导出格式，\n历史问答难以统一查找。", number="01")
-    card(slide, 0.72, 3.78, 3.7, 1.55, "缺少上下文", "只搜到一句话，却不知道它属于哪门课、\n哪次追问、前后文是什么。", number="02", accent=RUST)
-    card(slide, 0.72, 5.51, 3.7, 1.28, "复习低效", "看过的结论没有批注、没有到期提醒，\n无法形成间隔复习。", number="03", accent=GREEN)
-
-    text(slide, 5.05, 1.62, 6.8, 0.35, "系统目标", size=13, bold=True, color=GREEN)
-    goals = [
-        ("导入", "统一 JSON / Markdown 格式，解析、查重、事务入库"),
-        ("组织", "课程 + 来源 + 标签三维归类，支持课程共享"),
-        ("复习", "消息级批注、复习队列、1→2→4→8 天间隔"),
-        ("洞察", "课程 / 月度 / 标签 / 批注统计与导出"),
-    ]
-    for index, (name, body) in enumerate(goals):
-        y = 2.05 + index * 1.07
-        rect(slide, 5.05, y, 7.25, 0.9, WHITE, radius=True, line=LINE, width=0.7)
-        text(slide, 5.24, y + 0.12, 1.0, 0.32, name, size=15, bold=True, color=GREEN)
-        text(slide, 6.18, y + 0.12, 5.9, 0.62, body, size=12, color=MUTED)
-
-    rect(slide, 5.05, 6.48, 7.25, 0.42, SOFT, radius=True)
-    text(slide, 5.22, 6.54, 6.95, 0.3,
-         "设计原则：以数据库为中心，手写参数化 SQL，不用 ORM 隐藏关系模型。",
-         size=11, bold=True, color=GREEN)
-    notes(slide, "30 秒：从三个痛点切入，说明系统不是聊天工具，而是把聊天记录结构化为学习资料。")
-
-
-def slide_scope(prs):
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "02 / 角色与范围", "两类系统角色，三种课程角色", 3)
-
-    cards = [
-        ("学生 alice", "5 门课程 owner\n3 个平台来源\n30 个会话 / 420 条消息", GREEN),
-        ("同学 bob", "操作系统 editor\n数据库 viewer\n可共享、可复习，不可越权", RUST),
-        ("管理员 admin", "用户启停\n系统聚合统计\n不读取他人正文与批注", GREEN_DARK),
-    ]
-    for index, (name, body, accent) in enumerate(cards):
-        x = 0.72 + index * 4.05
-        card(slide, x, 1.62, 3.7, 1.72, name, body, accent=accent)
-
-    text(slide, 0.72, 3.66, 4.0, 0.35, "十项功能需求", size=13, bold=True, color=GREEN)
-    rows = [
-        ["ID", "能力", "关键数据库点"],
-        ["R01", "记录导入", "JSONB 预览、唯一键、单事务"],
-        ["R02", "课程与标签", "M:N、部分唯一索引、触发器"],
-        ["R03", "检索与整理", "trgm + ILIKE、RRF、建议回填"],
-        ["R04", "批注复习", "1:N、复合唯一键、事件流水"],
-        ["R05", "统计导出", "JOIN、FILTER、窗口函数、CTE"],
-        ["R06", "用户权限", "应用层 + SQL 作用域 + DB 角色"],
-        ["R07", "Text2SQL", "只读视图、SQL 守卫、审计"],
-        ["R08", "管理", "聚合查询、账号启停"],
-        ["R09", "快速采集", "令牌哈希、限流、Bearer 复用事务"],
-        ["R10", "离线学习", "IndexedDB、事件 ID 幂等同步"],
-    ]
-    table(slide, 0.72, 4.05, 7.45, 2.55, rows, [0.72, 1.55, 5.18], font_size=9.5, header_size=10)
-    picture_fit(slide, "01-dashboard.png", 8.55, 3.78, 4.0, 2.85)
-    notes(slide, "30 秒：强调 alice/bob 的课程级权限与 admin 的聚合边界；R01–R10 与报告需求表对应。")
-
-
-def slide_data(prs):
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "03 / 数据来源", "没有真实导出，就用可复现的模拟数据", 4)
-
-    rect(slide, 0.72, 1.62, 6.35, 2.25, GREEN_DARK, radius=True)
-    text(slide, 0.95, 1.78, 5.9, 0.3, "统一导入格式", size=13, bold=True,
-         color=RGBColor(0xD9, 0xC8, 0xA8))
-    code_block(slide, 0.95, 2.15, 5.9, 1.53,
-               '{"platform": "qoder",\n'
-               ' "conversations": [{\n'
-               '   "external_id": "qoder-db-001",\n'
-               '   "title": "SQL 执行顺序", "course_code": "DB",\n'
-               '   "tags": ["SQL"], "messages": [...] }]}', size=9)
-
-    stats = [
-        ("5", "门课程"), ("30", "个会话"), ("420", "条消息"),
-        ("66", "条批注"), ("59", "个标签"), ("5", "个导入批次"),
-    ]
-    for index, (value, label) in enumerate(stats):
-        x = 7.35 + (index % 3) * 1.86
-        y = 1.62 + (index // 3) * 1.12
-        rect(slide, x, y, 1.68, 0.96, WHITE, radius=True, line=LINE, width=0.7)
-        text(slide, x + 0.12, y + 0.08, 1.44, 0.45, value, size=24, bold=True, color=GREEN)
-        text(slide, x + 0.12, y + 0.58, 1.44, 0.25, label, size=10, color=MUTED)
-
-    cards = [
-        ("JSON 为主", "结构化字段完整；已适配 ChatGPT conversations.json 与 Qoder 会话导出。"),
-        ("Markdown 为辅", "# 标题 + 课程/标签元信息 + 用户/助手分段；兼容 DeepSeek 原生标题。"),
-        ("可复现", "make_samples.py 生成样例，seed_demo.py 走真实导入服务。"),
-    ]
-    for index, (name, body) in enumerate(cards):
-        x = 0.72 + index * 4.06
-        card(slide, x, 4.15, 3.78, 1.42, name, body, accent=RUST if index == 1 else GREEN)
-
-    rect(slide, 0.72, 5.82, 12.0, 0.72, RGBColor(0xF2, 0xE4, 0xD8), radius=True)
-    text(slide, 0.95, 5.94, 11.55, 0.5,
-         "数据声明：所有聊天内容均为围绕课程知识点生成的模拟数据，不含真实个人信息；报告、页面与导出文件均明确标注。",
-         size=12, bold=True, color=RUST)
-    notes(slide, "25 秒：主动声明模拟数据；JSON/Markdown 两条导入路径，样例可重新生成。")
-
-
-def slide_er(prs):
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "04 / 概念设计", "8 个核心实体，12 组联系", 5)
-
-    bullets(slide, 0.72, 1.62, 5.35, 4.7, [
+    bullets(slide, 0.72, 1.62, 5.35, 4.3, [
         "用户、课程、来源、会话、消息、标签、批注、复习项",
-        "课程成员、导入批次、Text2SQL 日志、复习事件、采集令牌与审计日志是操作型实体",
-        "批注与复习项按弱实体处理，依赖消息 / 批注存在",
-        "用户 M:N 课程（带角色）；会话 M:N 标签",
+        "用户 M:N 课程，桥表带角色 owner / editor / viewer",
+        "会话 M:N 标签；批注与复习项作为弱实体依附消息",
         "用户 1:N 来源 → 会话 → 消息 → 批注",
-        "同一批注可被不同用户加入各自复习队列",
-    ], size=15, gap=12)
-    rect(slide, 0.72, 5.95, 5.35, 0.66, SOFT, radius=True)
-    text(slide, 0.9, 6.04, 5.0, 0.48,
-         "删除策略：消息随会话级联；会话随课程置空；\n有会话的来源禁止删除。", size=11, color=GREEN)
+        "同一批注可进入不同用户各自的复习队列",
+        "来源 → 会话 → 消息是一条链，不重复存属主与课程",
+    ], size=14, gap=11)
+
+    rect(slide, 0.72, 5.72, 5.35, 0.92, SOFT, radius=True)
+    text(slide, 0.92, 5.82, 4.98, 0.72,
+         "删除策略：消息随会话 CASCADE；会话随课程置空；\n有会话的来源 RESTRICT。", size=11.5, color=GREEN)
+
     picture_fit(slide, "16-er-chen.png", 6.25, 1.5, 6.35, 5.35)
-    notes(slide, "35 秒：指着 E-R 图讲 8 个实体与 12 组联系；强调批注/复习弱实体和删除策略。")
+    notes(slide, "0:45 指 ER 图：先讲实体与联系，再讲三条删除策略为什么不同——"
+                 "CASCADE 只用于弱实体，课程删除保留学习记录，来源有数据时禁止删。")
 
 
 def slide_schema(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "05 / 逻辑设计", "16 张表：核心业务与操作型数据分离", 6)
+    header(slide, "02 / 逻辑设计 · 1:00", "17 张表：15 张业务表 + 审计表 + 引导状态表", 3)
 
     rows = [
         ["领域", "表", "关键约束"],
-        ["账户与权限", "users · course_members", "系统角色；每课一个 owner；复合主键"],
+        ["账户与权限", "users · course_members", "系统角色；每课恰好一个 owner；复合主键"],
         ["内容", "sources · conversations · messages", "(source, external_id)、(conversation, seq_no) 唯一"],
-        ["组织", "courses · tags · conversation_tags", "(created_by, code, semester) 唯一；标签同 owner"],
-        ["学习", "annotations · review_items · review_logs", "UNIQUE(user_id, annotation_id)；事件流水幂等"],
+        ["组织", "courses · tags · conversation_tags", "(created_by, code, semester) 唯一；标签同属主"],
+        ["学习", "annotations · review_items · review_logs", "UNIQUE(user_id, annotation_id)；事件幂等"],
         ["知识结构", "tag_edges", "先修边唯一；触发器递归防环"],
-        ["采集与运维", "import_batches · api_tokens · text2sql_log", "预览 token 唯一；令牌只存哈希；执行审计"],
-        ["审计", "audit_log", "只记对象/动作/主键/变更列名；应用角色只读"],
+        ["采集与运维", "import_batches · api_tokens · text2sql_log · user_onboarding", "预览 token 唯一；令牌只存哈希；引导状态按用户唯一"],
+        ["审计", "audit_log", "只记对象/主键/变更列名；应用角色只读"],
     ]
-    table(slide, 0.72, 1.62, 11.9, 3.55, rows, [1.7, 4.2, 6.0], font_size=10.5, header_size=10.5)
+    table(slide, 0.72, 1.58, 11.9, 3.52, rows, [1.55, 4.45, 5.9], font_size=9.8, header_size=10)
 
-    bullets(slide, 0.72, 5.22, 5.8, 1.5, [
-        "单列代理键 + 关联表，避免复合业务键扩散",
-        "会话不冗余 owner，消息不冗余课程 / 来源",
-        "不存 message_count 等可派生计数",
-    ], size=12, gap=5)
-    bullets(slide, 6.85, 5.22, 5.75, 1.5, [
-        "保留 payload JSONB 作为预览期受控冗余",
-        "row_count 是 Text2SQL 审计快照，不是统计缓存",
-        "count(*) 实时计算，保证统计与明细一致",
-    ], size=12, gap=5)
-    notes(slide, "35 秒：按五组讲表；重点说明为什么没有冗余 owner_id 和计数列。")
+    text(slide, 0.72, 5.24, 6.0, 0.3, "范式取舍", size=12.5, bold=True, color=GREEN)
+    bullets(slide, 0.72, 5.6, 6.0, 1.3, [
+        "3NF：会话不冗余属主，消息不冗余课程 / 来源",
+        "不存可派生计数，统计全部实时 count(*)",
+        "受控冗余：payload JSONB 仅预览期，row_count 是审计快照",
+    ], size=11.5, gap=4)
+
+    code_block(slide, 7.05, 5.24, 5.57, 1.4,
+               "-- 每门课最多一个 owner\n"
+               "CREATE UNIQUE INDEX ... ON course_members(course_id)\n"
+               "  WHERE role = 'owner';\n"
+               "-- 事务结束时仍必须恰好一个 owner\n"
+               "CREATE CONSTRAINT TRIGGER ... DEFERRABLE\n"
+               "  INITIALLY DEFERRED ...", size=9.2)
+    notes(slide, "1:00 按五组讲表；重点两句：没有冗余属主列，没有统计缓存列；"
+                 "“恰好一个 owner”由部分唯一索引 + 延迟约束触发器共同保证。")
 
 
-def slide_norm(prs):
+def slide_queries(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "06 / 范式与完整性", "先满足范式，再只保留有理由的冗余", 7)
+    header(slide, "03 / 关键 SQL · 1:15", "窗口、补零、递归：三条查询都有可执行结果", 4)
 
-    left = [
-        ("1NF", "所有列原子；标签、成员、会话标签拆关联表，不存逗号分隔串。"),
-        ("2NF", "核心表单列代理键；关联表非键属性依赖整个复合键。"),
-        ("3NF / BCNF", "会话不冗余 owner；消息不冗余课程与来源；避免传递依赖。"),
-        ("受控冗余", "import_batches.payload 仅预览期；row_count 为审计快照。"),
-    ]
-    for index, (name, body) in enumerate(left):
-        y = 1.62 + index * 1.13
-        rect(slide, 0.72, y, 5.95, 0.97, WHITE, radius=True, line=LINE, width=0.7)
-        text(slide, 0.94, y + 0.12, 1.55, 0.32, name, size=14, bold=True, color=GREEN)
-        text(slide, 2.42, y + 0.11, 4.05, 0.75, body, size=11.5, color=MUTED, spacing=1.1)
-
-    text(slide, 7.0, 1.62, 5.5, 0.35, "完整性约束", size=13, bold=True, color=GREEN)
-    rows = [
-        ["类型", "例子"],
-        ["主键 / 外键", "16 张表全部有 PK；关键关系均有 FK"],
-        ["UNIQUE", "会话外部 ID、消息序号、标签名、先修边"],
-        ["CHECK", "角色枚举、消息非空、结束时间 ≥ 开始、先修边两端不同"],
-        ["部分唯一", "每门课最多一个 owner"],
-        ["触发器", "同 owner；先修边防环；结构变更审计元数据"],
-        ["删除行为", "CASCADE / SET NULL / RESTRICT 按语义选择"],
-    ]
-    table(slide, 7.0, 2.02, 5.6, 2.6, rows, [1.45, 4.15], font_size=10, header_size=10)
-
-    code_block(slide, 7.0, 4.9, 5.6, 1.42,
-               "-- 不用生成列：避免 content → hash 传递依赖\n"
-               "CREATE INDEX idx_messages_content_md5\n"
-               "  ON app.messages (md5(content));\n"
-               "-- 中文子串检索\n"
-               "CREATE INDEX ... USING gin (content gin_trgm_ops);", size=9)
-    notes(slide, "35 秒：1NF/2NF/3NF 各一句；重点讲受控冗余与表达式索引的取舍。")
-
-
-def slide_import(prs):
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "07 / 导入流水线", "解析、预览、确认三段式，确认阶段全有或全无", 8)
-
-    steps = [
-        ("1", "上传", "JSON / MD\n≤ 5 MB"),
-        ("2", "解析校验", "字段、角色\n时间、上限"),
-        ("3", "持久化预览", "JSONB + token\n30 分钟"),
-        ("4", "勾选映射", "课程 / 标签\n查重状态"),
-        ("5", "事务入库", "advisory lock\nON CONFLICT"),
-    ]
-    for index, (number, name, body) in enumerate(steps):
-        x = 0.72 + index * 2.47
-        rect(slide, x, 1.62, 2.15, 1.48, WHITE, radius=True, line=LINE, width=0.7)
-        text(slide, x + 0.16, 1.73, 0.4, 0.35, number, size=18, bold=True, color=RUST)
-        text(slide, x + 0.58, 1.75, 1.4, 0.3, name, size=13, bold=True, color=INK)
-        text(slide, x + 0.16, 2.2, 1.85, 0.7, body, size=10.5, color=MUTED, spacing=1.15)
-        if index < len(steps) - 1:
-            text(slide, x + 2.12, 2.05, 0.36, 0.4, "→", size=15, bold=True, color=GREEN)
-
-    picture_fit(slide, "08-import-preview.png", 0.72, 3.3, 7.45, 3.3)
-    text(slide, 8.5, 3.35, 4.1, 0.35, "演示文件", size=13, bold=True, color=GREEN)
-    rows = [
-        ["文件", "预期"],
-        ["qoder_db.json", "6 会话 / 84 消息，首次入库"],
-        ["duplicate_db.json", "全部重复，新增 0"],
-        ["broken.json", "字段级错误，直接拒绝"],
-    ]
-    table(slide, 8.5, 3.74, 4.1, 1.45, rows, [1.55, 2.55], font_size=9.5, header_size=9.5)
-    bullets(slide, 8.5, 5.38, 4.15, 1.25, [
-        "失败整体回滚，批次单独标记 failed",
-        "重复导入只补新增消息",
-        "平台导出与 Bearer 接口共用同一事务",
-    ], size=11.5, gap=5)
-    notes(slide, "40 秒：三段式导入；强调预览不写业务表、确认阶段单事务与幂等。")
-
-
-def slide_search(prs):
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "08 / 检索与阅读", "中文子串检索 + 会话内上下文", 9)
-
-    bullets(slide, 0.72, 1.62, 5.3, 3.8, [
-        "标题与消息正文联合匹配，课程 / 标签 / 日期筛选",
-        "pg_trgm GIN + ILIKE ESCAPE，参数化查询",
-        "可选 pgvector + HNSW，RRF 融合词法与语义",
-        "count(*) OVER() 一次查询拿到分页总数",
-        "SQL 侧截取命中片段，避免传输整段长回答",
-        "打开会话按 seq_no 排序，保留完整上下文",
-        "关键词在标题和正文中高亮显示",
-        "可选 AI 建议：摘要与标签只回填，确认后入库",
-    ], size=14, gap=10)
-    code_block(slide, 0.72, 5.55, 5.3, 1.2,
-               "SELECT ..., count(*) OVER() AS total\n"
-               "FROM app.messages m\n"
-               "WHERE m.content ILIKE %(kw)s ESCAPE '\\'\n"
-               "ORDER BY m.conversation_id, m.seq_no;", size=9)
-    picture_fit(slide, "05-conversation-detail.png", 6.3, 1.55, 6.3, 5.2)
-    notes(slide, "35 秒：搜索“隔离级别”进入会话详情；说明无模型时纯词法，配置后自动混合检索；AI 建议只回填表单，保存后才写库。")
-
-
-def slide_review(prs):
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "09 / 批注与复习", "把“看懂了”变成“下次还会”", 10)
-
-    cards = [
-        ("四类批注", "note / question / correction / summary", GREEN),
-        ("解决状态", "open → resolved；支持编辑与删除", RUST),
-        ("复习队列", "pending / reviewing / mastered", GREEN_DARK),
-    ]
-    for index, (name, body, accent) in enumerate(cards):
-        x = 0.72 + index * 2.55
-        card(slide, x, 1.62, 2.35, 1.25, name, body, accent=accent)
-
-    bullets(slide, 0.72, 3.15, 6.0, 2.5, [
-        "批注挂在消息上；一条消息可有多条批注",
-        "复习项唯一键是 (user_id, annotation_id)，同一批注可被多人复习",
-        "到期查询使用部分索引 WHERE status <> 'mastered'",
-        "复习一次：间隔 1 → 2 → 4 → 8 天，due_date 顺延",
-        "标记掌握后退出热点队列，但保留历史",
-    ], size=13, gap=8)
-    code_block(slide, 0.72, 5.75, 6.0, 0.98,
-               "UPDATE app.review_items\n"
-               "SET interval_days = interval_days * 2,\n"
-               "    due_date = current_date + interval_days * 2\n"
-               "WHERE id = %s AND user_id = %s;", size=8.8)
-    picture_fit(slide, "10-reviews.png", 7.0, 1.55, 5.6, 5.25)
-    notes(slide, "40 秒：从批注页加入复习，再到队列点“复习一次”，展示间隔翻倍与到期日变化。")
-
-
-def slide_graph(prs):
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "10 / 知识先修图", "把标签连成 DAG：先学什么，后学什么", 11)
-
-    cards = [
-        ("图模型", "tag_edges\n(from → to)", GREEN),
-        ("防环", "触发器\n递归 CTE", RUST),
-        ("闭包", "视图实时\n最短深度", GREEN_DARK),
-    ]
-    for index, (name, body, accent) in enumerate(cards):
-        x = 0.72 + index * 2.05
-        card(slide, x, 1.62, 1.88, 1.2, name, body, accent=accent)
-
-    bullets(slide, 0.72, 3.05, 6.1, 2.0, [
-        "先修边唯一 (from_tag_id, to_tag_id)，两端必须同一属主",
-        "写入前从后继出发递归检查，能回到先修就拒绝",
-        "闭包不落表，边变化后立即生效，无冗余一致性问题",
-        "页面按主导课程拆成 6 张 SVG 子图，最长路径分层",
-    ], size=11.5, gap=6)
-
-    code_block(slide, 0.72, 5.25, 6.1, 1.65,
+    code_block(slide, 0.72, 1.58, 6.15, 1.18,
+               "-- 课程排名 + 条件聚合（#2）\n"
+               "RANK() OVER (ORDER BY count(DISTINCT m.id) DESC, c.code)\n"
+               "count(DISTINCT m.id) FILTER (WHERE m.sender = 'user')", size=9.4)
+    code_block(slide, 0.72, 2.92, 6.15, 1.18,
+               "-- 补齐没有消息的月份（#3）\n"
+               "generate_series(start_month, current_month, '1 month')\n"
+               "LEFT JOIN buckets USING (month_start)  -- coalesce 补 0", size=9.4)
+    code_block(slide, 0.72, 4.26, 6.15, 1.5,
+               "-- 先修闭包：递归 CTE + 最短深度（#21）\n"
                "WITH RECURSIVE walk AS (\n"
                "  SELECT id AS tag, id AS prereq, 0 AS depth, ARRAY[id] AS path\n"
-               "    FROM app.tags WHERE owner_id = :uid\n"
                "  UNION ALL\n"
                "  SELECT w.tag, e.from_tag_id, w.depth + 1, w.path || e.from_tag_id\n"
                "    FROM walk w JOIN app.tag_edges e ON e.to_tag_id = w.prereq\n"
-               "   WHERE NOT e.from_tag_id = ANY (w.path)\n"
-               ") SELECT DISTINCT ON (tag, prereq) ...", size=8)
+               "   WHERE NOT e.from_tag_id = ANY (w.path))\n"
+               "SELECT DISTINCT ON (tag, prereq) ... ORDER BY depth;", size=8.5)
+    text(slide, 0.72, 5.93, 6.15, 0.55,
+         "右侧输出就是刚才执行的结果；\n"
+         "sql/showcase.sql #2 / #3 / #21 可直接复跑。", size=10.5, color=MUTED, spacing=1.18)
 
     rows = [
-        ["标签", "先修（间接）", "深度"],
+        ["课程", "消息", "用户/助手", "排名"],
+        ["DB", "84", "42 / 42", "1"],
+        ["ML", "84", "42 / 42", "2"],
+        ["NET", "84", "42 / 42", "3"],
+        ["OS", "84", "42 / 42", "4"],
+        ["DS", "42", "21 / 21", "5"],
+    ]
+    table(slide, 7.18, 1.58, 5.44, 2.08, rows, [1.55, 1.05, 1.55, 1.29],
+          font_size=10, header_size=10)
+    text(slide, 7.18, 3.7, 5.44, 0.28, "GROUP BY + FILTER + RANK  →  排名 1–5",
+         size=10, color=MUTED)
+
+    closure = [
+        ["后学", "先修", "深度"],
         ["B+树", "SQL", "2"],
-        ["Dijkstra", "图", "2"],
+        ["AVL", "二叉树", "2"],
+        ["LRU", "虚拟内存", "3"],
+        ["锁", "事务", "3"],
     ]
-    table(slide, 7.25, 1.62, 5.25, 1.55, rows, [1.85, 2.4, 1.0], font_size=11, header_size=11)
-    bullets(slide, 7.25, 3.45, 5.25, 3.35, [
-        "直接先修深度为 1，如 索引 → SQL、最短路径 → 图",
-        "DISTINCT ON 只保留每对标签的最短路径",
-        "path 数组同时防止环路重复展开与无限递归",
-        "t2s.v_my_tag_prerequisites 对 Text2SQL 暴露同一闭包",
-        "种子数据：59 标签、32 条先修边、6 张课程卡",
-    ], size=11.5, gap=6)
-    notes(slide, "35 秒：讲边表、触发器防环、递归闭包；指出页面拆成 6 张课程子图，避免一张巨图。")
+    table(slide, 7.18, 4.02, 3.2, 1.5, closure, [1.15, 1.25, 0.8],
+          font_size=10, header_size=10)
+    text(slide, 10.5, 4.06, 2.12, 0.9, "10 对间接先修\n只列最短深度的前 4 行",
+         size=10, color=MUTED, spacing=1.2)
+
+    rect(slide, 7.18, 5.74, 5.44, 1.1, SOFT, radius=True)
+    text(slide, 7.38, 5.84, 5.04, 0.94,
+         "为什么讲这三条\n"
+         "• 排名：窗口函数不丢明细行\n"
+         "• 补零：骨架表 LEFT JOIN，缺月显示 0\n"
+         "• 闭包：path 数组防环，DISTINCT ON 取最短", size=10.2, color=GREEN, spacing=1.18)
+    notes(slide, "1:15 三条查询各 20 秒：排名/补零/递归闭包；指出结果表就是刚才执行的真实输出，"
+                 "不要求观众相信截图。")
 
 
-def slide_stats(prs):
+def slide_index(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "11 / 统计与导出", "把课程里的聚合查询真正用起来", 12)
+    header(slide, "04 / 索引与执行计划 · 1:00", "420 行的小表：规划器选顺序扫描，索引为大表保留", 5)
 
-    snippets = [
-        ("课程排名", "RANK() OVER (ORDER BY message_count DESC)"),
-        ("解决率", "COUNT(*) FILTER (WHERE status = 'resolved')"),
-        ("月度补零", "generate_series(date_trunc('month', ...), ...)"),
-        ("重复检测", "GROUP BY md5(content) HAVING count(*) > 1"),
-    ]
-    for index, (name, sql) in enumerate(snippets):
-        y = 1.62 + index * 1.02
-        rect(slide, 0.72, y, 5.85, 0.86, WHITE, radius=True, line=LINE, width=0.7)
-        text(slide, 0.9, y + 0.1, 1.35, 0.28, name, size=11.5, bold=True, color=GREEN)
-        text(slide, 2.25, y + 0.1, 4.15, 0.58, sql, size=10.5, color=MUTED, font=MONO, spacing=1.05)
+    code_block(slide, 0.72, 1.58, 6.2, 1.3,
+               "Seq Scan on messages  (actual rows=1)\n"
+               "  Filter: content ~~* '%MVCC%'\n"
+               "  Rows Removed by Filter: 419\n"
+               "  Buffers: shared hit=9\n"
+               "  Execution Time: 0.257 ms", size=10.2)
+    code_block(slide, 0.72, 3.05, 6.2, 1.4,
+               "SET enable_seqscan = off;\n"
+               "Bitmap Heap Scan on messages  (actual rows=1)\n"
+               "  Recheck Cond: content ~~* '%MVCC%'\n"
+               "  -> Bitmap Index Scan on messages_content_trgm\n"
+               "  Execution Time: 0.026 ms", size=10.2)
+    text(slide, 0.72, 4.65, 6.2, 0.55,
+         "同一查询、同一数据：只有强制关闭顺序扫描后 GIN 索引才生效。\n"
+         "耗时随缓存变化，两套方案都在亚毫秒级。", size=10.5, color=MUTED)
+    code_block(slide, 0.72, 5.38, 6.2, 1.28,
+               "-- 支撑上述查询的三个索引（节选）\n"
+               "CREATE INDEX messages_content_trgm ON app.messages\n"
+               "    USING gin (content gin_trgm_ops);\n"
+               "CREATE INDEX messages_content_md5_idx ON app.messages ((md5(content)));\n"
+               "CREATE INDEX review_items_queue_idx ON app.review_items\n"
+               "    (user_id, status, due_date) WHERE status <> 'mastered';", size=8.6)
 
-    bullets(slide, 0.72, 5.85, 5.85, 1.0, [
-        "全部计数实时计算，不落冗余统计表",
-        "CSV 统计导出 + 单会话 Markdown 导出",
-    ], size=11.5, gap=4)
-    picture_fit(slide, "11-stats.png", 6.85, 1.55, 5.75, 5.25)
-    notes(slide, "35 秒：指统计页的课程排名、月度活跃、标签 Top、重复检测；说明导出。")
-
-
-def slide_t2s(prs):
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "12 / Text2SQL", "自然语言查询，但权限在数据库层兜底", 13)
-
-    flow = ["自然语言", "LLM / 本地规则", "AST 守卫/预检", "只读视图", "结果 + 审计"]
-    for index, label in enumerate(flow):
-        x = 0.72 + index * 2.42
-        rect(slide, x, 1.62, 2.05, 0.64, GREEN if index in (0, 4) else GREEN_DARK,
-             radius=True)
-        text(slide, x, 1.7, 2.05, 0.4, label, size=11.5, bold=True, color=WHITE,
-             align=PP_ALIGN.CENTER)
-        if index < len(flow) - 1:
-            text(slide, x + 2.06, 1.72, 0.3, 0.35, "→", size=13, bold=True, color=RUST)
-
-    left = [
-        "sqlglot 只允许一条 SELECT/WITH，拒绝嵌套 DML 与表函数",
-        "对象白名单：15 个 t2s 视图，禁止 app / pg_catalog",
-        "EXPLAIN 预检代价与估算行数，超限直接拒绝",
-        "包裹 200 行上限；t2s_reader 只读事务、3 秒超时",
-        "视图 security_barrier，按 app.user_id 过滤",
-        "成功、拒绝、异常全部写 text2sql_log",
-        "无 Key 走 mock，配置 Key 走 OpenAI 兼容接口",
-    ]
-    bullets(slide, 0.72, 2.65, 6.15, 3.4, left, size=12.5, gap=8)
-    code_block(slide, 0.72, 5.95, 6.15, 0.82,
-               "t2s_reader: CONNECT + USAGE(t2s) + SELECT 视图\n"
-               "default_transaction_read_only = on", size=9.2)
-    picture_fit(slide, "13-text2sql-result.png", 7.15, 2.55, 5.45, 4.2)
-    notes(slide, "45 秒：提交“每个课程有多少会话和消息？”；强调多层守卫和只读角色兜底。")
+    text(slide, 7.2, 1.58, 5.42, 0.32, "索引设计", size=12.5, bold=True, color=GREEN)
+    bullets(slide, 7.2, 1.98, 5.42, 4.5, [
+        "messages(content) GIN + pg_trgm：中文子串 ILIKE",
+        "md5(content) 表达式索引：跨会话重复检测",
+        "review_items 部分索引：WHERE status <> 'mastered'",
+        "唯一/部分唯一索引承担业务约束：外部 ID、每课一个 owner",
+        "会话标题 trigram 索引：全局搜索",
+        "可选 HNSW 向量索引：没有模型时完全不用",
+    ], size=11.5, gap=7)
+    rect(slide, 7.2, 5.55, 5.42, 1.1, RGBColor(0xF2, 0xE4, 0xD8), radius=True)
+    text(slide, 7.4, 5.66, 5.02, 0.88,
+         "结论：不宣称“所有查询都走索引”。索引按访问模式设计，\n"
+         "代价模型在小表上选择顺序扫描是正常行为。", size=11, bold=True, color=RUST)
+    notes(slide, "1:00 讲执行计划对比：估代价 vs 实测；说明为什么不对 420 行表强行走索引，"
+                 "以及五个索引各自服务的查询。")
 
 
 def slide_permissions(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "13 / 权限模型", "应用层、SQL 作用域、数据库约束三层防护", 14)
+    header(slide, "05 / 访问控制 · 1:10", "同一视图、不同 user_id：行级权限在数据库内完成", 6)
 
     rows = [
         ["操作", "owner", "editor", "viewer", "admin"],
@@ -611,152 +409,167 @@ def slide_permissions(prs):
         ["删除课程", "✓", "—", "—", "—"],
         ["管理用户", "—", "—", "—", "✓"],
     ]
-    table(slide, 0.72, 1.65, 6.6, 3.1, rows, [2.0, 1.1, 1.1, 1.1, 1.3], font_size=11, header_size=11)
-    bullets(slide, 0.72, 5.0, 6.6, 1.6, [
-        "页面 / 服务层先判角色，失败返回 403",
-        "SQL 再按 sources.owner_id 与 course_members 限制范围",
-        "管理员看不到正文、批注与复习内容",
-    ], size=12, gap=5)
-    picture_fit(slide, "15-permission-denied.png", 7.65, 1.62, 4.95, 4.75)
-    text(slide, 7.65, 6.48, 4.95, 0.42,
-         "bob 是数据库课程 viewer；直接访问 /courses/1/edit 被 403 拦截。",
-         size=10.5, color=MUTED, align=PP_ALIGN.CENTER)
-    notes(slide, "35 秒：讲矩阵；现场用 bob 访问编辑 URL 展示 403，admin 只做聚合。")
+    table(slide, 0.72, 1.6, 6.35, 2.8, rows, [1.9, 1.0, 1.0, 1.0, 1.45], font_size=10.5, header_size=10.5)
 
-
-def slide_tests(prs):
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "14 / 测试与验收", "279 项测试与 42 项端到端验收全部通过", 15)
-
-    stats = [("279", "自动化测试"), ("42", "端到端检查"), ("0", "失败项")]
-    for index, (value, label) in enumerate(stats):
-        x = 0.72 + index * 2.15
-        rect(slide, x, 1.62, 1.95, 1.35, WHITE, radius=True, line=LINE, width=0.7)
-        text(slide, x + 0.15, 1.72, 1.65, 0.62, value, size=30, bold=True, color=GREEN)
-        text(slide, x + 0.15, 2.37, 1.65, 0.3, label, size=10.5, color=MUTED)
-
-    code_block(slide, 0.72, 3.3, 6.0, 2.4,
-               ".venv/Scripts/python.exe -m pytest -q\n"
-               "# 155 unit + 124 integration\n\n"
-               ".venv/Scripts/python.exe scripts/verify.py \\\n"
-               "  --json data/verification/report.json", size=10.5)
-    text(slide, 0.9, 5.78, 5.6, 0.75,
-         "输出：42/42 PASS，0 FAIL，约 2–4 秒\n所有写入检查在结束时整体回滚。", size=11.5, color=GREEN)
-
-    right = [
-        "Schema：表、FK、UNIQUE、CHECK、索引、触发器",
-        "权限：alice / bob / viewer / admin 边界",
-        "导入：幂等、重复、损坏文件、平台适配",
-        "检索：关键词、课程、标签、全局搜索、混合检索、AI 建议",
-        "知识结构：先修边防环、递归闭包、Text2SQL 可查",
-        "统计：种子数据下的计数与排名",
-        "采集：令牌作用域、限流、Bearer 与 MCP 工具",
-        "数据库：RLS 对比、审计元数据、观测指标与角色只读",
-        "Text2SQL：AST / 预检 / 金标准评测",
+    layers = [
+        ("应用层", "角色判断，越权直接 403"),
+        ("SQL 作用域", "owner_id = uid OR EXISTS course_members"),
+        ("数据库", "security_barrier 视图 + t2s_reader 只读角色"),
     ]
-    for index, item in enumerate(right):
-        y = 1.62 + index * 0.64
-        rect(slide, 7.1, y, 5.5, 0.52, SOFT if index % 2 == 0 else WHITE,
-             radius=True, line=LINE, width=0.6)
-        text(slide, 7.28, y + 0.11, 5.15, 0.3, "✓  " + item, size=10.5, color=INK)
-    notes(slide, "30 秒：报数字，强调集成测试使用独立 _test 库、验收写入全部回滚。")
+    for index, (name, body) in enumerate(layers):
+        y = 1.6 + index * 0.92
+        rect(slide, 7.38, y, 5.24, 0.8, WHITE, radius=True, line=LINE, width=0.7)
+        text(slide, 7.56, y + 0.1, 1.75, 0.3, name, size=12.5, bold=True, color=GREEN)
+        text(slide, 9.3, y + 0.1, 3.15, 0.62, body, size=10.2, color=MUTED, spacing=1.1)
+
+    text(slide, 0.72, 4.58, 6.35, 0.62,
+         "证据：同一个 t2s.v_my_course_stats，alice 看到 5 门课，bob 只看到 2 门\n"
+         "（DB viewer、OS editor）；视图内按 app.user_id 过滤，不依赖前端拼条件。",
+         size=10.8, color=GREEN, spacing=1.18)
+    picture_fit(slide, "15-permission-denied.png", 0.72, 5.32, 3.55, 1.5,
+                crop=(0.0, 0.0, 0.585, 0.47))
+    text(slide, 4.5, 5.4, 2.6, 1.3,
+         "bob 是数据库课程 viewer，\n直接访问编辑页被 403。\n"
+         "RLS 对比实验用同一规则\n验证数据库层过滤。", size=10, color=MUTED, spacing=1.18)
+    notes(slide, "1:10 先讲矩阵，再讲三层防护：应用层 403、SQL 作用域、视图与只读角色；"
+                 "现场可展示 bob 被拒页面。")
 
 
-def slide_ai(prs):
+def slide_tx(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    header(slide, "15 / AI 协作", "哪些交给 AI，哪些必须自己判断", 16)
+    header(slide, "06 / 事务与并发 · 1:00", "一次导入只写一次：确认阶段全有或全无", 7)
 
-    rows = [
-        ["被否方案", "最终选择", "原因"],
-        ["把向量检索作为核心", "经典关系模型 + 可选向量", "作业要求实体、联系、SQL"],
-        ["会话冗余 owner_id", "经 source 追溯", "避免传递依赖"],
-        ["生成列存 content_hash", "md5 表达式索引", "避免 3NF 争议"],
-        ["仅按 annotation_id 唯一", "(user_id, annotation_id)", "多人可各自复习"],
-        ["只靠 prompt 保护 T2SQL", "只读角色 + 视图", "数据库层兜底"],
-        ["AI 建议直接入库", "人工确认 + 复用总结批注", "避免污染与重复表"],
-        ["中文全文检索", "pg_trgm + ILIKE", "中文分词不可靠"],
-        ["先修图只在应用层防环", "触发器递归 CTE", "所有写入入口共享约束"],
-        ["直接用 RLS 替换权限视图", "视图为主 + RLS 对比实验", "策略维护与属主绕过成本"],
-        ["全表审计复制旧值/新值", "只审计结构表的元数据", "隐私边界与管理员可见性"],
-        ["管理员自由 SQL 观测面板", "白名单指标 + 执行计划", "可观测不等于可读内容"],
+    steps = [
+        ("1", "上传", "JSON / MD\n≤ 5 MB"),
+        ("2", "解析校验", "字段、角色\n时间、上限"),
+        ("3", "预览", "JSONB + token\n30 分钟"),
+        ("4", "勾选归类", "课程 / 标签\n查重状态"),
+        ("5", "单事务入库", "FOR UPDATE\nadvisory lock"),
     ]
-    table(slide, 0.72, 1.62, 8.1, 3.9, rows, [3.25, 2.65, 2.2], font_size=9.5, header_size=9.5)
+    for index, (number, name, body) in enumerate(steps):
+        x = 0.72 + index * 2.47
+        rect(slide, x, 1.58, 2.15, 1.4, WHITE, radius=True, line=LINE, width=0.7)
+        text(slide, x + 0.16, 1.68, 0.4, 0.34, number, size=17, bold=True, color=RUST)
+        text(slide, x + 0.58, 1.7, 1.45, 0.3, name, size=12, bold=True, color=INK)
+        text(slide, x + 0.16, 2.13, 1.85, 0.7, body, size=10, color=MUTED, spacing=1.15)
+        if index < len(steps) - 1:
+            text(slide, x + 2.12, 2.0, 0.36, 0.4, "→", size=14, bold=True, color=GREEN)
 
-    card(slide, 9.1, 1.62, 3.5, 1.55, "AI 擅长", "生成样板代码、补测试、\n审查 SQL 与文档一致性。", accent=GREEN)
-    card(slide, 9.1, 3.35, 3.5, 1.55, "人负责", "业务语义、权限边界、\n取舍理由与最终验收。", accent=RUST)
-    rect(slide, 0.72, 5.62, 11.88, 0.95, SOFT, radius=True)
-    text(slide, 0.95, 5.75, 11.4, 0.7,
-         "协作原则：AI 可以提出方案，但不能替代对数据模型与安全边界的判断；\n"
-         "每一次拒绝与修正都记录在 docs/ai-collaboration.md。", size=12.5, color=GREEN)
-    notes(slide, "30 秒：举 2 个被否方案，说明人机分工；不把 AI 生成当作正确性证明。")
+    code_block(slide, 0.72, 3.16, 6.55, 1.7,
+               "BEGIN;\n"
+               "SELECT status FROM app.import_batches\n"
+               " WHERE id = %(batch)s FOR UPDATE;      -- 防重复确认\n"
+               "SELECT pg_advisory_xact_lock(%(source_id)s);\n"
+               "INSERT INTO app.messages ...\n"
+               "  ON CONFLICT (conversation_id, seq_no) DO NOTHING;\n"
+               "COMMIT;                                -- 任一步失败整体回滚", size=9.6)
+
+    bullets(slide, 0.72, 5.1, 6.55, 1.35, [
+        "会话按 (source_id, external_id) 更新标题；消息按序号跳过",
+        "实测：INSERT 0 1（更新 1 行）、INSERT 0 0（重复消息）",
+        "5 个批次共 30 会话 / 420 消息，重复确认后计数不变",
+    ], size=10.5, gap=3)
+
+    text(slide, 7.5, 3.12, 5.1, 0.3, "复习打卡：先锁行，再写回新间隔", size=11.5, bold=True, color=GREEN)
+    code_block(slide, 7.5, 3.52, 5.1, 1.85,
+               "SELECT ... FROM app.review_items\n"
+               " WHERE id = %(id)s FOR UPDATE;\n"
+               "-- 应用层用 FSRS 计算 good 评分\n"
+               "UPDATE app.review_items\n"
+               "   SET interval_days = 16,\n"
+               "       due_date = current_date + 16,\n"
+               "       fsrs_stability = 16.0835\n"
+               " WHERE id = %(id)s AND user_id = %(uid)s;", size=9.2)
+    text(slide, 7.5, 5.55, 5.1, 0.95,
+         "示例：逾期 8 天后复习，间隔 1 天 → 16 天；\n"
+         "数据库只保存调度结果，避免并发打卡互相覆盖。", size=10.2, color=MUTED, spacing=1.15)
+    notes(slide, "1:00 讲预览不落业务表、确认单事务；两个锁的作用；ON CONFLICT 的幂等结果；"
+                 "最后 15 秒讲复习打卡的 FOR UPDATE。")
+
+
+def slide_triggers(prs):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    header(slide, "07 / 触发器、审计与观测 · 0:50", "约束不只写在应用里：数据库自己拒绝坏数据", 8)
+
+    card(slide, 0.72, 1.58, 5.8, 1.42, "先修边防环",
+         "写入前从后继出发递归展开，能回到先修就 RAISE。\n32 条边构成 DAG，视图实时算闭包，不落冗余表。",
+         number="01")
+    card(slide, 6.82, 1.58, 5.8, 1.42, "每门课恰好一个 owner",
+         "部分唯一索引阻止“多于 1”；延迟约束触发器在事务结束时\n检查“至少 1”，破坏时返回 SQLSTATE 23514。",
+         number="02", accent=RUST)
+    card(slide, 0.72, 3.18, 5.8, 1.42, "审计只记元数据",
+         "3 张结构表的 AFTER 触发器：表名、动作、主键、变更列名；\n不保存列值，password_hash 显式排除。",
+         number="03", accent=GREEN_DARK)
+    card(slide, 6.82, 3.18, 5.8, 1.42, "只读观测",
+         "管理员只读 pg_stat_* 与白名单 EXPLAIN(JSON)；\n应用角色对 audit_log 可读不可写（can_insert = f）。",
+         number="04", accent=RUST)
+
+    code_block(slide, 0.72, 4.86, 11.9, 1.42,
+               "-- 变更列 = 新旧行 JSONB 的键差异，只存列名\n"
+               "changed := (SELECT array_agg(key)\n"
+               "              FROM jsonb_each(to_jsonb(NEW)) n\n"
+               "             WHERE n.value IS DISTINCT FROM (to_jsonb(OLD) -> n.key));\n"
+               "INSERT INTO app.audit_log (table_name, action, row_pk, changed_columns) ...",
+               size=9.6)
+    notes(slide, "0:50 四个约束各一句；强调触发器只做结构校验与元数据审计，不复制业务数据，"
+                 "因此管理员可观测但读不到正文。")
 
 
 def slide_end(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     rect(slide, 0, 0, W, H, GREEN_DARK)
-    text(slide, 0.85, 0.8, 7.6, 0.32, "16 / 结论", size=12, bold=True,
-         color=RGBColor(0xD9, 0xC8, 0xA8))
-    text(slide, 0.85, 1.45, 8.3, 0.9, "一个可运行、可验证、可复现的\n数据库课程项目", size=34, bold=True,
+    text(slide, 0.85, 0.78, 7.6, 0.32, "08 / 结论", size=12, bold=True, color=CREAM)
+    text(slide, 0.85, 1.35, 8.6, 0.9, "一个可执行、可复现的\n数据库课程项目", size=33, bold=True,
          color=WHITE, spacing=1.18)
 
-    left = [
-        "8 个核心实体，16 张表，完整 E-R 与范式分析",
-        "导入、检索、批注、复习、统计、导出的闭环",
-        "令牌 + 扩展 + 平台导出，离线也可读可复习",
-        "标签先修图：触发器防环 + 递归闭包",
-        "Text2SQL 由只读视图与角色做最终兜底",
-        "结构变更可审计，数据库可观测但不越权读内容",
-        "279 项测试 + 42 项验收，全部通过",
-        "README 五条命令从零复现",
-    ]
-    bullets(slide, 0.85, 3.15, 6.4, 2.4, left, size=14, color=RGBColor(0xE8, 0xE3, 0xD3), gap=8,
-           bullet_color=RGBColor(0xD9, 0xC8, 0xA8))
+    stats = [("17", "张表 / 15 视图"), ("10", "个触发器"), ("54", "个索引"), ("23", "条 showcase SQL")]
+    for index, (value, label) in enumerate(stats):
+        x = 0.85 + index * 1.78
+        rect(slide, x, 2.95, 1.62, 1.15, RGBColor(0x2B, 0x50, 0x44), radius=True)
+        text(slide, x + 0.12, 3.05, 1.4, 0.5, value, size=24, bold=True, color=WHITE)
+        text(slide, x + 0.12, 3.62, 1.4, 0.32, label, size=8.5, color=CREAM)
 
-    rect(slide, 7.55, 1.55, 5.0, 4.0, RGBColor(0x2B, 0x50, 0x44), radius=True)
-    text(slide, 7.82, 1.78, 4.45, 0.32, "已知限制", size=13, bold=True,
-         color=RGBColor(0xD9, 0xC8, 0xA8))
-    limitations = [
+    bullets(slide, 0.85, 4.45, 6.6, 2.2, [
+        "关系模型、约束与范式取舍都能在 DDL 中找到依据",
+        "关键查询覆盖窗口、CTE、LATERAL、DISTINCT ON、递归",
+        "每条结果来自 sql/showcase.sql，42 项验收检查可复跑",
+    ], size=13, color=PALE, gap=8, bullet_color=CREAM)
+
+    rect(slide, 7.85, 1.4, 4.6, 4.35, RGBColor(0x2B, 0x50, 0x44), radius=True)
+    text(slide, 8.08, 1.62, 4.15, 0.32, "已知限制", size=12.5, bold=True, color=CREAM)
+    bullets(slide, 8.08, 2.12, 4.1, 3.2, [
         "单机课程项目，未做分布式与高并发",
-        "420 条消息下规划器通常选顺序扫描",
-        "默认离线 mock，配置 Key 后走真实模型",
-        "演示数据为模拟问答，不含真实个人信息",
-    ]
-    bullets(slide, 7.82, 2.3, 4.35, 2.6, limitations, size=11.5,
-           color=RGBColor(0xC9, 0xD3, 0xCB), gap=8,
-           bullet_color=RGBColor(0xB4, 0x69, 0x3F))
+        "420 行数据下多数查询走顺序扫描",
+        "模拟数据，不含真实个人信息",
+        "AI 能力可选，未配置时走规则模式",
+    ], size=10.8, color=RGBColor(0xC9, 0xD3, 0xCB), gap=9,
+        bullet_color=RGBColor(0xB4, 0x69, 0x3F))
 
-    text(slide, 0.85, 6.35, 6.0, 0.5, "谢谢，欢迎提问", size=20, bold=True, color=WHITE)
-    text(slide, 0.85, 6.9, 8.5, 0.3,
-         "docs/report.md · docs/design.md · docs/demo-script.md · data/verification/report.json",
+    text(slide, 0.85, 6.4, 6.0, 0.5, "谢谢，欢迎提问", size=20, bold=True, color=WHITE)
+    text(slide, 0.85, 6.95, 9.0, 0.3,
+         "sql/showcase.sql · docs/sql-showcase.md · docs/design.md · docs/report.md",
          size=9.5, color=RGBColor(0x9F, 0xB3, 0xA6))
-    notes(slide, "收尾 15 秒：一句结论 + 主动说明限制，然后把画面交给报告或 Q&A。")
+    notes(slide, "0:25 一句结论 + 主动说明限制：不把 AI 与在线演示作为正确性证明，"
+                 "所有数据库结论都可本地复跑。")
 
 
 def build() -> Path:
     prs = Presentation()
     prs.slide_width = Inches(W)
     prs.slide_height = Inches(H)
-    prs.core_properties.title = "个人学习空间：把聊天记录变成可复习的课程资料"
+    prs.core_properties.title = "个人学习空间：数据库设计阶段性汇报"
     prs.core_properties.author = "《数据库系统概论》大作业"
     prs.core_properties.subject = "选题 2 · 数据库应用系统"
-    prs.core_properties.keywords = "PostgreSQL, FastAPI, Text2SQL, E-R, 数据库设计"
+    prs.core_properties.keywords = "PostgreSQL, E-R, SQL, 索引, 事务, 触发器, 权限"
 
     title_slide(prs)
-    slide_why(prs)
-    slide_scope(prs)
-    slide_data(prs)
-    slide_er(prs)
+    slide_model(prs)
     slide_schema(prs)
-    slide_norm(prs)
-    slide_import(prs)
-    slide_search(prs)
-    slide_review(prs)
-    slide_graph(prs)
-    slide_stats(prs)
-    slide_t2s(prs)
+    slide_queries(prs)
+    slide_index(prs)
     slide_permissions(prs)
-    slide_tests(prs)
-    slide_ai(prs)
+    slide_tx(prs)
+    slide_triggers(prs)
     slide_end(prs)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
@@ -766,4 +579,4 @@ def build() -> Path:
 
 if __name__ == "__main__":
     path = build()
-    print(f"已生成 {path.relative_to(ROOT)}（17 页）")
+    print(f"已生成 {path.relative_to(ROOT)}（9 页，8 分钟版）")

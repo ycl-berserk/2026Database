@@ -1,0 +1,117 @@
+{
+  "k": 10,
+  "cases": [
+    {
+      "id": "db-isolation",
+      "query": "脏读、不可重复读和幻读",
+      "expected": [
+        "db-01-03"
+      ]
+    },
+    {
+      "id": "db-trgm-index",
+      "query": "两侧通配无法利用前缀定位",
+      "expected": [
+        "db-01-02"
+      ]
+    },
+    {
+      "id": "db-clause-order",
+      "query": "逻辑执行顺序是 FROM",
+      "expected": [
+        "db-01-01"
+      ]
+    },
+    {
+      "id": "db-normal-form",
+      "query": "3NF 消除非主属性",
+      "expected": [
+        "db-01-04"
+      ]
+    },
+    {
+      "id": "db-view-security",
+      "query": "视图权限授予只读角色",
+      "expected": [
+        "db-01-05"
+      ]
+    },
+    {
+      "id": "db-import-lock",
+      "query": "pg_advisory_xact_lock",
+      "expected": [
+        "db-01-06"
+      ]
+    },
+    {
+      "id": "os-scheduling",
+      "query": "时间片保证响应性",
+      "expected": [
+        "os-02-02"
+      ]
+    },
+    {
+      "id": "os-deadlock",
+      "query": "占有并等待",
+      "expected": [
+        "os-02-03"
+      ]
+    },
+    {
+      "id": "os-paging",
+      "query": "TLB 缓存最近的映射",
+      "expected": [
+        "os-02-04"
+      ]
+    },
+    {
+      "id": "os-page-replace",
+      "query": "Belady 异常",
+      "expected": [
+        "os-02-05"
+      ]
+    },
+    {
+      "id": "os-inode",
+      "query": "硬链接就是多个目录项",
+      "expected": [
+        "os-02-06"
+      ]
+    },
+    {
+      "id": "ds-balanced-tree",
+      "query": "AVL 更严格平衡",
+      "expected": [
+        "ds-05-03"
+      ]
+    },
+    {
+      "id": "ds-shortest-path",
+      "query": "负权可用 Bellman-Ford",
+      "expected": [
+        "ds-05-05"
+      ]
+    },
+    {
+      "id": "ml-cross-validation",
+      "query": "分层 K 折",
+      "expected": [
+        "ml-04-02"
+      ]
+    },
+    {
+      "id": "ml-imbalance",
+      "query": "欺诈检测更关注召回",
+      "expected": [
+        "ml-04-06"
+      ]
+    },
+    {
+      "id": "ml-ensemble",
+      "query": "随机森林并行训练",
+      "expected": [
+        "ml-04-05"
+      ]
+    }
+  ]
+}

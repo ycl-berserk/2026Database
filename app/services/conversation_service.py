@@ -112,6 +112,19 @@ def rrf_fuse(rank_lists: list[list[int]], k: int | None = None) -> list[int]:
     return sorted(scores, key=lambda conversation_id: (-scores[conversation_id], conversation_id))
 
 
+def _supports_iterative_scan(conn) -> bool:
+    row = conn.execute(
+        "SELECT extversion FROM pg_extension WHERE extname = 'vector'"
+    ).fetchone()
+    if not row:
+        return False
+    try:
+        major, minor = (int(part) for part in str(row["extversion"]).split(".")[:2])
+    except (TypeError, ValueError):
+        return False
+    return (major, minor) >= (0, 8)
+
+
 def _hybrid_candidates(conn, filters_sql: str, params: dict, q: str, vector: list[float]):
     lexical = conn.execute(
         f"""
@@ -138,21 +151,50 @@ def _hybrid_candidates(conn, filters_sql: str, params: dict, q: str, vector: lis
         """,
         params,
     ).fetchall()
-    vector_rows = conn.execute(
-        f"""
-        SELECT m.conversation_id AS id
-          FROM app.messages m
-          JOIN app.conversations v ON v.id = m.conversation_id
-          JOIN app.sources s ON s.id = v.source_id
-          LEFT JOIN app.courses c ON c.id = v.course_id
-         WHERE m.embedding IS NOT NULL
-           AND {filters_sql}
-         GROUP BY m.conversation_id
-         ORDER BY min(m.embedding <=> %(vector)s::vector)
+
+    iterative_scan = _supports_iterative_scan(conn)
+    ann_limit = (
+        max(settings.hybrid_candidate_limit * 5, 200)
+        if iterative_scan
+        else 2_147_483_647
+    )
+    vector_sql = f"""
+        WITH near AS (
+            SELECT m.conversation_id AS id,
+                   m.embedding <=> %(vector)s::vector AS distance
+              FROM app.messages m
+              JOIN app.conversations v ON v.id = m.conversation_id
+              JOIN app.sources s ON s.id = v.source_id
+              LEFT JOIN app.courses c ON c.id = v.course_id
+             WHERE m.embedding IS NOT NULL
+               AND {filters_sql}
+             ORDER BY m.embedding <=> %(vector)s::vector
+             LIMIT %(ann_limit)s
+        )
+        SELECT id
+          FROM near
+         GROUP BY id
+         ORDER BY min(distance), id
          LIMIT %(candidate_limit)s
-        """,
-        {**params, "vector": embedding_service.vector_literal(vector)},
-    ).fetchall()
+    """
+    vector_params = {
+        **params,
+        "vector": embedding_service.vector_literal(vector),
+        "ann_limit": ann_limit,
+    }
+    if iterative_scan:
+        # 过滤条件在 ANN 扫描中生效；候选不足时继续向后扫描，避免“先取全局 top-k 再过滤”导致召回为空。
+        with conn.transaction():
+            conn.execute(
+                "SELECT set_config('hnsw.iterative_scan', 'relaxed_order', true)"
+            )
+            conn.execute(
+                "SELECT set_config('hnsw.ef_search', %s, true)",
+                (str(settings.hybrid_ef_search),),
+            )
+            vector_rows = conn.execute(vector_sql, vector_params).fetchall()
+    else:
+        vector_rows = conn.execute(vector_sql, vector_params).fetchall()
     return [row["id"] for row in lexical], [row["id"] for row in vector_rows]
 
 
@@ -225,7 +267,7 @@ def list_conversations(
             )"""
         )
 
-    if q and query_vector is None:
+    if q and query_vector is None and settings.hybrid_search_enabled:
         query_vector = embedding_service.embed_query(q)
     hybrid = bool(q and query_vector and settings.hybrid_search_enabled)
 

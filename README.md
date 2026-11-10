@@ -36,6 +36,54 @@
 
 > PWA 安装与 Service Worker 只在 `localhost` 或 HTTPS 下启用；通过局域网 HTTP 访问手机时仍可使用完整响应式界面，但不会缓存静态资源。
 
+## 答辩重点：从向量数据库借鉴的三个工程思路
+
+我们没有为了“用上向量数据库”而新增独立服务，而是把向量数据库领域真正影响**召回质量**与**调用成本**的三个机制，落进现有的 PostgreSQL + pgvector。组员汇报检索部分时，建议把这一节作为主线，而不是只念“用了 HNSW”。
+
+### 1. 过滤感知的 ANN 迭代扫描（filtered ANN）
+
+**问题**：学习空间的检索一定先按“本人来源或共享课程、课程、标签、日期”过滤，再在可见消息里找近邻。普通 HNSW 的做法是先取全局 Top-K 再过滤；当过滤条件很强时，返回的可见候选可能不足 K 条，甚至为空。
+
+**做法**：升级到 pgvector 0.8 后，候选查询在 HNSW 扫描阶段启用 `hnsw.iterative_scan = relaxed_order`，过滤条件不满足时继续向后扫描，直到凑够候选；`hnsw.ef_search` 通过 `HYBRID_EF_SEARCH` 可调（默认 100）。查询先在**消息级**取 Top-N 近邻，再按 `conversation_id` 折叠成会话候选，避免长会话“一条消息一个候选”挤占名额。
+
+**降级**：代码会读取 `pg_extension` 的 `vector` 版本；低于 0.8 或扩展不存在时，自动回到“先分组再排序”的兼容查询，不影响词法检索。
+
+**代码**：`app/services/conversation_service.py` 中的 `_supports_iterative_scan()` 与 `_hybrid_candidates()`。
+
+**一句话汇报**：我们不是“有向量索引”，而是“带权限过滤后仍能取满候选的 ANN”。
+
+### 2. 检索质量可度量（Recall@K / MRR）
+
+**问题**：只说“混合检索更准”无法验收；需要有固定问题集、固定目标会话和可重复的指标。
+
+**做法**：新增 `data/retrieval_eval.json`（16 个从演示会话抽取的金标准片段，目标用稳定的 `external_id` 标注）和 `scripts/evaluate_retrieval.py`。脚本对同一批片段分别跑词法检索与混合检索，统计 `Recall@K` 与 `MRR`，并输出每个用例的排名；目标会话不在演示库、或未配置向量模型时，会逐项跳过并明确提示，不会伪造结果。结果写入 `data/verification/retrieval_eval.json`。金标准片段首先是回归基线：词法路径在演示库上应当是 100% 命中；一旦分词、索引或权限过滤改动导致某个片段掉出 Top-K，脚本会立刻暴露问题。
+
+```bash
+python scripts/evaluate_retrieval.py --user alice --k 10
+```
+
+**代码**：`app/services/retrieval_eval_service.py`、`scripts/evaluate_retrieval.py`。
+
+**一句话汇报**：检索效果不是“感觉更准”，而是有 Recall@10 和 MRR 的对照数据。
+
+### 3. 内容哈希复用与增量 embedding
+
+**问题**：嵌入接口按文本计费。重复导入、同一句话出现在多个会话、或者只改了一条消息时，不应该把所有消息重新算一遍向量。
+
+**做法**：
+- 只回填 `embedding IS NULL` 或 `embedding_model` 与当前模型不一致的消息；
+- 对规范化后的正文（去掉首尾空白、截断到 6000 字）计算 SHA-256，同一批次内相同内容只请求一次，再把同一个向量写给所有重复消息；
+- `embed_texts()` 内部再按“服务地址 + 模型 + 内容哈希”维护 512 条进程内 LRU，跨批次复用最近算过的内容；
+- `backfill()` 返回 `reused` 数量，搜索页的手动补齐可以直接观察“本次写入 N 条、复用 M 条”。
+
+**代码**：`app/services/embedding_service.py` 中的 `content_hash()`、`embed_texts()` 与 `backfill()`。
+
+**一句话汇报**：向量不是每次重算，而是“增量 + 内容寻址复用”，既省钱又保证同一模型下相同文本得到相同向量。
+
+### 为什么仍然不引入独立向量数据库
+
+当前演示库约 420 条消息、1536 维，pgvector 与业务表在同一个 PostgreSQL 里，天然共享事务、外键、角色权限、备份和迁移；独立向量库反而要额外维护数据同步、双写一致性和另一套权限。**在百万级 chunk、多租户高并发或需要多副本向量检索之前，不值得引入 Qdrant / Milvus 一类服务。** 同样暂不做文档切块、量化压缩和独立向量微服务——它们解决的是更大规模下的问题，不是当前课程的瓶颈；等数据量和查询模式真正越过分界线，再按“先 pgvectorscale、后独立服务”的顺序演进。
+
 ## 桌面版（个人模式）
 
 不想装 Docker / Python / PostgreSQL 时，直接用桌面安装包：每个用户的数据只保存在自己的电脑上，不运行服务器。安装包由 `Desktop packaging` workflow 构建，产物名为 `Learning Space_<版本>_x64-setup.exe`（Windows）与 `Learning Space_<版本>_aarch64.dmg`（Apple Silicon）。

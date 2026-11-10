@@ -405,11 +405,11 @@ PostgreSQL 内置的 `to_tsvector` 对中文没有词典分词，直接把整段
 
 - 迁移 004 引入 `vector` 扩展、`messages.embedding vector(1536)` 与 HNSW cosine 索引；
 - 词法候选：标题/正文 `ILIKE` + 时间排序，最多 100 个会话；
-- 向量候选：按会话取与查询向量最相似的消息，`GROUP BY` 后最多 100 个会话；
+- 向量候选：pgvector 0.8+ 启用 `hnsw.iterative_scan=relaxed_order`，过滤条件下推后继续扫描；先在消息级取 Top-N 近邻，再按会话折叠，最多 100 个会话；
 - RRF 融合：每个候选得分 `Σ 1/(60 + rank)`，两路都出现的会话自然靠前；
 - 两路候选共用同一段可见性条件（本人来源或课程成员），向量列永不出现在 `t2s` 视图中。
 
-阈值和模型都可配置：`EMBEDDING_MODEL`、`EMBEDDING_DIM`、`HYBRID_SEARCH`。维度不符、未配置 Key、调用失败都会退回词法，不阻塞搜索。切换镜像、升级 libc 或重建排序规则后，需要对数据库执行 `REINDEX DATABASE`；`verify.schema.index_health` 会用索引查找逐项核对标签数据。
+阈值和模型都可配置：`EMBEDDING_MODEL`、`EMBEDDING_DIM`、`HYBRID_SEARCH`、`HYBRID_EF_SEARCH`。维度不符、未配置 Key、调用失败都会退回词法，不阻塞搜索。切换镜像、升级 libc 或重建排序规则后，需要对数据库执行 `REINDEX DATABASE`；`verify.schema.index_health` 会用索引查找逐项核对标签数据。
 
 ### 6.3 整理建议的数据落点
 

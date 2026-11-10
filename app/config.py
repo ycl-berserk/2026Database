@@ -144,6 +144,9 @@ class Settings:
     )
     hybrid_rrf_k: int = 60
     hybrid_candidate_limit: int = 100
+    hybrid_ef_search: int = field(
+        default_factory=lambda: max(1, min(int(os.getenv("HYBRID_EF_SEARCH", "100")), 1000))
+    )
 
     suggest_mode: str = field(
         default_factory=lambda: os.getenv("SUGGEST_MODE", "auto").lower()

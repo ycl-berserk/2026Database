@@ -53,6 +53,7 @@ def _with_embedding(**overrides):
     for name, value in overrides.items():
         object.__setattr__(settings, name, value)
     embedding_service._cached_query.cache_clear()
+    embedding_service.clear_embedding_cache()
     return original
 
 
@@ -121,6 +122,34 @@ def test_embed_texts_rejects_wrong_dimension(monkeypatch):
     try:
         with pytest.raises(embedding_service.EmbeddingError, match="维度"):
             embedding_service.embed_texts(["维度不对"])
+    finally:
+        _restore(original)
+
+
+def test_embed_texts_reuses_identical_content_by_hash(monkeypatch):
+    calls = []
+    payload = {"data": [{"index": 0, "embedding": [0.4, 0.4, 0.4]}]}
+    monkeypatch.setattr(
+        embedding_service.httpx,
+        "Client",
+        lambda timeout: _FakeClient([payload], calls),
+    )
+    original = _with_embedding(
+        embedding_mode="llm",
+        embedding_api_key="test-key",
+        embedding_dim=3,
+        hybrid_search_enabled=True,
+    )
+    try:
+        first = embedding_service.embed_texts(["同一段内容", "同一段内容"])
+        second = embedding_service.embed_texts(["同一段内容"])
+        assert first == [[0.4, 0.4, 0.4], [0.4, 0.4, 0.4]]
+        assert second == [[0.4, 0.4, 0.4]]
+        assert len(calls) == 1
+        assert calls[0][0]["input"] == ["同一段内容"]
+        assert embedding_service.content_hash(" 同一段内容\n") == (
+            embedding_service.content_hash("同一段内容")
+        )
     finally:
         _restore(original)
 

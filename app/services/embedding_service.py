@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import logging
+from collections import OrderedDict
 from collections.abc import Iterable
 from functools import lru_cache
 
@@ -9,6 +11,9 @@ import httpx
 from ..config import settings
 
 logger = logging.getLogger("learning_space")
+
+EMBED_CACHE_MAX = 512
+_EMBED_CACHE: OrderedDict[tuple[str, str, str], tuple[float, ...]] = OrderedDict()
 
 VISIBLE_MESSAGES = """
     FROM app.messages m
@@ -49,36 +54,89 @@ def _batches(items: list[str], size: int = 32) -> Iterable[list[str]]:
         yield items[start : start + size]
 
 
+def _normalized(text: str | None) -> str:
+    return (text or "").strip()[:6000] or " "
+
+
+def content_hash(text: str | None) -> str:
+    return hashlib.sha256(_normalized(text).encode("utf-8")).hexdigest()
+
+
+def _cache_key(digest: str) -> tuple[str, str, str]:
+    return (settings.embedding_base_url.rstrip("/"), settings.embedding_model, digest)
+
+
+def _cache_get(key: tuple[str, str, str]) -> tuple[float, ...] | None:
+    vector = _EMBED_CACHE.get(key)
+    if vector is not None:
+        _EMBED_CACHE.move_to_end(key)
+    return vector
+
+
+def _cache_put(key: tuple[str, str, str], vector: tuple[float, ...]) -> None:
+    _EMBED_CACHE[key] = vector
+    _EMBED_CACHE.move_to_end(key)
+    while len(_EMBED_CACHE) > EMBED_CACHE_MAX:
+        _EMBED_CACHE.popitem(last=False)
+
+
+def clear_embedding_cache() -> None:
+    _EMBED_CACHE.clear()
+
+
 def embed_texts(texts: list[str]) -> list[list[float]]:
     if not enabled():
         raise EmbeddingError("未配置向量模型")
-    cleaned = [(text or "").strip()[:6000] or " " for text in texts]
-    vectors: list[list[float]] = []
-    headers = {"Authorization": f"Bearer {settings.embedding_api_key}"}
-    url = f"{settings.embedding_base_url.rstrip('/')}/embeddings"
-    try:
-        with httpx.Client(timeout=20) as client:
-            for batch in _batches(cleaned):
-                response = client.post(
-                    url,
-                    json={"model": settings.embedding_model, "input": batch},
-                    headers=headers,
-                )
-                response.raise_for_status()
-                payload = response.json().get("data") or []
-                if len(payload) != len(batch):
-                    raise EmbeddingError("向量服务返回数量与请求不一致")
-                ordered = sorted(payload, key=lambda item: item.get("index", 0))
-                vectors.extend([float(value) for value in item["embedding"]] for item in ordered)
-    except (httpx.HTTPError, KeyError, TypeError, ValueError) as exc:
-        raise EmbeddingError(f"向量服务调用失败：{exc}") from exc
-    for vector in vectors:
+    cleaned = [_normalized(text) for text in texts]
+    digests = [content_hash(text) for text in cleaned]
+
+    vectors_by_hash: dict[str, tuple[float, ...]] = {}
+    pending: dict[str, str] = {}
+    for digest, text in zip(digests, cleaned, strict=False):
+        if digest in vectors_by_hash or digest in pending:
+            continue
+        cached = _cache_get(_cache_key(digest))
+        if cached is None:
+            pending[digest] = text
+        else:
+            vectors_by_hash[digest] = cached
+
+    if pending:
+        headers = {"Authorization": f"Bearer {settings.embedding_api_key}"}
+        url = f"{settings.embedding_base_url.rstrip('/')}/embeddings"
+        pending_digests = list(pending)
+        offset = 0
+        try:
+            with httpx.Client(timeout=20) as client:
+                for batch in _batches(list(pending.values())):
+                    response = client.post(
+                        url,
+                        json={"model": settings.embedding_model, "input": batch},
+                        headers=headers,
+                    )
+                    response.raise_for_status()
+                    payload = response.json().get("data") or []
+                    if len(payload) != len(batch):
+                        raise EmbeddingError("向量服务返回数量与请求不一致")
+                    ordered = sorted(payload, key=lambda item: item.get("index", 0))
+                    batch_digests = pending_digests[offset : offset + len(batch)]
+                    for digest, item in zip(batch_digests, ordered, strict=False):
+                        vectors_by_hash[digest] = tuple(
+                            float(value) for value in item["embedding"]
+                        )
+                    offset += len(batch)
+        except (httpx.HTTPError, KeyError, TypeError, ValueError) as exc:
+            raise EmbeddingError(f"向量服务调用失败：{exc}") from exc
+
+    for digest in digests:
+        vector = vectors_by_hash[digest]
         if len(vector) != settings.embedding_dim:
             raise EmbeddingError(
                 f"向量维度应为 {settings.embedding_dim}，实际 {len(vector)}；"
                 "请检查 EMBEDDING_MODEL 与 EMBEDDING_DIM"
             )
-    return vectors
+        _cache_put(_cache_key(digest), vector)
+    return [list(vectors_by_hash[digest]) for digest in digests]
 
 
 @lru_cache(maxsize=128)
@@ -140,10 +198,15 @@ def backfill(conn, user_id: int, limit: int = 64) -> dict:
         {"uid": user_id, "model": settings.embedding_model, "limit": limit},
     ).fetchall()
     if not rows:
-        return {"embedded": 0, "model": settings.embedding_model}
-    vectors = embed_texts([row["content"] for row in rows])
+        return {"embedded": 0, "reused": 0, "model": settings.embedding_model}
+    digests = [content_hash(row["content"]) for row in rows]
+    unique: dict[str, str] = {}
+    for digest, row in zip(digests, rows, strict=False):
+        unique.setdefault(digest, row["content"])
+    vectors = embed_texts(list(unique.values()))
+    by_hash = dict(zip(unique, vectors, strict=False))
     with conn.transaction():
-        for row, vector in zip(rows, vectors, strict=False):
+        for row, digest in zip(rows, digests, strict=False):
             conn.execute(
                 """
                 UPDATE app.messages
@@ -152,9 +215,13 @@ def backfill(conn, user_id: int, limit: int = 64) -> dict:
                        embedded_at = now()
                  WHERE id = %s
                 """,
-                (vector_literal(vector), settings.embedding_model, row["id"]),
+                (vector_literal(by_hash[digest]), settings.embedding_model, row["id"]),
             )
-    return {"embedded": len(rows), "model": settings.embedding_model}
+    return {
+        "embedded": len(rows),
+        "reused": len(rows) - len(unique),
+        "model": settings.embedding_model,
+    }
 
 
 def status(conn, user_id: int) -> dict:

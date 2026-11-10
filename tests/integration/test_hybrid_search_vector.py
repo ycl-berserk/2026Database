@@ -109,6 +109,22 @@ def test_hybrid_fuses_lexical_and_vector_candidates(conn, base):
     assert result["rows"][0]["title"] == "事务与隔离级别"
 
 
+def test_hybrid_search_falls_back_without_iterative_scan(conn, base, monkeypatch):
+    alice = base["users"]["alice"]
+    _store(conn, base["messages"]["db-1"], _vector(0))
+    _store(conn, base["messages"]["os-1"], _vector(1))
+    monkeypatch.setattr(
+        conversation_service, "_supports_iterative_scan", lambda _conn: False
+    )
+
+    result = conversation_service.list_conversations(
+        conn, alice, q="完全不存在的关键词xyz", query_vector=_vector(0)
+    )
+    assert result["retrieval"]["mode"] == "hybrid"
+    assert result["retrieval"]["candidates"]["vector"] == 2
+    assert [row["title"] for row in result["rows"]] == ["事务与隔离级别", "进程调度"]
+
+
 def test_without_query_vector_search_falls_back_to_lexical(conn, base):
     original_mode = settings.embedding_mode
     original_key = settings.embedding_api_key

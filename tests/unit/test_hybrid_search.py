@@ -52,7 +52,7 @@ def _with_embedding(**overrides):
     original = {name: getattr(settings, name) for name in overrides}
     for name, value in overrides.items():
         object.__setattr__(settings, name, value)
-    embedding_service._cached_query.cache_clear()
+    embedding_service.clear_query_cache()
     embedding_service.clear_embedding_cache()
     return original
 
@@ -168,11 +168,11 @@ def test_embed_query_is_cached(monkeypatch):
         embedding_dim=3,
         hybrid_search_enabled=True,
     )
-    embedding_service._cached_query.cache_clear()
+    embedding_service.clear_query_cache()
     try:
         assert embedding_service.embed_query("缓存问题") == [0.5, 0.5, 0.5]
         assert embedding_service.embed_query("缓存问题") == [0.5, 0.5, 0.5]
         assert len(calls) == 1
     finally:
-        embedding_service._cached_query.cache_clear()
+        embedding_service.clear_query_cache()
         _restore(original)

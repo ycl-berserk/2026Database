@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 from ..config import settings
 from ..errors import NotFoundError, PermissionDenied, ValidationError
 from ..permissions import get_course_role
-from . import embedding_service, tag_service
+from . import ai_settings_service, embedding_service, tag_service
 
 PAGE_SIZE = 10
 SENDERS = ("user", "assistant", "system")
@@ -268,7 +268,9 @@ def list_conversations(
         )
 
     if q and query_vector is None and settings.hybrid_search_enabled:
-        query_vector = embedding_service.embed_query(q)
+        query_vector = embedding_service.embed_query(
+            q, ai_settings_service.get_config(conn)
+        )
     hybrid = bool(q and query_vector and settings.hybrid_search_enabled)
 
     page = max(1, page)

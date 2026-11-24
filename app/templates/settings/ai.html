@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}AI 设置{% endblock %}
+{% block page_title %}AI 设置{% endblock %}
+{% block page_subtitle %}配置对话模型与向量模型。密钥加密保存，页面只显示掩码，修改后立即生效。{% endblock %}
+
+{% block topbar_actions %}
+  <a class="btn btn-ghost" href="/admin">返回管理</a>
+{% endblock %}
+
+{% block content %}
+{% if config.secrets_error %}
+  <div class="flash flash-error" role="alert">
+    <span>已保存的密钥无法用当前密钥解密（通常是 SESSION_SECRET / AI_SETTINGS_KEY 变更）。请重新填写并保存 API Key。</span>
+  </div>
+{% endif %}
+
+<form method="post" action="/settings/ai" data-ai-form>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>对话模型</h2>
+      <span class="chip {% if config.llm_enabled and config.llm_key_configured %}chip-ok{% elif config.llm_enabled %}chip-warn{% else %}chip-soft{% endif %}">
+        {% if not config.llm_enabled %}已停用{% elif config.llm_key_configured %}已配置{% else %}未配置 Key{% endif %}
+      </span>
+    </div>
+    <p class="muted">用于 AI 学习、整理建议与 Text2SQL。兼容 OpenAI 的 <code>/chat/completions</code> 接口。</p>
+
+    <label class="check-row">
+      <input type="checkbox" name="llm_enabled" {% if config.llm_enabled %}checked{% endif %}>
+      <span>启用对话模型</span>
+    </label>
+
+    <div class="form-grid">
+      <label class="field">
+        <span>Provider 预设</span>
+        <select data-preset="llm">
+          <option value="">自定义 / 保持当前</option>
+          <option value="deepseek">DeepSeek</option>
+          <option value="openai">OpenAI</option>
+          <option value="ollama">Ollama（本地）</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Base URL</span>
+        <input name="llm_base_url" value="{{ config.llm_base_url }}" maxlength="200" required>
+      </label>
+      <label class="field">
+        <span>模型名称</span>
+        <input name="llm_model" value="{{ config.llm_model }}" maxlength="120" required>
+      </label>
+      <label class="field">
+        <span>API Key</span>
+        <input name="llm_api_key" type="password" maxlength="4096" autocomplete="new-password"
+               placeholder="{% if config.llm_key_configured %}已保存：{{ config.llm_key_masked }}{% else %}未配置，请输入 API Key{% endif %}">
+        <small class="muted">
+          来源：{% if config.llm_key_source == 'database' %}数据库（加密）{% elif config.llm_key_source == 'environment' %}环境变量{% else %}未配置{% endif %}
+          · 留空表示保持现有密钥
+        </small>
+      </label>
+      <label class="check-row">
+        <input type="checkbox" name="clear_llm_key">
+        <span>清除已保存的对话模型 Key</span>
+      </label>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn" type="button" data-test="llm">测试连接</button>
+      <span class="test-status" data-test-status="llm" aria-live="polite"></span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>向量模型</h2>
+      <span class="chip {% if config.embedding_enabled and config.embedding_key_configured %}chip-ok{% elif config.embedding_enabled %}chip-warn{% else %}chip-soft{% endif %}">
+        {% if not config.embedding_enabled %}已停用{% elif config.embedding_key_configured %}已配置{% else %}未配置 Key{% endif %}
+      </span>
+    </div>
+    <p class="muted">
+      用于 pgvector 混合检索与 AI 学习的语义上下文。兼容 OpenAI 的 <code>/embeddings</code> 接口；
+      维度必须与数据库 <code>vector(1536)</code> 一致，当前建议保持 1536。
+    </p>
+
+    <label class="check-row">
+      <input type="checkbox" name="embedding_enabled" {% if config.embedding_enabled %}checked{% endif %}>
+      <span>启用向量模型</span>
+    </label>
+
+    <div class="form-grid">
+      <label class="field">
+        <span>Provider 预设</span>
+        <select data-preset="embedding">
+          <option value="">自定义 / 保持当前</option>
+          <option value="openai">OpenAI</option>
+          <option value="ollama">Ollama（本地）</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Base URL</span>
+        <input name="embedding_base_url" value="{{ config.embedding_base_url }}" maxlength="200" required>
+      </label>
+      <label class="field">
+        <span>模型名称</span>
+        <input name="embedding_model" value="{{ config.embedding_model }}" maxlength="120" required>
+      </label>
+      <label class="field">
+        <span>向量维度</span>
+        <input name="embedding_dim" type="number" min="1" max="4096" value="{{ config.embedding_dim }}" required>
+        <small class="muted">当前数据库列是 1536 维；改成其他维度后需要迁移表结构。</small>
+      </label>
+      <label class="field">
+        <span>API Key</span>
+        <input name="embedding_api_key" type="password" maxlength="4096" autocomplete="new-password"
+               placeholder="{% if config.embedding_key_configured %}已保存：{{ config.embedding_key_masked }}{% else %}未配置，请输入 API Key{% endif %}">
+        <small class="muted">
+          来源：{% if config.embedding_key_source == 'database' %}数据库（加密）{% elif config.embedding_key_source == 'environment' %}环境变量{% else %}未配置{% endif %}
+          · 留空表示保持现有密钥
+        </small>
+      </label>
+      <label class="check-row">
+        <input type="checkbox" name="clear_embedding_key">
+        <span>清除已保存的向量模型 Key</span>
+      </label>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn" type="button" data-test="embedding">测试连接</button>
+      <span class="test-status" data-test-status="embedding" aria-live="polite"></span>
+    </div>
+  </section>
+
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">保存设置</button>
+    <span class="muted hint">保存后无需重启；未配置时对应能力自动退回词法检索 / mock / 离线规则。</span>
+  </div>
+</form>
+
+<section class="panel">
+  <div class="panel-head"><h2>环境变量与安全</h2></div>
+  <ul class="plain-list muted">
+    <li>环境变量仍可强制降级：<code>SUGGEST_MODE={{ env.suggest_mode }}</code>、<code>TUTOR_MODE={{ env.tutor_mode }}</code>、<code>TEXT2SQL_MODE={{ env.text2sql_mode }}</code>、<code>EMBEDDING_MODE={{ env.embedding_mode }}</code>、<code>HYBRID_SEARCH={{ env.hybrid_search }}</code>。</li>
+    <li>密钥使用 PostgreSQL <code>pgcrypto</code>（AES-256）加密后写入 <code>app.ai_settings</code>；页面、日志和审计都不会返回明文。</li>
+    <li>解密密钥优先取 <code>AI_SETTINGS_KEY</code>，未设置时从 <code>SESSION_SECRET</code> 派生。更换这两个值后，需要在本页重新保存 Key。</li>
+    <li>测试连接只发送一个最小请求，不会把 Key 写入日志；失败时只返回 HTTP 状态或异常类型。</li>
+  </ul>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/ai-settings.js?v={{ asset_version }}"></script>
+{% endblock %}

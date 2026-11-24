@@ -219,6 +219,7 @@ def offline_page():
 
 from .routers import (  # noqa: E402
     admin,
+    ai_settings,
     annotations,
     api,
     auth,
@@ -260,3 +261,4 @@ app.include_router(reviews.router)
 app.include_router(stats.router)
 app.include_router(text2sql.router)
 app.include_router(admin.router)
+app.include_router(ai_settings.router)

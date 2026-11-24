@@ -20,6 +20,7 @@
 | 整理建议 | 配置大模型后可一键生成“会话摘要 + 标签建议”，只填入整理表单；用户检查并点击保存后才写入数据库。新标签按用户去重，摘要复用已有“总结”批注更新而非重复插入；无 Key 时按钮隐藏，表单仍可手动填写 |
 | 检索阅读 | 全局搜索（`/` 或 `Ctrl/Cmd+K`）、课程 / 标签 / 日期 / 关键词筛选、游标分页、消息上下文、关键词高亮、命中片段；配置向量模型后启用 pgvector + RRF 混合检索，否则自动退回词法检索 |
 | AI 学习 | 选择课程进入「理论答疑」或「出题练习」：上下文来自该课程已导入的全部平台对话；理论对话不改变掌握度，出题对话按知识点掌握度调整难度，作答评分后写入 1–10 分掌握度；无模型时退回离线检索、模板题与关键词覆盖评分 |
+| AI 设置 | 管理员图形化配置对话模型 / 向量模型：Provider 预设、Base URL、模型、API Key、掩码显示、测试连接、保存与清除；密钥使用 `pgcrypto` 加密存库，保存后立即生效 |
 | 批注与复习 | 笔记 / 疑问 / 纠错 / 总结四类批注、解决状态、加入复习队列、FSRS 风格四档评分调度（重来/困难/良好/容易）、逾期提示、掌握/重置、近 5 周复习热力图 |
 | 统计与导出 | 概览、课程排名、月度活跃补零、标签 TopN、批注解决率、复习状态、重复内容检测；统计 CSV、单会话 Markdown |
 | 用户与权限 | Session 登录、PBKDF2 密码哈希、CSRF、系统角色 + 课程角色、应用层与数据库层双重防护 |
@@ -238,7 +239,7 @@ ls import data/samples/qoder_db.json --course-code DB --json
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（244 单元 + 167 集成，共 411 项）；集成测试需先初始化测试库
+# 全量测试（244 单元 + 173 集成，共 417 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest
 
 # 静态检查与提交钩子（uv sync 已安装 Ruff / pyright / pre-commit）
@@ -287,7 +288,7 @@ node scripts/screenshots.mjs
 node scripts/extension_smoke.mjs
 ```
 
-> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、411 项测试、43 项验收与 12 项 Playwright E2E，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
+> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、417 项测试、43 项验收与 12 项 Playwright E2E，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
 
 ## 目录结构
 
@@ -330,7 +331,7 @@ learning-space/
 └── docs/                    # 报告、设计、需求、SQL 展示、桌面与移动端截图
 ```
 
-> 数据库共 19 张表：`schema.sql` 的 12 张基线表 + 迁移新增的 `review_logs`（复习事件流水，含评分与算法）、`api_tokens`（采集令牌，仅存 SHA-256）、`tag_edges`（知识先修关系）、`audit_log`（结构变更审计，只记元数据）、`user_onboarding`（新手指南收起状态）、`knowledge_mastery`（用户 × 课程 × 知识点的 1–10 分掌握度）与 `quiz_attempts`（出题、参考答案、作答与评分）。复习项在迁移 009 中增加 FSRS 稳定性/难度/遗忘次数；`t2s` 共 18 个视图，新增 `v_my_theory_conversations`、`v_my_quiz_conversations` 与 `v_my_knowledge_mastery`。
+> 数据库共 20 张表：`schema.sql` 的 12 张基线表 + 迁移新增的 `review_logs`（复习事件流水，含评分与算法）、`api_tokens`（采集令牌，仅存 SHA-256）、`tag_edges`（知识先修关系）、`audit_log`（结构变更审计，只记元数据）、`user_onboarding`（新手指南收起状态）、`knowledge_mastery`（用户 × 课程 × 知识点的 1–10 分掌握度）、`quiz_attempts`（出题、参考答案、作答与评分）与 `ai_settings`（AI 供应商配置，密钥加密）。复习项在迁移 009 中增加 FSRS 稳定性/难度/遗忘次数；`t2s` 共 18 个视图，新增 `v_my_theory_conversations`、`v_my_quiz_conversations` 与 `v_my_knowledge_mastery`。
 
 ## 数据与安全说明
 
@@ -351,6 +352,7 @@ learning-space/
 - **混合检索与隐私**：向量能力默认关闭。只有部署方配置 `EMBEDDING_API_KEY` 后，系统才会把可见消息正文发送到该嵌入服务；未配置时检索完全在本地数据库内完成。向量只用于本人可见范围，管理员没有向量召回入口。
 - **整理建议与隐私**：`SUGGEST_MODE=auto`（默认）下，只有配置了 `LLM_API_KEY` 且具备会话编辑权的用户点击「生成 AI 建议」时，系统才会把该会话前 40 条消息的节选发送到大模型；建议只回填表单，不自动写入。未配置 Key 时按钮隐藏，可手动填写标签与摘要。管理员没有该入口。
 - **AI 学习与隐私**：`TUTOR_MODE=auto` 时，只有配置了 `LLM_API_KEY` 才会把当前用户可见的该课程对话节选（最多 12 条、约 7000 字）发送给模型；出题、评分同理。未配置时使用离线检索、模板题与关键词覆盖评分，页面标注「AI：离线规则」。掌握度只按本人记录，共享课程中不读取他人的作答。
+- **AI 设置与密钥**：管理员在 `/settings/ai` 保存的 Key 使用 `pgcrypto` 加密存 `app.ai_settings`，页面只返回掩码；测试连接只发最小请求，不记录 Key。解密密钥优先 `AI_SETTINGS_KEY`，否则从 `SESSION_SECRET` 派生；两者轮换后需要重新保存 Key。普通学生没有设置入口。
 
 ## Text2SQL 两种模式
 
@@ -375,6 +377,18 @@ SQL 先经 `sqlglot` PostgreSQL 方言 AST 校验（单条 SELECT/WITH、拒绝�
 - `TUTOR_MODE=llm`：强制模型；调用失败时单次退回归则评分并提示，不会静默改分。
 
 离线模式的行为：理论答疑返回与该课程问题最相关的已导入对话片段；出题使用知识点模板题；评分按参考要点覆盖率估算 1–10 分，并在反馈中标注“离线规则评分”。页面顶栏始终显示 `AI：云端模型` 或 `AI：离线规则`。
+
+### AI 设置（图形化）
+
+管理员登录后，侧边栏「AI 设置」提供标准供应商配置：
+
+- **对话模型**：Provider 预设（DeepSeek / OpenAI / Ollama）、Base URL、模型、API Key、启用开关。
+- **向量模型**：Base URL、模型、维度、API Key、启用开关。
+- **测试连接**：只发送一个最小请求，返回 HTTP 状态、延迟或维度检查结果，不写入日志。
+- **密钥安全**：API Key 使用 PostgreSQL `pgcrypto`（AES-256）加密后写入 `app.ai_settings`；页面只显示 `••••末四位`，留空表示保持原密钥，勾选“清除”才删除。
+- **立即生效**：保存后无需重启。环境变量仍是默认值/强制降级开关（`SUGGEST_MODE`、`TUTOR_MODE`、`TEXT2SQL_MODE`、`EMBEDDING_MODE`、`HYBRID_SEARCH`）。
+
+桌面个人模式下本地管理员同时是学习者，可以直接配置；Web 多用户部署中这是部署级配置，普通学生只使用管理员配置的能力。
 
 ### 金标准评测
 

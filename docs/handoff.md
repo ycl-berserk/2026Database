@@ -3,7 +3,7 @@
 > 更新时间：2026-11-24
 > 当前基线：`main` @ `6bf030b feat(search): 引入过滤感知 ANN、召回评测与内容哈希复用`
 > 远程：`https://github.com/ycl-berserk/2026Database`
-> 工作区：当前分支 `feat/K4-mastery-tutor`，feat1 改动未提交；`main` 与 `origin/main` 仍同步。
+> 工作区：当前分支 `feat/K4-mastery-tutor`；feat1 已提交 `ebd6ce9`，K5 改动见本次提交；`main` 与 `origin/main` 仍同步。
 >
 > 给下一个对话的建议顺序：**本文件 → `README.md` 的“答辩重点” → `docs/report.md` → `docs/demo-script.md` → `docs/design.md`**。涉及具体任务时再读对应代码。
 
@@ -29,12 +29,12 @@
 
 | 指标 | 当前值 |
 | --- | --- |
-| 表 | 19 张（15 业务 + `audit_log` + `user_onboarding` + `knowledge_mastery` + `quiz_attempts`） |
+| 表 | 20 张（15 业务 + `audit_log` + `user_onboarding` + `knowledge_mastery` + `quiz_attempts` + `ai_settings`） |
 | `t2s` 只读视图 | 18 个，均使用 `security_barrier` |
 | 触发器 | 13 个 |
-| 索引 | 64 个 |
+| 索引 | 65 个 |
 | 知识先修边 | 32 条，6 个连通分量 |
-| pytest | 411 个（244 单元 + 167 集成） |
+| pytest | 417 个（244 单元 + 173 集成） |
 | Playwright E2E | 12 个带断言的用例 |
 | `scripts/verify.py` | 43/43 PASS |
 | 演示规模 | 5 门课、30 个会话、420 条消息、66 条批注、59 个标签、5 个导入批次 |
@@ -44,11 +44,11 @@
 ```bash
 .venv/Scripts/python.exe -m ruff check .        # 全绿
 .venv/Scripts/python.exe -m pyright app         # 0 errors
-.venv/Scripts/python.exe -m pytest -q           # 411 passed
+.venv/Scripts/python.exe -m pytest -q           # 417 passed
 .venv/Scripts/python.exe scripts/verify.py      # 43/43 PASS
 ```
 
-注：`docs/roadmap.md` 的测试数字与 E2E 数量已于 2026-11-24 对齐到 411 / 12，R1 也补记了三条向量工程机制；继续维护时以本文件第 2 节和 `scripts/verify.py` 输出为准。
+注：`docs/roadmap.md` 的测试数字与 E2E 数量已于 2026-11-24 对齐到 417 / 12，R1 也补记了三条向量工程机制；继续维护时以本文件第 2 节和 `scripts/verify.py` 输出为准。
 
 ---
 
@@ -68,7 +68,7 @@ app/
   mcp_server.py           stdio JSON-RPC MCP Server
 sql/
   schema.sql              基线 schema
-  migrations/             001–013 编号迁移
+  migrations/             001–014 编号迁移
   views/                  t2s 权限视图
 scripts/
   init_db.py              初始化演示库与 _test 库
@@ -105,7 +105,8 @@ tests/unit|integration|e2e/
 - 课程、来源、标签、收件箱、批量归类。
 - 批注四类（笔记/疑问/纠错/总结）、复习队列、FSRS 风格四档调度、5 周热力图。
 - 知识先修图：`tag_edges` DAG，递归 CTE 闭包、最短路径、触发器防环、SVG 可视化。
-- AI 学习（feat1）：`conversations.mode` 区分理论 / 出题两类对话；`knowledge_mastery` 保存用户 × 课程 × 知识点的 1–10 分掌握度；`quiz_attempts` 保存题目、参考答案与评分，评分触发器按 0.6×旧分 + 0.4×本次更新掌握度。应用内会话写入同一对 `conversations` / `messages` 基表，来源平台为 `learning_space`；`app.v_theory_dialogues` / `app.v_quiz_dialogues` 与 `t2s.v_my_theory_conversations` / `v_my_quiz_conversations` / `v_my_knowledge_mastery` 暴露两类对话与掌握度。无模型时使用离线检索、模板题与关键词覆盖评分。
+- AI 学习（K4）：`conversations.mode` 区分理论 / 出题两类对话；`knowledge_mastery` 保存用户 × 课程 × 知识点的 1–10 分掌握度；`quiz_attempts` 保存题目、参考答案与评分，评分触发器按 0.6×旧分 + 0.4×本次更新掌握度。应用内会话写入同一对 `conversations` / `messages` 基表，来源平台为 `learning_space`；配置向量模型后，上下文同时使用语义召回与词法兜底。
+- AI 设置（K5）：`/settings/ai` 管理端图形化配置对话模型 / 向量模型；`ai_settings` 单例表保存 Base URL、模型、启用开关与 `pgcrypto` 加密后的 Key；页面只显示末四位掩码，支持测试连接、保存与清除。环境变量仍是默认值与强制降级开关。
 - 单会话 Markdown、统计 CSV、本人全量 zip 导出。
 
 ### 4.3 检索与 AI
@@ -132,7 +133,8 @@ tests/unit|integration|e2e/
 ### 4.5 最近两次关键提交
 | 提交 | 内容 |
 | --- | --- |
-| `feat/K4-mastery-tutor`（工作区，未提交） | feat1：两类对话视图、知识点掌握度与 AI 学习 |
+| `feat/K4-mastery-tutor`（本次提交） | K5：图形化 AI 设置、pgcrypto 密钥加密与测试连接 |
+| `feat/K4-mastery-tutor`（已提交 `ebd6ce9`） | feat1：两类对话视图、知识点掌握度与 AI 学习 |
 | `6bf030b` | 过滤感知 ANN、Recall@K/MRR 评测、内容哈希复用、README 答辩重点 |
 | `d3d29c8` | 修复桌面版 Text2SQL 500：PyInstaller 收集 `sqlglot.dialects` |
 
@@ -201,8 +203,8 @@ npm run build
 
 ### P0：答辩材料与基线一致性
 
-1. **更新 `docs/roadmap.md` 的旧数字与状态**：已于 2026-11-24 完成（334 → 411 测试、11 → 12 项 E2E、R1 补记三条向量机制）。`docs/report.md` 与 `docs/汇报.pptx` 按用户要求暂未更新，答辩前如需一致再单独同步。
-2. **检查报告/PPT 与代码计数一致**：19 表、18 视图、13 触发器、64 索引、411 测试、43 验收；当前 `docs/report.md` 仍是旧基线，重新生成 PPT 前先决定是否同步。
+1. **更新 `docs/roadmap.md` 的旧数字与状态**：已于 2026-11-24 完成（334 → 417 测试、11 → 12 项 E2E、R1 补记三条向量机制）。`docs/report.md` 与 `docs/汇报.pptx` 按用户要求暂未更新，答辩前如需一致再单独同步。
+2. **检查报告/PPT 与代码计数一致**：20 表、18 视图、13 触发器、65 索引、417 测试、43 验收；当前 `docs/report.md` 仍是旧基线，重新生成 PPT 前先决定是否同步。
 3. **按 `docs/demo-script.md` 完整彩排 8 分钟版本**，重点确认两个现场操作：alice 403 / bob 2 条视图过滤；重复导入预览 6/84/new 0/dup 6。
 
 ### P1：直接增强现有差异化
@@ -262,6 +264,7 @@ npm run build
 - **“继续做检索”**：先读 `app/services/conversation_service.py`、`embedding_service.py`、`scripts/evaluate_retrieval.py`；确认 pgvector 版本与 `EMBEDDING_API_KEY` 是否配置；不要无评测就调参。
 - **“继续做 Text2SQL”**：先读 `app/services/text2sql_service.py`、`app/services/text2sql_eval_service.py`、`data/text2sql_eval.json`；跑 mock 评测再改。
 - **“继续做 AI 学习 / 掌握度”**：先读 `app/services/tutor_service.py`、`app/routers/tutor.py`、迁移 013 与 `sql/views.sql` 末尾三个 `t2s` 视图；离线用 `TUTOR_MODE=off` 跑 `tests/integration/test_tutor.py`，不要在没有评测的情况下改评分权重。
+- **“继续做 AI 设置 / 模型接入”**：先读 `app/services/ai_settings_service.py`、`app/routers/ai_settings.py`、迁移 014；密钥必须走 `pgcrypto`，页面只能返回掩码，测试连接不得记录 Key。
 - **“继续做桌面版”**：先读 `docs/desktop-packaging.md`、`packaging/sidecar/ls-server.spec`、`app/desktop.py`；改 `app/` 后必须重建 sidecar 并 `--smoke`。
 - **“准备答辩”**：直接基于 `docs/demo-script.md` 彩排；PPT 用 `scripts/build_ppt.py` 重新生成；所有数字以本文件第 2 节和 `scripts/verify.py` 输出为准。
 - **“还能加什么”**：先回答“答辩收益/维护成本”，再从上文 P1/P2 里选；不要为了技术名词引入独立向量库或微服务。

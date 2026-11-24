@@ -26,7 +26,7 @@ def test_retrieval_eval_compares_lexical_and_hybrid(conn, base, monkeypatch):
             base["messages"]["db-1"],
         ),
     )
-    monkeypatch.setattr(embedding_service, "embed_query", lambda _query: _vector())
+    monkeypatch.setattr(embedding_service, "embed_query", lambda _query, _config=None: _vector())
 
     report = retrieval_eval_service.evaluate(
         conn,

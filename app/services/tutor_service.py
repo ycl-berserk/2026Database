@@ -6,9 +6,11 @@ import re
 import uuid
 
 import httpx
+import psycopg
 
 from ..config import settings
 from ..errors import ConflictError, NotFoundError, SuggestError, ValidationError
+from . import ai_settings_service, embedding_service
 
 logger = logging.getLogger("learning_space")
 
@@ -32,22 +34,23 @@ _CJK_RE = re.compile(r"[0-9A-Za-z\u4e00-\u9fff]+")
 # ---------------------------------------------------------------------------
 # 模式与降级
 # ---------------------------------------------------------------------------
-def mode() -> str:
+def mode(conn=None) -> str:
     """返回 llm / off。不会因为缺少 Key 而报错，只会走离线规则。"""
     value = settings.tutor_mode
     if value in ("off", "false", "0"):
         return "off"
     if value == "llm":
         return "llm"
-    return "llm" if settings.llm_api_key else "off"
+    config = ai_settings_service.get_config(conn)
+    return "llm" if config.llm_enabled and config.llm_api_key else "off"
 
 
-def enabled() -> bool:
-    return mode() == "llm"
+def enabled(conn=None) -> bool:
+    return mode(conn) == "llm"
 
 
-def mode_label() -> str:
-    return "云端模型" if enabled() else "离线规则"
+def mode_label(conn=None) -> str:
+    return "云端模型" if enabled(conn) else "离线规则"
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +151,8 @@ def _like(value: str) -> str:
 def _context_rows(conn, user_id: int, course_id: int, tag_id: int | None, pattern: str | None):
     return conn.execute(
         f"""
-        SELECT v.id AS conversation_id, v.title, m.sender, m.content, m.created_at
+        SELECT m.id AS message_id, v.id AS conversation_id, v.title, m.sender,
+               m.content, m.created_at
           FROM app.messages m
           JOIN app.conversations v ON v.id = m.conversation_id
           JOIN app.sources s ON s.id = v.source_id
@@ -172,7 +176,70 @@ def _context_rows(conn, user_id: int, course_id: int, tag_id: int | None, patter
     ).fetchall()
 
 
-def _snippets(rows: list[dict]) -> list[dict]:
+def _supports_iterative_scan(conn) -> bool:
+    row = conn.execute(
+        "SELECT extversion FROM pg_extension WHERE extname = 'vector'"
+    ).fetchone()
+    if not row:
+        return False
+    try:
+        major, minor = (int(part) for part in str(row["extversion"]).split(".")[:2])
+    except (TypeError, ValueError):
+        return False
+    return (major, minor) >= (0, 8)
+
+
+def _semantic_rows(
+    conn,
+    user_id: int,
+    course_id: int,
+    tag_id: int | None,
+    vector: list[float],
+    limit: int = MAX_SNIPPETS,
+) -> list[dict]:
+    iterative = _supports_iterative_scan(conn)
+    ann_limit = max(limit * 5, 100) if iterative else 2_147_483_647
+    sql = f"""
+        WITH near AS (
+            SELECT m.id AS message_id, v.title, m.sender, m.content, m.created_at,
+                   m.embedding <=> %(vector)s::vector AS distance
+              FROM app.messages m
+              JOIN app.conversations v ON v.id = m.conversation_id
+              JOIN app.sources s ON s.id = v.source_id
+             WHERE m.embedding IS NOT NULL
+               AND v.course_id = %(course_id)s
+               AND v.mode = 'theory'
+               AND {_VISIBLE}
+               AND (%(tag_id)s::bigint IS NULL OR EXISTS (
+                    SELECT 1 FROM app.conversation_tags ct
+                     WHERE ct.conversation_id = v.id AND ct.tag_id = %(tag_id)s
+               ))
+             ORDER BY m.embedding <=> %(vector)s::vector
+             LIMIT %(ann_limit)s
+        )
+        SELECT message_id, title, sender, content, created_at
+          FROM near
+         ORDER BY distance
+         LIMIT %(limit)s
+    """
+    params = {
+        "uid": user_id,
+        "course_id": course_id,
+        "tag_id": tag_id,
+        "vector": embedding_service.vector_literal(vector),
+        "ann_limit": ann_limit,
+        "limit": limit,
+    }
+    if iterative:
+        with conn.transaction():
+            conn.execute(
+                "SELECT set_config('hnsw.iterative_scan', 'relaxed_order', true)"
+            )
+            return conn.execute(sql, params).fetchall()
+    return conn.execute(sql, params).fetchall()
+
+
+def _snippets(rows: list[dict], *, reverse: bool = True) -> list[dict]:
     picked: list[dict] = []
     total = 0
     for row in rows:
@@ -187,7 +254,7 @@ def _snippets(rows: list[dict]) -> list[dict]:
         picked.append({"title": row["title"], "sender": row["sender"], "content": text})
         if len(picked) >= MAX_SNIPPETS:
             break
-    return list(reversed(picked))
+    return list(reversed(picked)) if reverse else picked
 
 
 def build_context(
@@ -202,7 +269,35 @@ def build_context(
     rows = _context_rows(conn, user_id, course_id, tag_id, pattern)
     if pattern and not rows:
         rows = _context_rows(conn, user_id, course_id, tag_id, None)
-    snippets = _snippets(rows)
+
+    config = ai_settings_service.get_config(conn)
+    query_text = (query or "").strip()
+    if not query_text and tag_id is not None:
+        tag_row = conn.execute(
+            "SELECT name FROM app.tags WHERE id = %s", (tag_id,)
+        ).fetchone()
+        query_text = tag_row["name"] if tag_row else ""
+    semantic: list[dict] = []
+    if embedding_service.enabled(config) and query_text:
+        vector = embedding_service.embed_query(query_text, config)
+        if vector:
+            try:
+                semantic = _semantic_rows(
+                    conn, user_id, course_id, tag_id, vector
+                )
+            except psycopg.Error as exc:
+                logger.warning("语义上下文检索失败，退回词法：%s", exc)
+                semantic = []
+
+    combined: list[dict] = []
+    seen: set[int] = set()
+    for row in [*semantic, *rows]:
+        message_id = row["message_id"]
+        if message_id in seen:
+            continue
+        seen.add(message_id)
+        combined.append(row)
+    snippets = _snippets(combined, reverse=not semantic)
 
     mastery = course_mastery(conn, user_id, course_id)
     attempts = conn.execute(
@@ -263,18 +358,24 @@ def build_context(
 # ---------------------------------------------------------------------------
 # LLM 调用（OpenAI 兼容）
 # ---------------------------------------------------------------------------
-async def _chat(messages: list[dict], *, json_mode: bool = False, temperature: float = 0.3) -> str:
+async def _chat(
+    config: ai_settings_service.AIConfig,
+    messages: list[dict],
+    *,
+    json_mode: bool = False,
+    temperature: float = 0.3,
+) -> str:
     payload = {
-        "model": settings.llm_model,
+        "model": config.llm_model,
         "messages": messages,
         "temperature": temperature,
     }
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
-    headers = {"Authorization": f"Bearer {settings.llm_api_key}"}
+    headers = {"Authorization": f"Bearer {config.llm_api_key}"}
     async with httpx.AsyncClient(timeout=35) as client:
         response = await client.post(
-            f"{settings.llm_base_url.rstrip('/')}/chat/completions",
+            f"{config.llm_base_url.rstrip('/')}/chat/completions",
             json=payload,
             headers=headers,
         )
@@ -542,7 +643,8 @@ async def send_theory_message(conn, user: dict, conversation_id: int, content: s
         _append_message(conn, conversation_id, "user", text)
 
     context = build_context(conn, user["id"], session["course_id"], query=text)
-    if enabled():
+    config = ai_settings_service.get_config(conn)
+    if enabled(conn):
         prompt = (
             "你在帮助用户复习一门大学课程。只依据下面提供的课程对话上下文回答；"
             "上下文没有的信息要明确说“课程记录里没有”，不要编造。"
@@ -553,6 +655,7 @@ async def send_theory_message(conn, user: dict, conversation_id: int, content: s
         try:
             answer = _clean_text(
                 await _chat(
+                    config,
                     [
                         {
                             "role": "system",
@@ -572,7 +675,7 @@ async def send_theory_message(conn, user: dict, conversation_id: int, content: s
 
     with conn.transaction():
         message = _append_message(conn, conversation_id, "assistant", answer)
-    return {"message": message, "mode": mode_label()}
+    return {"message": message, "mode": mode_label(conn)}
 
 
 async def ask_question(
@@ -590,8 +693,9 @@ async def ask_question(
         raise ValidationError("请先回答当前题目，再生成下一题")
     tag = _pick_tag(conn, user["id"], session["course_id"], tag_id)
     context = build_context(conn, user["id"], session["course_id"], tag_id=tag["id"])
+    config = ai_settings_service.get_config(conn)
 
-    if enabled():
+    if enabled(conn):
         prompt = (
             "你是课程助教，要针对一个知识点出一道简答题。只依据下面提供的课程对话出题，"
             "不要出选择题，不要重复历史问题。掌握度低时出基础概念题，掌握度高时出对比/应用题。"
@@ -605,6 +709,7 @@ async def ask_question(
         try:
             data = _json_object(
                 await _chat(
+                    config,
                     [
                         {
                             "role": "system",
@@ -660,7 +765,7 @@ async def ask_question(
         "attempt_id": attempt["id"],
         "message": message,
         "tag": tag["name"],
-        "mode": mode_label(),
+        "mode": mode_label(conn),
     }
 
 
@@ -698,7 +803,8 @@ async def answer_question(
 
     score: int
     feedback: str
-    if enabled():
+    config = ai_settings_service.get_config(conn)
+    if enabled(conn):
         prompt = (
             "请根据参考答案和关键点，对学生的回答评分（1–10 的整数）。"
             "覆盖关键点、概念正确给高分；答非所问或事实错误给低分。"
@@ -711,6 +817,7 @@ async def answer_question(
         try:
             data = _json_object(
                 await _chat(
+                    config,
                     [
                         {
                             "role": "system",
@@ -766,7 +873,7 @@ async def answer_question(
         "answer": answer_message,
         "message": feedback_message,
         "mastery": mastery,
-        "mode": mode_label(),
+        "mode": mode_label(conn),
     }
 
 
@@ -806,7 +913,7 @@ def session_detail(conn, user: dict, conversation_id: int) -> dict:
         "knowledge_points": points,
         "mastery": mastery,
         "mastery_summary": mastery_summary(mastery),
-        "mode_label": mode_label(),
+        "mode_label": mode_label(conn),
     }
 
 

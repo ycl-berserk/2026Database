@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse
 
 from ..auth import require_learner, require_user, verify_csrf
 from ..db import get_conn
-from ..services import embedding_service, search_service
+from ..services import ai_settings_service, embedding_service, search_service
 from ..web import add_flash, form_text, render
 
 router = APIRouter(prefix="/search")
@@ -18,7 +18,9 @@ def search_page(request: Request, user=Depends(require_user), conn=Depends(get_c
     require_learner(user, "管理员不检索他人消息正文")
     q = (request.query_params.get("q") or "").strip()[:100]
     data = search_service.global_search(conn, user, q)
-    embedding = embedding_service.status(conn, user["id"])
+    embedding = embedding_service.status(
+        conn, user["id"], ai_settings_service.get_config(conn)
+    )
     total = (
         data["conversations"]["total"]
         + len(data["annotations"])
@@ -44,11 +46,12 @@ async def build_embeddings(
     verify_csrf(request, form_text(form, "csrf_token"))
     q = (form_text(form, "q") or "").strip()[:100]
     target = f"/search?q={quote(q)}" if q else "/search"
-    if not embedding_service.enabled():
+    config = ai_settings_service.get_config(conn)
+    if not embedding_service.enabled(config):
         add_flash(request, "未配置向量模型，继续使用词法检索", "info")
         return RedirectResponse(target, status_code=303)
     try:
-        result = embedding_service.backfill(conn, user["id"], limit=64)
+        result = embedding_service.backfill(conn, user["id"], limit=64, config=config)
     except embedding_service.EmbeddingError as exc:
         add_flash(request, f"向量索引更新失败：{exc}", "error")
     else:

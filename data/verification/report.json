@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-11-24T09:07:58+00:00",
+  "generated_at": "2026-11-24T14:48:27+00:00",
   "database": "learning_space",
   "summary": {
     "total": 43,
     "passed": 43,
     "failed": 0,
-    "duration_ms": 931
+    "duration_ms": 1245
   },
   "counts": {
     "users": 3,
@@ -30,66 +30,66 @@
   "checks": [
     {
       "key": "schema.tables",
-      "label": "Schema：19 张表与 18 个 t2s 视图",
+      "label": "Schema：20 张表与 18 个 t2s 视图",
       "status": "PASS",
-      "detail": "19 张表（15 业务 + 审计 + 引导 + 掌握度 + 答题记录）、18 个权限视图",
-      "elapsed_ms": 2
+      "detail": "20 张表（15 业务 + 审计 + 引导 + 掌握度 + 答题 + AI 设置）、18 个权限视图",
+      "elapsed_ms": 26
     },
     {
       "key": "schema.constraints",
       "label": "Schema：主外键、唯一/检查约束、索引与触发器",
       "status": "PASS",
       "detail": "唯一键、CHECK、部分唯一索引与 13 个触发器齐全",
-      "elapsed_ms": 2
+      "elapsed_ms": 14
     },
     {
       "key": "schema.index_health",
       "label": "Schema：索引与数据一致性（排序规则变更防护）",
       "status": "PASS",
       "detail": "59 个标签均可通过 tags_owner_name_unique 命中",
-      "elapsed_ms": 16
+      "elapsed_ms": 32
     },
     {
       "key": "data.counts",
       "label": "演示数据规模与来源标注",
       "status": "PASS",
       "detail": "3 用户 / 5 课程 / 30 会话 / 420 消息 / 66 批注 / 39 复习项 / 32 先修关系",
-      "elapsed_ms": 2
+      "elapsed_ms": 3
     },
     {
       "key": "data.import_batches",
       "label": "导入批次：状态与 payload 清理",
       "status": "PASS",
       "detail": "5 个批次均已导入，payload 已清理",
-      "elapsed_ms": 0
+      "elapsed_ms": 2
     },
     {
       "key": "data.inbox",
       "label": "演示数据：收件箱未归类会话",
       "status": "PASS",
       "detail": "收件箱保留 3 个未归类会话，供批量整理演示",
-      "elapsed_ms": 8
+      "elapsed_ms": 16
     },
     {
       "key": "auth.passwords",
       "label": "认证：演示账号密码哈希与校验",
       "status": "PASS",
       "detail": "PBKDF2 哈希校验通过，错误密码被拒绝",
-      "elapsed_ms": 340
+      "elapsed_ms": 327
     },
     {
       "key": "auth.roles",
       "label": "权限：课程角色 owner/editor/viewer",
       "status": "PASS",
       "detail": "owner/editor/viewer 三种课程角色判定正确",
-      "elapsed_ms": 2
+      "elapsed_ms": 3
     },
     {
       "key": "auth.scope",
       "label": "权限：会话可见范围按所有者/课程成员过滤",
       "status": "PASS",
       "detail": "alice 30 个会话，bob 仅看到共享课程中的 12 个",
-      "elapsed_ms": 2
+      "elapsed_ms": 4
     },
     {
       "key": "auth.denied",
@@ -103,21 +103,21 @@
       "label": "导入：重复文件预览与查重分类",
       "status": "PASS",
       "detail": "六个会话全部识别为 duplicate（内容哈希一致）",
-      "elapsed_ms": 6
+      "elapsed_ms": 20
     },
     {
       "key": "import.confirm",
       "label": "导入：确认入库幂等（ON CONFLICT 去重）",
       "status": "PASS",
       "detail": "重复确认新增 0 会话 / 0 消息，跳过 84 条",
-      "elapsed_ms": 19
+      "elapsed_ms": 27
     },
     {
       "key": "import.broken",
       "label": "导入：损坏文件校验拦截",
       "status": "PASS",
       "detail": "解析被拒绝，共 8 条错误",
-      "elapsed_ms": 0
+      "elapsed_ms": 4
     },
     {
       "key": "import.adapters",
@@ -131,7 +131,7 @@
       "label": "检索：中文关键词命中消息并生成片段",
       "status": "PASS",
       "detail": "命中 4 个会话，片段包含关键词",
-      "elapsed_ms": 1
+      "elapsed_ms": 5
     },
     {
       "key": "search.filters",
@@ -145,21 +145,21 @@
       "label": "搜索：pgvector 混合检索与范围隔离",
       "status": "PASS",
       "detail": "pgvector + HNSW 生效，RRF 命中向量会话，管理员 0 结果",
-      "elapsed_ms": 13
+      "elapsed_ms": 26
     },
     {
       "key": "search.context",
       "label": "阅读：会话上下文、发送者统计与批注内联",
       "status": "PASS",
       "detail": "14 条消息按顺序展示，批注内联返回",
-      "elapsed_ms": 4
+      "elapsed_ms": 6
     },
     {
       "key": "stats.overview",
       "label": "统计：概览、课程、月度与复习聚合",
       "status": "PASS",
       "detail": "概览、5 门课程、8 个月活跃与复习摘要一致",
-      "elapsed_ms": 6
+      "elapsed_ms": 10
     },
     {
       "key": "stats.csv",
@@ -180,7 +180,7 @@
       "label": "批注与复习：创建、入队、算法调度",
       "status": "PASS",
       "detail": "批注 → 复习项 → fsrs 间隔 2/7 天递增，事件幂等落库",
-      "elapsed_ms": 10
+      "elapsed_ms": 18
     },
     {
       "key": "review.activity",
@@ -194,7 +194,7 @@
       "label": "Text2SQL：mock 模式查询与结果",
       "status": "PASS",
       "detail": "自然语言→SQL→执行返回 28 条复习项（mock 模式）",
-      "elapsed_ms": 18
+      "elapsed_ms": 26
     },
     {
       "key": "t2s.scope",
@@ -222,14 +222,14 @@
       "label": "Text2SQL：金标准评测集与越权拦截",
       "status": "PASS",
       "detail": "30 题金标准全部合法，mock 准确率 56.7%，越权拦截 12/12",
-      "elapsed_ms": 261
+      "elapsed_ms": 325
     },
     {
       "key": "t2s.audit",
       "label": "Text2SQL：危险 SQL 拒绝与审计日志",
       "status": "PASS",
       "detail": "危险 SQL 被拒绝并写入 rejected 审计日志",
-      "elapsed_ms": 2
+      "elapsed_ms": 4
     },
     {
       "key": "t2s.role",
@@ -243,21 +243,21 @@
       "label": "采集：粘贴解析、收录与幂等",
       "status": "PASS",
       "detail": "粘贴识别 2 条角色消息，重复收录幂等",
-      "elapsed_ms": 11
+      "elapsed_ms": 17
     },
     {
       "key": "token.ingest",
       "label": "采集令牌：哈希存储、作用域、Bearer 认证、限流与幂等入库",
       "status": "PASS",
       "detail": "哈希存储、作用域、课程映射、重复幂等、60 次/分钟限流与撤销均生效",
-      "elapsed_ms": 20
+      "elapsed_ms": 27
     },
     {
       "key": "search.global",
       "label": "搜索：全局检索与课程范围隔离",
       "status": "PASS",
       "detail": "全局搜索命中本人会话，未泄露他人数据",
-      "elapsed_ms": 10
+      "elapsed_ms": 15
     },
     {
       "key": "inbox.organize",
@@ -278,14 +278,14 @@
       "label": "知识先修图：递归闭包、分组与环检测",
       "status": "PASS",
       "detail": "6 个课程分组、32 条边；递归闭包距离正确，环被拒绝",
-      "elapsed_ms": 12
+      "elapsed_ms": 13
     },
     {
       "key": "learning.mastery",
       "label": "AI 学习：两类对话视图与掌握度闭环",
       "status": "PASS",
       "detail": "出题→评分→掌握度 7/10；app 视图分流正确；t2s 理论视图 alice=30 / admin=0",
-      "elapsed_ms": 10
+      "elapsed_ms": 16
     },
     {
       "key": "tx.rollback",
@@ -299,28 +299,28 @@
       "label": "数据库：应用角色最小权限（无 DDL）",
       "status": "PASS",
       "detail": "应用角色 ls_app 无 DDL 权限",
-      "elapsed_ms": 0
+      "elapsed_ms": 1
     },
     {
       "key": "db.rls",
       "label": "数据库：RLS 与 security_barrier 视图对比",
       "status": "PASS",
       "detail": "alice/bob 在视图、应用层 WHERE、RLS 下均得到 30/12 行，实验对象已回滚",
-      "elapsed_ms": 30
+      "elapsed_ms": 40
     },
     {
       "key": "db.audit",
       "label": "数据库：审计触发器与只读边界",
       "status": "PASS",
       "detail": "课程更新记录操作者、主键与变更列名；应用角色对审计表只读",
-      "elapsed_ms": 3
+      "elapsed_ms": 6
     },
     {
       "key": "db.observability",
       "label": "数据库：观测指标与 EXPLAIN JSON",
       "status": "PASS",
       "detail": "9 类后端 I/O、12 张表、12 个索引；计划根节点 Seq Scan；慢查询 8 条",
-      "elapsed_ms": 29
+      "elapsed_ms": 55
     },
     {
       "key": "tx.outer_rollback",

@@ -50,8 +50,8 @@ def tutor_index(
         mastery=mastery,
         mastery_summary=tutor_service.mastery_summary(mastery),
         recent_sessions=recent,
-        ai_enabled=tutor_service.enabled(),
-        ai_mode=tutor_service.mode_label(),
+        ai_enabled=tutor_service.enabled(conn),
+        ai_mode=tutor_service.mode_label(conn),
     )
 
 
@@ -96,7 +96,7 @@ def tutor_session_page(
         request,
         "tutor/session.html",
         **data,
-        ai_enabled=tutor_service.enabled(),
+        ai_enabled=tutor_service.enabled(conn),
     )
 
 

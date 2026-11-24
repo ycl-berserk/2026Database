@@ -47,7 +47,7 @@ Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查�
 
 ## 3. 关系模式
 
-19 张表全部位于 `app` schema（12 张基线表 + 迁移新增的 `review_logs`、`api_tokens`、`tag_edges`、`audit_log`、`user_onboarding`、`knowledge_mastery`、`quiz_attempts`）。迁移 008 只为观测页条件安装 `pg_stat_statements` 并授权，不新增表；迁移 010 只记录新手指南的收起/重新开始状态，四步进度仍按业务表实时计算；迁移 013 增加会话分类与掌握度、答题记录。
+20 张表全部位于 `app` schema（12 张基线表 + 迁移新增的 `review_logs`、`api_tokens`、`tag_edges`、`audit_log`、`user_onboarding`、`knowledge_mastery`、`quiz_attempts`、`ai_settings`）。迁移 008 只为观测页条件安装 `pg_stat_statements` 并授权，不新增表；迁移 010 只记录新手指南的收起/重新开始状态，四步进度仍按业务表实时计算；迁移 013 增加会话分类与掌握度、答题记录；迁移 014 增加部署级 AI 供应商配置。
 
 ### 3.1 用户 `users`
 
@@ -334,6 +334,25 @@ Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查�
 - `quiz_attempts_state_check` 保证状态一致：未评分时不得有作答消息或作答时间；已评分时必须有作答时间。
 - 触发器 `check_quiz_attempt_access` 校验会话属于本人、`mode='quiz'`、课程一致、题目/答案消息属于同一会话，且知识点确实关联到该课程。
 - 触发器 `apply_mastery_from_attempt` 在 `score` 首次写入或变化时更新 `knowledge_mastery`：首次取本次得分，之后按 `0.6×旧分 + 0.4×本次` 平滑并限制在 1–10。这样“根据出题对话推出掌握情况”有可审计的事件来源。
+
+### 3.20 AI 供应商配置 `ai_settings`（迁移 014）
+
+| 列 | 类型 | 约束 |
+| --- | --- | --- |
+| id | smallint | PK，固定为 1（单例） |
+| llm_enabled / embedding_enabled | boolean | 默认 true |
+| llm_base_url / llm_model | text | 非空 |
+| llm_api_key_enc | bytea | 可空；`pgp_sym_encrypt` 密文 |
+| embedding_base_url / embedding_model | text | 非空 |
+| embedding_dim | integer | 1–4096 |
+| embedding_api_key_enc | bytea | 可空；`pgp_sym_encrypt` 密文 |
+| updated_by | bigint | FK → users(id) ON DELETE SET NULL |
+| updated_at | timestamptz | 保存时刷新 |
+
+- 这是**部署级单例**，不是每用户配置；Web 部署由管理员维护，桌面个人模式下本地管理员同时是学习者。
+- API Key 不落明文：写入时调用 `pgp_sym_encrypt(..., 'cipher-algo=aes256')`，读取时在事务内解密；页面只拿到末四位掩码。解密密钥优先 `AI_SETTINGS_KEY`，否则从 `SESSION_SECRET` 派生；轮换后旧密文无法解密，页面提示重新保存。
+- 环境变量仍是默认值与强制降级开关：数据库行不存在时完全使用 `.env`；行存在时非空字段覆盖环境变量，空 Key 回退环境变量。`SUGGEST_MODE` / `TUTOR_MODE` / `TEXT2SQL_MODE` / `EMBEDDING_MODE` 仍可强制关闭。
+- 测试连接只发送最小请求（`/models` 或 `/chat/completions`、`/embeddings`），不写日志、不返回 Key。
 
 ## 4. 范式分析
 
@@ -648,6 +667,7 @@ UPDATE app.review_items
 | Text2SQL 安全 | 视图 + 只读角色 + SQL 守卫 | Prompt 不可信；数据库层兜底才是最终边界 |
 | 两类对话 | `conversations.mode` + 结构视图 + `t2s` 权限视图 | 应用内 AI 会话复用同一对基表，搜索、导出、权限不另起一套 |
 | 掌握度 | `knowledge_mastery`（1–10 分）+ `quiz_attempts` 事件 | 分数由答题事件聚合而非模型直接写入，可复算、可解释；共享课程复用标签、按用户隔离 |
+| AI 密钥 | `ai_settings` + `pgcrypto` | 部署级配置，密钥加密存库、页面只显示掩码；环境变量保留为默认值与降级开关 |
 | 删除用户 | `is_active=false` | 保留批注、复习与审计历史 |
 
 更完整的方案分歧与人工决策见 [ai-collaboration.md](ai-collaboration.md)。
@@ -659,5 +679,5 @@ v1 的基线结构保存在 `sql/schema.sql`。v2 起所有结构变更以编号
 - `000_baseline` 表示 `schema.sql` 已应用，它不对应迁移文件；旧库首次执行迁移时自动补记。
 - 每个迁移在单独事务中执行，失败整体回滚且不写版本记录。
 - 初始化顺序为 `schema.sql → migrations → views.sql → roles.sql`，保证 `t2s` 视图始终基于最新结构创建。
-- 业务表仍集中在 `app` schema（19 张，含审计表、引导状态、掌握度与答题记录），迁移登记表放在独立的 `meta` schema，不参与业务计数与权限视图。
-- 当前迁移：`001_add_review_logs`（复习事件流水）、`002_add_annotation_event_id`（批注客户端事件 ID）、`003_add_api_tokens`（采集令牌）、`004_add_message_embeddings`（可选向量）、`005_add_tag_edges`（知识先修关系）、`006_add_token_scopes`（令牌作用域）、`007_add_audit_log`（审计历史与通用触发器）、`008_add_observability`（观测扩展）、`009_add_fsrs_state`（FSRS 状态）、`010_user_onboarding`（新手指南状态）、`011_extend_platforms`（Codex / opencode 来源平台）、`012_enforce_course_owner`（成员级 owner 延迟约束触发器）、`013_add_knowledge_mastery_and_tutor`（会话分类、掌握度与答题记录）。
+- 业务表仍集中在 `app` schema（20 张，含审计表、引导状态、掌握度、答题记录与 AI 设置），迁移登记表放在独立的 `meta` schema，不参与业务计数与权限视图。
+- 当前迁移：`001_add_review_logs`（复习事件流水）、`002_add_annotation_event_id`（批注客户端事件 ID）、`003_add_api_tokens`（采集令牌）、`004_add_message_embeddings`（可选向量）、`005_add_tag_edges`（知识先修关系）、`006_add_token_scopes`（令牌作用域）、`007_add_audit_log`（审计历史与通用触发器）、`008_add_observability`（观测扩展）、`009_add_fsrs_state`（FSRS 状态）、`010_user_onboarding`（新手指南状态）、`011_extend_platforms`（Codex / opencode 来源平台）、`012_enforce_course_owner`（成员级 owner 延迟约束触发器）、`013_add_knowledge_mastery_and_tutor`（会话分类、掌握度与答题记录）、`014_add_ai_settings`（部署级 AI 供应商配置）。

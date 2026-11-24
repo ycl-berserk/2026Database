@@ -135,10 +135,10 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             conn,
             "SELECT count(*) AS n FROM pg_views WHERE schemaname = 't2s'",
         )
-        _ok(tables == 19, f"app 表数量应为 19，实际 {tables}")
+        _ok(tables == 20, f"app 表数量应为 20，实际 {tables}")
         _ok(views == 18, f"t2s 视图数量应为 18，实际 {views}")
-        return "19 张表（15 业务 + 审计 + 引导 + 掌握度 + 答题记录）、18 个权限视图"
-    report.run("schema.tables", "Schema：19 张表与 18 个 t2s 视图", schema_tables)
+        return "20 张表（15 业务 + 审计 + 引导 + 掌握度 + 答题 + AI 设置）、18 个权限视图"
+    report.run("schema.tables", "Schema：20 张表与 18 个 t2s 视图", schema_tables)
 
     def schema_constraints():
         constraints = {
@@ -169,6 +169,8 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             "knowledge_mastery_score_check",
             "quiz_attempts_question_unique",
             "quiz_attempts_state_check",
+            "ai_settings_singleton",
+            "ai_settings_embedding_dim_check",
         }
         missing = required - constraints
         _ok(not missing, f"缺少约束：{sorted(missing)}")
@@ -697,7 +699,7 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
     def t2s_rejected_log():
         original = text2sql_service.generate_sql
 
-        async def evil(_question: str):
+        async def evil(_question: str, _config=None):
             return "DELETE FROM app.messages", "危险语句", "mock"
 
         text2sql_service.generate_sql = evil

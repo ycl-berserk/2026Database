@@ -103,6 +103,9 @@ class Settings:
     )
     llm_api_key: str = field(default_factory=lambda: os.getenv("LLM_API_KEY", ""))
     llm_model: str = field(default_factory=lambda: os.getenv("LLM_MODEL", "deepseek-chat"))
+    ai_settings_key: str = field(
+        default_factory=lambda: os.getenv("AI_SETTINGS_KEY", "").strip()
+    )
 
     import_max_bytes: int = 5 * 1024 * 1024
     import_max_messages: int = 2000

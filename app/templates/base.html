@@ -57,6 +57,7 @@
         {% endif %}
         <a class="nav-link {% if active_path == '/admin' %}active{% endif %}" href="/admin" {% if active_path == '/admin' %}aria-current="page"{% endif %}>用户与系统</a>
         <a class="nav-link {% if active_path.startswith('/admin/observability') %}active{% endif %}" href="/admin/observability" {% if active_path.startswith('/admin/observability') %}aria-current="page"{% endif %}>数据库观测</a>
+        <a class="nav-link {% if active_path.startswith('/settings/ai') %}active{% endif %}" href="/settings/ai" {% if active_path.startswith('/settings/ai') %}aria-current="page"{% endif %}>AI 设置</a>
       {% endif %}
       {% if can_learn %}
         <span class="nav-label">学习</span>

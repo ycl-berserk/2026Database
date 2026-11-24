@@ -4,11 +4,11 @@ import hashlib
 import logging
 from collections import OrderedDict
 from collections.abc import Iterable
-from functools import lru_cache
 
 import httpx
 
 from ..config import settings
+from . import ai_settings_service
 
 logger = logging.getLogger("learning_space")
 
@@ -33,16 +33,19 @@ class EmbeddingError(RuntimeError):
     pass
 
 
-def mode() -> str:
+def mode(config: ai_settings_service.AIConfig | None = None) -> str:
+    config = config or ai_settings_service.env_config()
     if settings.embedding_mode in ("off", "false", "0"):
         return "off"
     if settings.embedding_mode == "llm":
         return "llm"
-    return "llm" if settings.embedding_api_key else "off"
+    if not config.embedding_enabled:
+        return "off"
+    return "llm" if config.embedding_api_key else "off"
 
 
-def enabled() -> bool:
-    return mode() == "llm" and settings.hybrid_search_enabled
+def enabled(config: ai_settings_service.AIConfig | None = None) -> bool:
+    return mode(config) == "llm" and settings.hybrid_search_enabled
 
 
 def vector_literal(vector: Iterable[float]) -> str:
@@ -62,8 +65,10 @@ def content_hash(text: str | None) -> str:
     return hashlib.sha256(_normalized(text).encode("utf-8")).hexdigest()
 
 
-def _cache_key(digest: str) -> tuple[str, str, str]:
-    return (settings.embedding_base_url.rstrip("/"), settings.embedding_model, digest)
+def _cache_key(
+    config: ai_settings_service.AIConfig, digest: str
+) -> tuple[str, str, str]:
+    return (config.embedding_base_url.rstrip("/"), config.embedding_model, digest)
 
 
 def _cache_get(key: tuple[str, str, str]) -> tuple[float, ...] | None:
@@ -84,8 +89,11 @@ def clear_embedding_cache() -> None:
     _EMBED_CACHE.clear()
 
 
-def embed_texts(texts: list[str]) -> list[list[float]]:
-    if not enabled():
+def embed_texts(
+    texts: list[str], config: ai_settings_service.AIConfig | None = None
+) -> list[list[float]]:
+    config = config or ai_settings_service.env_config()
+    if not enabled(config):
         raise EmbeddingError("未配置向量模型")
     cleaned = [_normalized(text) for text in texts]
     digests = [content_hash(text) for text in cleaned]
@@ -95,15 +103,15 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
     for digest, text in zip(digests, cleaned, strict=False):
         if digest in vectors_by_hash or digest in pending:
             continue
-        cached = _cache_get(_cache_key(digest))
+        cached = _cache_get(_cache_key(config, digest))
         if cached is None:
             pending[digest] = text
         else:
             vectors_by_hash[digest] = cached
 
     if pending:
-        headers = {"Authorization": f"Bearer {settings.embedding_api_key}"}
-        url = f"{settings.embedding_base_url.rstrip('/')}/embeddings"
+        headers = {"Authorization": f"Bearer {config.embedding_api_key}"}
+        url = f"{config.embedding_base_url.rstrip('/')}/embeddings"
         pending_digests = list(pending)
         offset = 0
         try:
@@ -111,7 +119,7 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
                 for batch in _batches(list(pending.values())):
                     response = client.post(
                         url,
-                        json={"model": settings.embedding_model, "input": batch},
+                        json={"model": config.embedding_model, "input": batch},
                         headers=headers,
                     )
                     response.raise_for_status()
@@ -130,35 +138,37 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
 
     for digest in digests:
         vector = vectors_by_hash[digest]
-        if len(vector) != settings.embedding_dim:
+        if len(vector) != config.embedding_dim:
             raise EmbeddingError(
-                f"向量维度应为 {settings.embedding_dim}，实际 {len(vector)}；"
-                "请检查 EMBEDDING_MODEL 与 EMBEDDING_DIM"
+                f"向量维度应为 {config.embedding_dim}，实际 {len(vector)}；"
+                "请检查向量模型与向量维度设置"
             )
-        _cache_put(_cache_key(digest), vector)
+        _cache_put(_cache_key(config, digest), vector)
     return [list(vectors_by_hash[digest]) for digest in digests]
 
 
-@lru_cache(maxsize=128)
-def _cached_query(model: str, question: str) -> tuple[float, ...]:
-    return tuple(embed_texts([question])[0])
-
-
-def embed_query(question: str) -> list[float] | None:
-    if not enabled() or not (question or "").strip():
+def embed_query(
+    question: str, config: ai_settings_service.AIConfig | None = None
+) -> list[float] | None:
+    config = config or ai_settings_service.env_config()
+    if not enabled(config) or not (question or "").strip():
         return None
     try:
-        return list(_cached_query(settings.embedding_model, question.strip()))
+        return list(embed_texts([question.strip()], config)[0])
     except EmbeddingError as exc:
         logger.warning("查询向量生成失败，退回词法检索：%s", exc)
         return None
 
 
 def clear_query_cache() -> None:
-    _cached_query.cache_clear()
+    # 查询与批量嵌入共用内容哈希缓存；切换供应商时整体清空即可。
+    clear_embedding_cache()
 
 
-def coverage(conn, user_id: int) -> dict:
+def coverage(
+    conn, user_id: int, config: ai_settings_service.AIConfig | None = None
+) -> dict:
+    config = config or ai_settings_service.env_config()
     row = conn.execute(
         f"""
         SELECT count(*) AS total,
@@ -166,12 +176,15 @@ def coverage(conn, user_id: int) -> dict:
                                   AND m.embedding_model = %(model)s) AS embedded
         {VISIBLE_MESSAGES}
         """,
-        {"uid": user_id, "model": settings.embedding_model},
+        {"uid": user_id, "model": config.embedding_model},
     ).fetchone()
     return {"total": row["total"], "embedded": row["embedded"]}
 
 
-def pending_count(conn, user_id: int) -> int:
+def pending_count(
+    conn, user_id: int, config: ai_settings_service.AIConfig | None = None
+) -> int:
+    config = config or ai_settings_service.env_config()
     row = conn.execute(
         f"""
         SELECT count(*) AS n
@@ -179,12 +192,18 @@ def pending_count(conn, user_id: int) -> int:
            AND (m.embedding IS NULL
                 OR m.embedding_model IS DISTINCT FROM %(model)s)
         """,
-        {"uid": user_id, "model": settings.embedding_model},
+        {"uid": user_id, "model": config.embedding_model},
     ).fetchone()
     return row["n"]
 
 
-def backfill(conn, user_id: int, limit: int = 64) -> dict:
+def backfill(
+    conn,
+    user_id: int,
+    limit: int = 64,
+    config: ai_settings_service.AIConfig | None = None,
+) -> dict:
+    config = config or ai_settings_service.env_config()
     limit = max(1, min(int(limit), 512))
     rows = conn.execute(
         f"""
@@ -195,15 +214,15 @@ def backfill(conn, user_id: int, limit: int = 64) -> dict:
          ORDER BY m.id
          LIMIT %(limit)s
         """,
-        {"uid": user_id, "model": settings.embedding_model, "limit": limit},
+        {"uid": user_id, "model": config.embedding_model, "limit": limit},
     ).fetchall()
     if not rows:
-        return {"embedded": 0, "reused": 0, "model": settings.embedding_model}
+        return {"embedded": 0, "reused": 0, "model": config.embedding_model}
     digests = [content_hash(row["content"]) for row in rows]
     unique: dict[str, str] = {}
     for digest, row in zip(digests, rows, strict=False):
         unique.setdefault(digest, row["content"])
-    vectors = embed_texts(list(unique.values()))
+    vectors = embed_texts(list(unique.values()), config)
     by_hash = dict(zip(unique, vectors, strict=False))
     with conn.transaction():
         for row, digest in zip(rows, digests, strict=False):
@@ -215,24 +234,27 @@ def backfill(conn, user_id: int, limit: int = 64) -> dict:
                        embedded_at = now()
                  WHERE id = %s
                 """,
-                (vector_literal(by_hash[digest]), settings.embedding_model, row["id"]),
+                (vector_literal(by_hash[digest]), config.embedding_model, row["id"]),
             )
     return {
         "embedded": len(rows),
         "reused": len(rows) - len(unique),
-        "model": settings.embedding_model,
+        "model": config.embedding_model,
     }
 
 
-def status(conn, user_id: int) -> dict:
+def status(
+    conn, user_id: int, config: ai_settings_service.AIConfig | None = None
+) -> dict:
+    config = config or ai_settings_service.env_config()
     result = {
-        "mode": mode(),
-        "enabled": enabled(),
-        "model": settings.embedding_model,
+        "mode": mode(config),
+        "enabled": enabled(config),
+        "model": config.embedding_model,
         "coverage": None,
         "pending": None,
     }
     if result["enabled"]:
-        result["coverage"] = coverage(conn, user_id)
-        result["pending"] = pending_count(conn, user_id)
+        result["coverage"] = coverage(conn, user_id, config)
+        result["pending"] = pending_count(conn, user_id, config)
     return result

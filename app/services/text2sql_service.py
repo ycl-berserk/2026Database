@@ -15,6 +15,7 @@ from sqlglot.errors import SqlglotError
 
 from ..config import settings
 from ..errors import ValidationError
+from . import ai_settings_service
 
 VIEWS = (
     "v_my_courses",
@@ -336,13 +337,15 @@ def history(conn, user_id: int, limit: int = 10) -> list[dict]:
     ).fetchall()
 
 
-def provider_mode() -> str:
+def provider_mode(conn=None, config=None) -> str:
     mode = (settings.text2sql_mode or "auto").lower()
     if mode == "mock":
         return "mock"
     if mode == "llm":
         return "llm"
-    return "llm" if settings.llm_api_key else "mock"
+    if config is None:
+        config = ai_settings_service.get_config(conn)
+    return "llm" if config.llm_enabled and config.llm_api_key else "mock"
 
 
 def _mock_sql(question: str) -> tuple[str, str]:
@@ -458,7 +461,9 @@ def _mock_sql(question: str) -> tuple[str, str]:
     )
 
 
-async def _llm_sql(question: str) -> tuple[str, str]:
+async def _llm_sql(
+    config: ai_settings_service.AIConfig, question: str
+) -> tuple[str, str]:
     system = (
         "你是 PostgreSQL 查询生成器。根据用户问题生成只读 SQL。"
         "只输出 JSON 对象，字段为 sql 和 explanation，不要 Markdown 代码块。"
@@ -466,7 +471,7 @@ async def _llm_sql(question: str) -> tuple[str, str]:
         + FEW_SHOT
     )
     payload = {
-        "model": settings.llm_model,
+        "model": config.llm_model,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": question},
@@ -474,10 +479,10 @@ async def _llm_sql(question: str) -> tuple[str, str]:
         "temperature": 0,
         "response_format": {"type": "json_object"},
     }
-    headers = {"Authorization": f"Bearer {settings.llm_api_key}"}
+    headers = {"Authorization": f"Bearer {config.llm_api_key}"}
     async with httpx.AsyncClient(timeout=20) as client:
         response = await client.post(
-            f"{settings.llm_base_url.rstrip('/')}/chat/completions",
+            f"{config.llm_base_url.rstrip('/')}/chat/completions",
             json=payload,
             headers=headers,
         )
@@ -491,13 +496,17 @@ async def _llm_sql(question: str) -> tuple[str, str]:
     return sql, explanation
 
 
-async def generate_sql(question: str) -> tuple[str, str, str]:
-    mode = provider_mode()
+async def generate_sql(
+    question: str, config: ai_settings_service.AIConfig | None = None
+) -> tuple[str, str, str]:
+    if config is None:
+        config = ai_settings_service.get_config()
+    mode = provider_mode(config=config)
     if mode == "mock":
         sql, explanation = _mock_sql(question)
         return sql, explanation, "mock"
     try:
-        sql, explanation = await _llm_sql(question)
+        sql, explanation = await _llm_sql(config, question)
         return sql, explanation, "llm"
     except Exception as exc:
         sql, explanation = _mock_sql(question)
@@ -508,7 +517,8 @@ async def run(question: str, user_id: int, t2s_conn, main_conn) -> dict:
     started = time.perf_counter()
     sql = None
     try:
-        sql, explanation, mode = await generate_sql(question)
+        config = ai_settings_service.get_config(main_conn)
+        sql, explanation, mode = await generate_sql(question, config)
     except Exception as exc:
         latency = int((time.perf_counter() - started) * 1000)
         record_log(

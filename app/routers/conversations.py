@@ -87,7 +87,7 @@ def conversation_detail(
         request,
         "conversations/detail.html",
         **data,
-        ai_enabled=ai_service.enabled(),
+        ai_enabled=ai_service.enabled(conn),
     )
 
 

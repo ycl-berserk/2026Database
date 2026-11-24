@@ -47,7 +47,7 @@ Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查�
 
 ## 3. 关系模式
 
-17 张表全部位于 `app` schema（12 张基线表 + 迁移新增的 `review_logs`、`api_tokens`、`tag_edges`、`audit_log`、`user_onboarding`）。迁移 008 只为观测页条件安装 `pg_stat_statements` 并授权，不新增表；迁移 010 只记录新手指南的收起/重新开始状态，四步进度仍按业务表实时计算。
+19 张表全部位于 `app` schema（12 张基线表 + 迁移新增的 `review_logs`、`api_tokens`、`tag_edges`、`audit_log`、`user_onboarding`、`knowledge_mastery`、`quiz_attempts`）。迁移 008 只为观测页条件安装 `pg_stat_statements` 并授权，不新增表；迁移 010 只记录新手指南的收起/重新开始状态，四步进度仍按业务表实时计算；迁移 013 增加会话分类与掌握度、答题记录。
 
 ### 3.1 用户 `users`
 
@@ -92,7 +92,7 @@ Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查�
 | --- | --- | --- |
 | id | bigint identity | PK |
 | owner_id | bigint | FK → users(id) ON DELETE CASCADE |
-| platform | varchar(20) | `qoder` / `chatgpt` / `deepseek` / `claude` / `other` |
+| platform | varchar(20) | `qoder` / `chatgpt` / `deepseek` / `claude` / `codex` / `opencode` / `learning_space` / `other` |
 | account_label | varchar(100) | 默认 `default` |
 | created_at | timestamptz | 默认 now() |
 
@@ -128,6 +128,7 @@ Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查�
 | title | varchar(255) | 非空 |
 | started_at / ended_at | timestamptz | 可空；`ended_at >= started_at` |
 | is_archived | boolean | 默认 false |
+| mode | varchar(10) | `theory` / `quiz`，默认 `theory`；迁移 013 新增 |
 | created_at | timestamptz | 默认 now() |
 
 `UNIQUE (source_id, external_id)`：同一来源内外部会话 ID 唯一，是重复导入去重的依据。
@@ -294,6 +295,46 @@ Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查�
 - 首次登录且四步均为零进度时插入 `pending` 并跳转 `/welcome`；已有任意进度或已存在状态行的用户不被强制跳转。
 - `ls_app` 拥有该表的增删改查权限，便于服务层直接更新。
 
+### 3.18 知识点掌握度 `knowledge_mastery`（迁移 013）
+
+| 列 | 类型 | 约束 |
+| --- | --- | --- |
+| id | bigint identity | PK |
+| user_id | bigint | FK → users(id) ON DELETE CASCADE |
+| course_id | bigint | FK → courses(id) ON DELETE CASCADE |
+| tag_id | bigint | FK → tags(id) ON DELETE CASCADE |
+| score | smallint | 非空、1–10，默认 1 |
+| last_score | smallint | 可空、1–10 |
+| sample_count | integer | 非空、≥ 0 |
+| created_at / updated_at | timestamptz | 默认 now()，更新掌握度时刷新 |
+
+- `UNIQUE (user_id, course_id, tag_id)`：同一个人在同一课程下每个知识点只有一条掌握度。
+- 知识点复用 `tags`：标签仍属于个人，但掌握度按“用户 × 课程 × 标签”记录；共享课程里成员可以复用同一批知识点标签，分数互不影响。
+- 触发器 `check_mastery_access` 校验：用户必须是课程成员，标签必须确实出现在该课程的会话上；避免为无关标签或未参与课程写分。
+- 分数只由 `quiz_attempts` 评分触发器维护，页面不提供直接改分入口；`last_score` 保留最近一次作答，便于解释曲线。
+
+### 3.19 答题记录 `quiz_attempts`（迁移 013）
+
+| 列 | 类型 | 约束 |
+| --- | --- | --- |
+| id | bigint identity | PK |
+| user_id | bigint | FK → users(id) ON DELETE CASCADE |
+| course_id | bigint | FK → courses(id) ON DELETE CASCADE |
+| tag_id | bigint | FK → tags(id) ON DELETE CASCADE |
+| conversation_id | bigint | FK → conversations(id) ON DELETE CASCADE |
+| question_message_id | bigint | FK → messages(id) ON DELETE CASCADE，UNIQUE |
+| answer_message_id | bigint | FK → messages(id) ON DELETE SET NULL，可空 |
+| reference_answer | text | 非空 |
+| key_points | text[] | 默认空数组 |
+| score | smallint | 可空、1–10；未评分时为 NULL |
+| feedback | text | 可空 |
+| created_at / answered_at | timestamptz | 作答后写入 answered_at |
+
+- `quiz_attempts` 同时承载“题目”和“作答”：出题时先插入一行（`score IS NULL`），用户提交后更新作答消息、分数、反馈与 `answered_at`。
+- `quiz_attempts_state_check` 保证状态一致：未评分时不得有作答消息或作答时间；已评分时必须有作答时间。
+- 触发器 `check_quiz_attempt_access` 校验会话属于本人、`mode='quiz'`、课程一致、题目/答案消息属于同一会话，且知识点确实关联到该课程。
+- 触发器 `apply_mastery_from_attempt` 在 `score` 首次写入或变化时更新 `knowledge_mastery`：首次取本次得分，之后按 `0.6×旧分 + 0.4×本次` 平滑并限制在 1–10。这样“根据出题对话推出掌握情况”有可审计的事件来源。
+
 ## 4. 范式分析
 
 ### 4.1 第一范式（1NF）
@@ -368,6 +409,9 @@ Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查�
 | `trg_annotations_access` | 批注 INSERT/UPDATE | 批注人必须有会话或课程编辑权 |
 | `trg_review_items_access` | 复习项 INSERT/UPDATE | 复习人必须对批注所属会话有编辑权 |
 | `trg_annotations_updated_at` | 批注 UPDATE 前 | 自动维护 `updated_at` |
+| `trg_knowledge_mastery_access` | 掌握度 INSERT/UPDATE | 用户是课程成员，知识点关联到该课程 |
+| `trg_quiz_attempts_access` | 答题记录 INSERT/UPDATE | 会话属于本人、`mode='quiz'`、课程与消息一致 |
+| `trg_quiz_attempts_mastery` | 答题记录评分后 | 按 0.6×旧分 + 0.4×本次更新掌握度 |
 
 两个 owner 约束触发器都使用 `CONSTRAINT TRIGGER ... DEFERRABLE INITIALLY DEFERRED`：前者允许“先插课程、再插 owner 成员”在同一事务内完成；后者在成员增删改后同样延迟到事务结束，重复校验该课程 owner 恰好为 1，因此删除或降级最后一个 owner 会在 `COMMIT` 时以 SQLSTATE 23514 失败并整体回滚。两者共用 `app.check_course_owner_count()`，对已被删除的课程跳过检查，避免级联删除误报。
 
@@ -390,6 +434,12 @@ Mermaid 版本见 [er.mmd](er.mmd)，便于在支持 Mermaid 的编辑器中查�
 | `review_logs_user_time_idx` | `(user_id, created_at DESC)` | 个人复习热力图与留存 |
 | `review_logs_item_time_idx` | `(review_item_id, created_at DESC)` | 单个复习项的事件回放 |
 | `api_tokens_user_idx` | `(user_id, created_at DESC)` | 令牌管理页 |
+| `conversations_course_mode_idx` | `(course_id, mode, started_at DESC NULLS LAST)` | 按课程区分理论 / 出题对话 |
+| `knowledge_mastery_course_idx` | `(course_id, user_id, score)` | 课程掌握度排序 |
+| `knowledge_mastery_tag_idx` | `(tag_id)` | 按知识点回查掌握度 |
+| `quiz_attempts_user_idx` | `(user_id, created_at DESC)` | 个人答题历史 |
+| `quiz_attempts_course_tag_idx` | `(course_id, tag_id, created_at DESC)` | 知识点作答统计 |
+| `quiz_attempts_conversation_idx` | `(conversation_id)` | 单个出题会话的题目列表 |
 
 ### 6.1 中文检索取舍
 
@@ -428,6 +478,17 @@ AI 建议本身不建表：它是用户点击保存前的草稿，只存在于�
 - **数据层**：`tag_edges` 只存两个端点与时间；同属主约束与无环约束由触发器完成。环检测使用递归 CTE：插入 `a → b` 前，从 `b` 沿现有边向前走，如果能到达 `a`，说明会成环，直接拒绝。
 - **查询层**：`t2s.v_my_tag_prerequisites` 用 `WITH RECURSIVE` 展开传递闭包，并用 `DISTINCT ON (tag_id, prerequisite_tag_id) ... ORDER BY depth` 保留最短距离；页面详情与 Text2SQL 都复用这一思路。
 - **展示层**：服务按“无入边的根 → 最长路径层号”计算每个节点的列，同层按名称排序，再用三次贝塞尔曲线连接端点。SVG 由服务端渲染，不依赖前端图库；按课程拆分卡片，避免 59 个标签挤在一张图里。390px 下卡片单列、图区域横向滚动，页面本身不横向溢出。
+
+### 6.5 两类对话与掌握度
+
+会话按用途分成两类，复用同一对 `conversations` / `messages` 基表：
+
+- `mode='theory'`：学习理论知识的对话，导入的历史会话默认归入此类；它提供上下文，但不直接产生掌握度。
+- `mode='quiz'`：AI 根据课程理论对话与当前掌握度出题、用户作答、AI 评分的对话；评分写入 `quiz_attempts`，再由触发器维护 `knowledge_mastery`。
+
+`app.v_theory_dialogues` / `app.v_quiz_dialogues` 只做结构分类与消息聚合；`t2s` 层再包一层 `security_barrier` 视图，按 `app.user_id` 过滤本人或共享课程。应用内 AI 会话的 `sources.platform='learning_space'`，仍然沿用同一套会话可见性、搜索与导出逻辑。
+
+掌握度不是模型直接给出的结论，而是可追溯的聚合：每道题先落 `quiz_attempts`，评分后由 `apply_mastery_from_attempt()` 更新；因此可以用 SQL 复算、解释“为什么是这个分数”，也能在无模型时用离线规则评分继续跑通闭环。
 
 ## 7. 权限模型
 
@@ -472,7 +533,7 @@ AI 建议本身不建表：它是用户点击保存前的草稿，只存在于�
 
 ## 8. Text2SQL 权限视图
 
-`sql/views.sql` 定义了 15 个 `t2s` 视图，全部使用 `WITH (security_barrier = true)`，以视图属主（postgres）权限读取 `app` 基表，`t2s_reader` 只被授予这些视图的 `SELECT`。
+`sql/views.sql` 定义了 18 个 `t2s` 视图，全部使用 `WITH (security_barrier = true)`，以视图属主（postgres）权限读取 `app` 基表，`t2s_reader` 只被授予这些视图的 `SELECT`。
 
 | 视图 | 内容 |
 | --- | --- |
@@ -491,6 +552,9 @@ AI 建议本身不建表：它是用户点击保存前的草稿，只存在于�
 | `v_my_t2s_stats` | 我的 Text2SQL 查询历史 |
 | `v_my_tag_edges` | 我的标签之间的直接先修关系 |
 | `v_my_tag_prerequisites` | 先修传递闭包，带最短距离 `depth` |
+| `v_my_theory_conversations` | 理论对话：课程、平台、消息数与标签 |
+| `v_my_quiz_conversations` | 出题对话：消息数、已答题数、平均分与最近作答时间 |
+| `v_my_knowledge_mastery` | 当前用户各课程知识点的 1–10 分掌握度 |
 
 用户身份通过事务内的 `set_config('app.user_id', <id>, true)` 注入；`nullif(current_setting('app.user_id', true), '')::bigint` 在未设置时返回 NULL，视图返回 0 行。`t2s_reader` 的角色级设置：
 
@@ -503,7 +567,7 @@ ALTER ROLE t2s_reader SET lock_timeout = '2s';
 
 `t2s_reader` 对 `app` schema 没有任何基线权限，因此即使 SQL 守卫被绕过，也无法读取基表或执行写操作。
 
-应用层的 SQL 守卫以 `sqlglot` 的 PostgreSQL AST 为主：只接受单条 SELECT/WITH/UNION，遍历语法树拒绝嵌套 DML、`SELECT INTO`、`FOR UPDATE`、表函数和 `pg_*` / `lo_*` / `dblink` 等函数；所有 `FROM` / `JOIN` 对象必须属于 15 个 `t2s` 视图或当前语句定义的 CTE。正则黑名单保留为第二层，匹配前先屏蔽字符串字面量与引用标识符，避免正文关键词误伤。
+应用层的 SQL 守卫以 `sqlglot` 的 PostgreSQL AST 为主：只接受单条 SELECT/WITH/UNION，遍历语法树拒绝嵌套 DML、`SELECT INTO`、`FOR UPDATE`、表函数和 `pg_*` / `lo_*` / `dblink` 等函数；所有 `FROM` / `JOIN` 对象必须属于 18 个 `t2s` 视图或当前语句定义的 CTE。正则黑名单保留为第二层，匹配前先屏蔽字符串字面量与引用标识符，避免正文关键词误伤。
 
 守卫通过后先做执行计划预检：在同一只读角色下执行 `EXPLAIN (FORMAT JSON)`，不实际取数；根节点 `Total Cost` 超过 500000 或 `Plan Rows` 超过 200000 时拒绝，预检超时 1 秒。阈值可通过 `TEXT2SQL_MAX_COST`、`TEXT2SQL_MAX_EST_ROWS` 调整，预检拒绝写入 `text2sql_log.status = 'rejected'`。
 
@@ -561,6 +625,12 @@ UPDATE app.review_items
 
 `scripts/verify.py` 在演示库上开启外层事务执行全部写入检查，最后主动抛出 `Rollback`，保证验收结束后演示库计数不变。
 
+### 9.4 出题与评分事务
+
+出题时先构建上下文（只读），模型或离线模板返回题目后再在单个事务中写入题目消息与 `quiz_attempts`；评分时同样先算分，再在一个事务中写入用户答案、AI 反馈并更新 `quiz_attempts`。掌握度由 `AFTER UPDATE OF score` 触发器在同一事务内更新，因此“答案、反馈、分数、掌握度”要么一起提交，要么一起回滚。
+
+同一道题只允许评分一次：`quiz_attempts.score` 已非空时服务层返回 409，数据库的 `quiz_attempts_question_unique` 与状态 CHECK 作为兜底。模型调用失败时，服务层退回离线关键词覆盖评分并在反馈中标注，避免把“模型不可用”误当成“未作答”。
+
 ## 10. 关键设计取舍
 
 | 取舍 | 选择 | 原因 |
@@ -576,6 +646,8 @@ UPDATE app.review_items
 | 采集令牌 | 只存 SHA-256 + 前缀 | 数据库泄露也无法直接还原令牌；明文只展示一次 |
 | 浏览器采集 | MV3 + 点击才读取 | 避免常驻权限与后台抓取；平台改版时回退到导出文件 |
 | Text2SQL 安全 | 视图 + 只读角色 + SQL 守卫 | Prompt 不可信；数据库层兜底才是最终边界 |
+| 两类对话 | `conversations.mode` + 结构视图 + `t2s` 权限视图 | 应用内 AI 会话复用同一对基表，搜索、导出、权限不另起一套 |
+| 掌握度 | `knowledge_mastery`（1–10 分）+ `quiz_attempts` 事件 | 分数由答题事件聚合而非模型直接写入，可复算、可解释；共享课程复用标签、按用户隔离 |
 | 删除用户 | `is_active=false` | 保留批注、复习与审计历史 |
 
 更完整的方案分歧与人工决策见 [ai-collaboration.md](ai-collaboration.md)。
@@ -587,5 +659,5 @@ v1 的基线结构保存在 `sql/schema.sql`。v2 起所有结构变更以编号
 - `000_baseline` 表示 `schema.sql` 已应用，它不对应迁移文件；旧库首次执行迁移时自动补记。
 - 每个迁移在单独事务中执行，失败整体回滚且不写版本记录。
 - 初始化顺序为 `schema.sql → migrations → views.sql → roles.sql`，保证 `t2s` 视图始终基于最新结构创建。
-- 业务表仍集中在 `app` schema（17 张，含审计表与引导状态表），迁移登记表放在独立的 `meta` schema，不参与业务计数与权限视图。
-- 当前迁移：`001_add_review_logs`（复习事件流水）、`002_add_annotation_event_id`（批注客户端事件 ID）、`003_add_api_tokens`（采集令牌）、`004_add_message_embeddings`（可选向量）、`005_add_tag_edges`（知识先修关系）、`006_add_token_scopes`（令牌作用域）、`007_add_audit_log`（审计历史与通用触发器）、`008_add_observability`（观测扩展）、`009_add_fsrs_state`（FSRS 状态）、`010_user_onboarding`（新手指南状态）、`011_extend_platforms`（Codex / opencode 来源平台）、`012_enforce_course_owner`（成员级 owner 延迟约束触发器）。
+- 业务表仍集中在 `app` schema（19 张，含审计表、引导状态、掌握度与答题记录），迁移登记表放在独立的 `meta` schema，不参与业务计数与权限视图。
+- 当前迁移：`001_add_review_logs`（复习事件流水）、`002_add_annotation_event_id`（批注客户端事件 ID）、`003_add_api_tokens`（采集令牌）、`004_add_message_embeddings`（可选向量）、`005_add_tag_edges`（知识先修关系）、`006_add_token_scopes`（令牌作用域）、`007_add_audit_log`（审计历史与通用触发器）、`008_add_observability`（观测扩展）、`009_add_fsrs_state`（FSRS 状态）、`010_user_onboarding`（新手指南状态）、`011_extend_platforms`（Codex / opencode 来源平台）、`012_enforce_course_owner`（成员级 owner 延迟约束触发器）、`013_add_knowledge_mastery_and_tutor`（会话分类、掌握度与答题记录）。

@@ -77,6 +77,7 @@ PLATFORM_LABELS = {
     "claude": "Claude",
     "codex": "Codex",
     "opencode": "opencode",
+    "learning_space": "AI 学习",
     "other": "其他",
 }
 

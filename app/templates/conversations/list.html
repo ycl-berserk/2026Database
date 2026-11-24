@@ -66,6 +66,7 @@
             <div class="record-meta">
               {% if row.course_code %}<span class="chip chip-soft">{{ row.course_code }} · {{ row.course_name }}</span>{% else %}<span class="chip">未归类</span>{% endif %}
               <span class="chip">{{ platform_label(row.platform) }}</span>
+              <span class="chip {% if row.mode == 'quiz' %}chip-seal{% else %}chip-soft{% endif %}">{{ '出题练习' if row.mode == 'quiz' else '理论对话' }}</span>
               {% if row.is_archived %}<span class="badge">已归档</span>{% endif %}
             </div>
           </div>

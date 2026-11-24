@@ -111,6 +111,7 @@ def _snapshot(conn) -> dict[str, int]:
             "messages", "tags", "conversation_tags", "annotations",
             "review_items", "review_logs", "import_batches", "text2sql_log",
             "api_tokens", "tag_edges", "audit_log",
+            "knowledge_mastery", "quiz_attempts",
         )
     }
 
@@ -127,16 +128,17 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
     def schema_tables():
         tables = _count(
             conn,
-            "SELECT count(*) AS n FROM information_schema.tables WHERE table_schema = 'app'",
+            "SELECT count(*) AS n FROM information_schema.tables "
+            "WHERE table_schema = 'app' AND table_type = 'BASE TABLE'",
         )
         views = _count(
             conn,
             "SELECT count(*) AS n FROM pg_views WHERE schemaname = 't2s'",
         )
-        _ok(tables == 17, f"app 表数量应为 17，实际 {tables}")
-        _ok(views == 15, f"t2s 视图数量应为 15，实际 {views}")
-        return "17 张表（15 业务 + 1 审计 + 1 引导状态）、15 个权限视图"
-    report.run("schema.tables", "Schema：17 张表与 15 个 t2s 视图", schema_tables)
+        _ok(tables == 19, f"app 表数量应为 19，实际 {tables}")
+        _ok(views == 18, f"t2s 视图数量应为 18，实际 {views}")
+        return "19 张表（15 业务 + 审计 + 引导 + 掌握度 + 答题记录）、18 个权限视图"
+    report.run("schema.tables", "Schema：19 张表与 18 个 t2s 视图", schema_tables)
 
     def schema_constraints():
         constraints = {
@@ -163,6 +165,10 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             "audit_log_table_check",
             "audit_log_action_check",
             "audit_log_row_pk_check",
+            "knowledge_mastery_unique",
+            "knowledge_mastery_score_check",
+            "quiz_attempts_question_unique",
+            "quiz_attempts_state_check",
         }
         missing = required - constraints
         _ok(not missing, f"缺少约束：{sorted(missing)}")
@@ -181,6 +187,9 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             "api_tokens_user_idx",
             "tag_edges_to_idx",
             "audit_log_occurred_idx",
+            "conversations_course_mode_idx",
+            "knowledge_mastery_course_idx",
+            "quiz_attempts_user_idx",
         }
         missing_idx = required_indexes - indexes
         _ok(not missing_idx, f"缺少索引：{sorted(missing_idx)}")
@@ -200,10 +209,13 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
             "trg_courses_audit",
             "trg_course_members_audit",
             "trg_users_audit",
+            "trg_knowledge_mastery_access",
+            "trg_quiz_attempts_access",
+            "trg_quiz_attempts_mastery",
         }
         missing_trg = required_triggers - triggers
         _ok(not missing_trg, f"缺少触发器：{sorted(missing_trg)}")
-        return "唯一键、CHECK、部分唯一索引与 10 个触发器齐全"
+        return "唯一键、CHECK、部分唯一索引与 13 个触发器齐全"
     report.run("schema.constraints", "Schema：主外键、唯一/检查约束、索引与触发器", schema_constraints)
 
     def index_health():
@@ -966,6 +978,124 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
         tag_graph_service.delete_edge(conn, alice["id"], edge_id)
         return "6 个课程分组、32 条边；递归闭包距离正确，环被拒绝"
     report.run("graph.prerequisites", "知识先修图：递归闭包、分组与环检测", tag_prerequisites)
+
+    def learning_mastery():
+        course = conn.execute(
+            "SELECT id FROM app.courses WHERE code = 'DB' ORDER BY id LIMIT 1"
+        ).fetchone()
+        _ok(course is not None, "缺少 DB 课程")
+        tag = conn.execute(
+            """
+            SELECT t.id, t.name
+              FROM app.tags t
+              JOIN app.conversation_tags ct ON ct.tag_id = t.id
+              JOIN app.conversations v ON v.id = ct.conversation_id
+             WHERE t.owner_id = %s AND v.course_id = %s
+             ORDER BY t.id
+             LIMIT 1
+            """,
+            (alice["id"], course["id"]),
+        ).fetchone()
+        _ok(tag is not None, "DB 课程没有可用于出题的知识点")
+
+        source = conn.execute(
+            """
+            INSERT INTO app.sources (owner_id, platform, account_label)
+            VALUES (%s, 'learning_space', 'default')
+            ON CONFLICT (owner_id, platform, account_label)
+            DO UPDATE SET account_label = EXCLUDED.account_label
+            RETURNING id
+            """,
+            (alice["id"],),
+        ).fetchone()
+        conversation = conn.execute(
+            """
+            INSERT INTO app.conversations
+                (source_id, course_id, external_id, title, started_at, mode)
+            VALUES (%s, %s, %s, 'verify 出题练习', now(), 'quiz')
+            RETURNING id
+            """,
+            (source["id"], course["id"], f"verify-tutor-{uuid4().hex}"),
+        ).fetchone()
+        question = conn.execute(
+            "INSERT INTO app.messages (conversation_id, seq_no, sender, content) "
+            "VALUES (%s, 1, 'assistant', '请解释事务的 ACID。') RETURNING id",
+            (conversation["id"],),
+        ).fetchone()
+        attempt = conn.execute(
+            """
+            INSERT INTO app.quiz_attempts
+                (user_id, course_id, tag_id, conversation_id, question_message_id,
+                 reference_answer, key_points)
+            VALUES (%s, %s, %s, %s, %s, '原子性、一致性、隔离性、持久性。', %s)
+            RETURNING id
+            """,
+            (
+                alice["id"],
+                course["id"],
+                tag["id"],
+                conversation["id"],
+                question["id"],
+                ["原子性", "隔离性"],
+            ),
+        ).fetchone()
+        answer = conn.execute(
+            "INSERT INTO app.messages (conversation_id, seq_no, sender, content) "
+            "VALUES (%s, 2, 'user', '事务具有原子性、一致性、隔离性和持久性。') RETURNING id",
+            (conversation["id"],),
+        ).fetchone()
+        conn.execute(
+            "UPDATE app.quiz_attempts "
+            "SET answer_message_id = %s, score = 7, feedback = '覆盖主要特性', answered_at = now() "
+            "WHERE id = %s",
+            (answer["id"], attempt["id"]),
+        )
+        mastery = conn.execute(
+            "SELECT score, last_score, sample_count FROM app.knowledge_mastery "
+            "WHERE user_id = %s AND course_id = %s AND tag_id = %s",
+            (alice["id"], course["id"], tag["id"]),
+        ).fetchone()
+        _ok(
+            mastery["score"] == 7 and mastery["sample_count"] == 1,
+            f"答题后掌握度异常：{mastery}",
+        )
+
+        quiz_rows = _count(
+            conn,
+            "SELECT count(*) AS n FROM app.v_quiz_dialogues WHERE conversation_id = %s",
+            (conversation["id"],),
+        )
+        theory_rows = _count(
+            conn,
+            "SELECT count(*) AS n FROM app.v_theory_dialogues WHERE conversation_id = %s",
+            (conversation["id"],),
+        )
+        _ok(quiz_rows == 1 and theory_rows == 0, "两类对话视图分流不正确")
+
+        t2s_conn.execute(
+            "SELECT set_config('app.user_id', %s, true)", (str(alice["id"]),)
+        )
+        alice_theory = _count(
+            t2s_conn, "SELECT count(*) AS n FROM t2s.v_my_theory_conversations"
+        )
+        t2s_conn.rollback()
+        t2s_conn.execute(
+            "SELECT set_config('app.user_id', %s, true)", (str(admin["id"]),)
+        )
+        admin_theory = _count(
+            t2s_conn, "SELECT count(*) AS n FROM t2s.v_my_theory_conversations"
+        )
+        admin_mastery = _count(
+            t2s_conn, "SELECT count(*) AS n FROM t2s.v_my_knowledge_mastery"
+        )
+        t2s_conn.rollback()
+        _ok(alice_theory >= 1, "alice 的理论对话视图为空")
+        _ok(admin_theory == 0 and admin_mastery == 0, "管理员不应看到他人学习视图")
+        return (
+            f"出题→评分→掌握度 {mastery['score']}/10；"
+            f"app 视图分流正确；t2s 理论视图 alice={alice_theory} / admin={admin_theory}"
+        )
+    report.run("learning.mastery", "AI 学习：两类对话视图与掌握度闭环", learning_mastery)
 
     def rollback_savepoint():
         before = _count(conn, "SELECT count(*) AS n FROM app.tags")

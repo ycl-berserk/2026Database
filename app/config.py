@@ -151,6 +151,9 @@ class Settings:
     suggest_mode: str = field(
         default_factory=lambda: os.getenv("SUGGEST_MODE", "auto").lower()
     )
+    tutor_mode: str = field(
+        default_factory=lambda: os.getenv("TUTOR_MODE", "auto").lower()
+    )
     review_algorithm: str = field(
         default_factory=lambda: os.getenv("REVIEW_ALGORITHM", "fsrs").lower()
     )

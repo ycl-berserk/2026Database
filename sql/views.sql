@@ -47,7 +47,8 @@ SELECT conv.id AS conversation_id,
        (SELECT array_agg(t.name ORDER BY t.name)
           FROM app.conversation_tags ct
           JOIN app.tags t ON t.id = ct.tag_id
-         WHERE ct.conversation_id = conv.id) AS tag_names
+         WHERE ct.conversation_id = conv.id) AS tag_names,
+       conv.mode
 FROM app.conversations conv
 JOIN app.sources s ON s.id = conv.source_id
 LEFT JOIN app.courses co ON co.id = conv.course_id
@@ -71,7 +72,8 @@ SELECT m.id AS message_id,
        m.seq_no,
        m.sender,
        m.content,
-       m.created_at
+       m.created_at,
+       conv.mode AS conversation_mode
 FROM app.messages m
 JOIN app.conversations conv ON conv.id = m.conversation_id
 JOIN app.sources s ON s.id = conv.source_id
@@ -388,3 +390,139 @@ JOIN app.tags tp ON tp.id = b.prerequisite_tag_id
 CROSS JOIN me
 WHERE tt.owner_id = me.uid
   AND tp.owner_id = me.uid;
+
+-- ---------------------------------------------------------------------------
+-- 两类对话：理论学习 / AI 出题练习
+-- app 层视图只做结构分类，权限由应用查询或 t2s 包装视图施加。
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE VIEW app.v_theory_dialogues AS
+SELECT v.id AS conversation_id,
+       v.course_id,
+       co.code AS course_code,
+       co.name AS course_name,
+       s.owner_id,
+       s.platform,
+       v.title,
+       v.mode,
+       v.started_at,
+       v.ended_at,
+       v.created_at,
+       (SELECT count(*) FROM app.messages m WHERE m.conversation_id = v.id) AS message_count,
+       (SELECT max(m.created_at) FROM app.messages m WHERE m.conversation_id = v.id) AS last_message_at,
+       (SELECT coalesce(array_agg(t.name ORDER BY t.name), '{}')
+          FROM app.conversation_tags ct
+          JOIN app.tags t ON t.id = ct.tag_id
+         WHERE ct.conversation_id = v.id) AS tag_names
+FROM app.conversations v
+JOIN app.sources s ON s.id = v.source_id
+LEFT JOIN app.courses co ON co.id = v.course_id
+WHERE v.mode = 'theory';
+
+CREATE OR REPLACE VIEW app.v_quiz_dialogues AS
+SELECT v.id AS conversation_id,
+       v.course_id,
+       co.code AS course_code,
+       co.name AS course_name,
+       s.owner_id,
+       s.platform,
+       v.title,
+       v.mode,
+       v.started_at,
+       v.ended_at,
+       v.created_at,
+       (SELECT count(*) FROM app.messages m WHERE m.conversation_id = v.id) AS message_count,
+       (SELECT max(m.created_at) FROM app.messages m WHERE m.conversation_id = v.id) AS last_message_at,
+       (SELECT count(*)
+          FROM app.quiz_attempts qa
+         WHERE qa.conversation_id = v.id AND qa.score IS NOT NULL) AS attempt_count,
+       (SELECT round(avg(qa.score)::numeric, 1)
+          FROM app.quiz_attempts qa
+         WHERE qa.conversation_id = v.id AND qa.score IS NOT NULL) AS avg_score,
+       (SELECT max(qa.answered_at)
+          FROM app.quiz_attempts qa
+         WHERE qa.conversation_id = v.id AND qa.score IS NOT NULL) AS last_answered_at,
+       (SELECT coalesce(array_agg(t.name ORDER BY t.name), '{}')
+          FROM app.conversation_tags ct
+          JOIN app.tags t ON t.id = ct.tag_id
+         WHERE ct.conversation_id = v.id) AS tag_names
+FROM app.conversations v
+JOIN app.sources s ON s.id = v.source_id
+LEFT JOIN app.courses co ON co.id = v.course_id
+WHERE v.mode = 'quiz';
+
+-- 当前用户可访问的理论学习对话
+CREATE OR REPLACE VIEW t2s.v_my_theory_conversations WITH (security_barrier = true) AS
+WITH me AS (
+    SELECT nullif(current_setting('app.user_id', true), '')::bigint AS uid
+)
+SELECT d.conversation_id,
+       d.title,
+       d.course_id,
+       d.course_code,
+       d.course_name,
+       d.platform AS source_platform,
+       d.started_at,
+       d.ended_at,
+       d.message_count,
+       d.last_message_at,
+       d.tag_names
+FROM app.v_theory_dialogues d
+CROSS JOIN me
+WHERE d.owner_id = me.uid
+   OR (d.course_id IS NOT NULL AND EXISTS (
+        SELECT 1 FROM app.course_members cm
+         WHERE cm.course_id = d.course_id AND cm.user_id = me.uid
+   ));
+
+-- 当前用户可访问的出题练习对话，附带答题统计
+CREATE OR REPLACE VIEW t2s.v_my_quiz_conversations WITH (security_barrier = true) AS
+WITH me AS (
+    SELECT nullif(current_setting('app.user_id', true), '')::bigint AS uid
+)
+SELECT d.conversation_id,
+       d.title,
+       d.course_id,
+       d.course_code,
+       d.course_name,
+       d.platform AS source_platform,
+       d.started_at,
+       d.ended_at,
+       d.message_count,
+       d.last_message_at,
+       d.attempt_count,
+       d.avg_score,
+       d.last_answered_at,
+       d.tag_names
+FROM app.v_quiz_dialogues d
+CROSS JOIN me
+WHERE d.owner_id = me.uid
+   OR (d.course_id IS NOT NULL AND EXISTS (
+        SELECT 1 FROM app.course_members cm
+         WHERE cm.course_id = d.course_id AND cm.user_id = me.uid
+   ));
+
+-- 当前用户的知识点掌握度
+CREATE OR REPLACE VIEW t2s.v_my_knowledge_mastery WITH (security_barrier = true) AS
+WITH me AS (
+    SELECT nullif(current_setting('app.user_id', true), '')::bigint AS uid
+)
+SELECT km.id AS mastery_id,
+       km.course_id,
+       co.code AS course_code,
+       co.name AS course_name,
+       km.tag_id,
+       t.name AS knowledge_point,
+       t.kind AS tag_kind,
+       km.score,
+       km.last_score,
+       km.sample_count,
+       km.updated_at
+FROM app.knowledge_mastery km
+JOIN app.courses co ON co.id = km.course_id
+JOIN app.tags t ON t.id = km.tag_id
+CROSS JOIN me
+WHERE km.user_id = me.uid
+  AND EXISTS (
+        SELECT 1 FROM app.course_members cm
+         WHERE cm.course_id = km.course_id AND cm.user_id = me.uid
+  );

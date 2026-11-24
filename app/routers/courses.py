@@ -5,7 +5,7 @@ from fastapi.responses import RedirectResponse
 
 from ..auth import require_learner, require_user, verify_csrf
 from ..db import get_conn
-from ..services import course_service
+from ..services import course_service, tutor_service
 from ..web import add_flash, form_text, render
 
 router = APIRouter(prefix="/courses")
@@ -47,7 +47,15 @@ def course_detail(
     candidates = (
         course_service.member_candidates(conn, course_id) if data["role"] == "owner" else []
     )
-    return render(request, "courses/detail.html", **data, candidates=candidates)
+    mastery = tutor_service.course_mastery(conn, user["id"], course_id)
+    return render(
+        request,
+        "courses/detail.html",
+        **data,
+        candidates=candidates,
+        mastery=mastery,
+        mastery_summary=tutor_service.mastery_summary(mastery),
+    )
 
 
 @router.get("/{course_id}/edit")

@@ -44,6 +44,7 @@ jobs:
       TEXT2SQL_MODE: mock
       EMBEDDING_MODE: "off"
       SUGGEST_MODE: "off"
+      TUTOR_MODE: "off"
       UV_FROZEN: "1"
 
     steps:

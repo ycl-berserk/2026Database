@@ -237,6 +237,7 @@ from .routers import (  # noqa: E402
     tags,
     text2sql,
     tokens,
+    tutor,
 )
 
 app.include_router(auth.router)
@@ -253,6 +254,7 @@ app.include_router(tags.router)
 app.include_router(imports.router)
 app.include_router(harness.router)
 app.include_router(tokens.router)
+app.include_router(tutor.router)
 app.include_router(annotations.router)
 app.include_router(reviews.router)
 app.include_router(stats.router)

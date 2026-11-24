@@ -1762,3 +1762,43 @@ html.is-desktop.is-macos .sidebar { top: 30px; height: calc(100vh - 30px); }
   .share-save .form-actions { width: 100%; }
   .share-save .form-actions .btn { flex: 1; }
 }
+
+/* AI 学习：理论答疑 / 出题练习 */
+.tutor-course-picker { display: flex; gap: 8px; align-items: flex-end; }
+.tutor-course-picker .field { min-width: 220px; }
+.tutor-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.tutor-action {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper-2);
+}
+.tutor-action h3 { font-size: 15px; margin: 0; }
+.tutor-action p { margin: 0; font-size: 12.5px; }
+.stack-form { display: grid; gap: 10px; margin-top: 14px; }
+.chat-log { display: grid; gap: 10px; margin: 14px 0 4px; }
+.chat-msg {
+  max-width: 92%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--white);
+}
+.chat-user { margin-left: auto; background: var(--jade-soft); border-color: #c3d6ca; }
+.chat-assistant { background: var(--paper-2); }
+.chat-system { background: #f6ecd2; border-color: #e3d2a4; }
+.chat-meta { font-size: 11.5px; color: var(--ink-3); margin-bottom: 5px; }
+.chat-body { white-space: pre-wrap; line-height: 1.75; overflow-wrap: anywhere; }
+.mastery-list { list-style: none; display: grid; gap: 12px; margin: 0; padding: 0; }
+.mastery-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px; }
+.mastery-list small { display: block; margin-top: 4px; }
+
+@media (max-width: 700px) {
+  .tutor-actions { grid-template-columns: minmax(0, 1fr); }
+  .tutor-course-picker { align-items: stretch; flex-direction: column; }
+  .tutor-course-picker .field { min-width: 0; }
+  .chat-msg { max-width: 100%; }
+}

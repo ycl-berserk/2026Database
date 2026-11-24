@@ -32,13 +32,16 @@ VIEWS = (
     "v_my_t2s_stats",
     "v_my_tag_edges",
     "v_my_tag_prerequisites",
+    "v_my_theory_conversations",
+    "v_my_quiz_conversations",
+    "v_my_knowledge_mastery",
 )
 
 SCHEMA_DOC = """
 只读视图（均在 t2s schema，可直接不带前缀引用）：
 - v_my_courses(course_id, code, name, semester, instructor, description, my_role, conversation_count, message_count)
-- v_my_conversations(conversation_id, title, external_id, course_id, course_code, course_name, source_platform, account_label, started_at, ended_at, is_archived, message_count, tag_names)
-- v_my_messages(message_id, conversation_id, conversation_title, course_id, course_name, seq_no, sender, content, created_at)
+- v_my_conversations(conversation_id, title, external_id, course_id, course_code, course_name, source_platform, account_label, started_at, ended_at, is_archived, message_count, tag_names, mode)
+- v_my_messages(message_id, conversation_id, conversation_title, course_id, course_name, seq_no, sender, content, created_at, conversation_mode)
 - v_my_tags(tag_id, name, kind, color, conversation_count)
 - v_my_conversation_tags(conversation_id, conversation_title, tag_id, tag_name, tag_kind, created_by, created_by_name, created_at)
 - v_my_annotations(annotation_id, kind, status, content, created_at, updated_at, message_id, message_content, sender, conversation_id, conversation_title, course_name, author_name, is_mine)
@@ -51,6 +54,9 @@ SCHEMA_DOC = """
 - v_my_t2s_stats(log_id, question, status, latency_ms, row_count, created_at)
 - v_my_tag_edges(edge_id, prerequisite_tag_id, prerequisite_tag, tag_id, tag_name, created_at)
 - v_my_tag_prerequisites(tag_id, tag_name, prerequisite_tag_id, prerequisite_tag, depth)
+- v_my_theory_conversations(conversation_id, title, course_id, course_code, course_name, source_platform, started_at, ended_at, message_count, last_message_at, tag_names)
+- v_my_quiz_conversations(conversation_id, title, course_id, course_code, course_name, source_platform, started_at, ended_at, message_count, last_message_at, attempt_count, avg_score, last_answered_at, tag_names)
+- v_my_knowledge_mastery(mastery_id, course_id, course_code, course_name, tag_id, knowledge_point, tag_kind, score, last_score, sample_count, updated_at)
 
 约束：
 1. 只生成一条 SELECT 或 WITH 查询，不要写分号，不要注释。

@@ -329,7 +329,7 @@ def list_conversations(
             assert query_vector is not None
             rows = conn.execute(
                 f"""
-                SELECT v.id, v.title, v.course_id, v.started_at, v.is_archived,
+                SELECT v.id, v.title, v.course_id, v.started_at, v.is_archived, v.mode,
                        c.name AS course_name, c.code AS course_code,
                        s.platform, s.account_label,
                        (SELECT count(*) FROM app.messages m WHERE m.conversation_id = v.id) AS message_count,
@@ -396,7 +396,7 @@ def list_conversations(
             tail_sql = " OFFSET %(offset)s"
         rows = conn.execute(
             f"""
-            SELECT v.id, v.title, v.course_id, v.started_at, v.is_archived,
+            SELECT v.id, v.title, v.course_id, v.started_at, v.is_archived, v.mode,
                    c.name AS course_name, c.code AS course_code,
                    s.platform, s.account_label,
                    (SELECT count(*) FROM app.messages m WHERE m.conversation_id = v.id) AS message_count,
@@ -503,7 +503,7 @@ def get_conversation(conn, conversation_id: int, user: dict) -> dict:
     row = conn.execute(
         """
         SELECT v.id, v.title, v.external_id, v.started_at, v.ended_at,
-               v.course_id, v.is_archived, v.created_at,
+               v.course_id, v.mode, v.is_archived, v.created_at,
                c.name AS course_name, c.code AS course_code,
                s.id AS source_id, s.owner_id, s.platform, s.account_label
           FROM app.conversations v

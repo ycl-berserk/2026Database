@@ -6,13 +6,14 @@ import pytest
 
 def test_schema_has_tables_and_views(conn):
     tables = conn.execute(
-        "SELECT count(*) AS n FROM information_schema.tables WHERE table_schema = 'app'"
+        "SELECT count(*) AS n FROM information_schema.tables "
+        "WHERE table_schema = 'app' AND table_type = 'BASE TABLE'"
     ).fetchone()["n"]
     views = conn.execute(
         "SELECT count(*) AS n FROM information_schema.views WHERE table_schema = 't2s'"
     ).fetchone()["n"]
-    assert tables == 17
-    assert views == 15
+    assert tables == 19
+    assert views == 18
 
 
 def test_unique_username(conn, base):

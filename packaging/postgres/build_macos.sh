@@ -83,4 +83,5 @@ make -C "$SOURCE" -j"$JOBS"
 make -C "$SOURCE" install
 make -C "$SOURCE/contrib/pg_trgm" install
 make -C "$SOURCE/contrib/pg_stat_statements" install
+make -C "$SOURCE/contrib/pgcrypto" install
 echo "[pg] installed into $PREFIX"

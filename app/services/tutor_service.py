@@ -158,6 +158,7 @@ def _context_rows(conn, user_id: int, course_id: int, tag_id: int | None, patter
           JOIN app.sources s ON s.id = v.source_id
          WHERE v.course_id = %(course_id)s
            AND v.mode = 'theory'
+           AND s.platform <> 'learning_space'
            AND {_VISIBLE}
            AND (%(tag_id)s::bigint IS NULL OR EXISTS (
                 SELECT 1 FROM app.conversation_tags ct
@@ -209,6 +210,7 @@ def _semantic_rows(
              WHERE m.embedding IS NOT NULL
                AND v.course_id = %(course_id)s
                AND v.mode = 'theory'
+               AND s.platform <> 'learning_space'
                AND {_VISIBLE}
                AND (%(tag_id)s::bigint IS NULL OR EXISTS (
                     SELECT 1 FROM app.conversation_tags ct
@@ -604,6 +606,19 @@ async def create_session(
         else f"理论答疑 · {course['code']}"
     )
     source_id = _app_source(conn, user["id"])
+    greeting = ""
+    if session_mode == THEORY:
+        snippet_count = len(build_context(conn, user["id"], course_id)["snippets"])
+        if snippet_count:
+            greeting = (
+                f"已载入这门课的 {snippet_count} 段理论对话上下文，可以直接提问。"
+                "回答只依据导入的课程记录，AI 学习会话本身不计入上下文。"
+            )
+        else:
+            greeting = (
+                "这门课还没有可用的理论对话上下文；先导入课程聊天记录，"
+                "回答就会依据导入内容。AI 学习会话本身不计入上下文。"
+            )
     with conn.transaction():
         row = conn.execute(
             """
@@ -626,7 +641,7 @@ async def create_session(
                 conn,
                 conversation_id,
                 "assistant",
-                "已准备好这门课的理论对话上下文。可以直接提问，我会先依据已导入的课程记录回答。",
+                greeting,
             )
     if session_mode == QUIZ and tag is not None:
         await ask_question(conn, user, conversation_id, tag_id=tag["id"])

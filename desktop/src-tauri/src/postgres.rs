@@ -6,6 +6,13 @@ use std::process::{Command, Output, Stdio};
 const BEGIN: &str = "# BEGIN learning-space";
 const END: &str = "# END learning-space";
 
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+#[cfg(windows)]
+const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+#[cfg(windows)]
+const DETACHED_FLAGS: u32 = CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP;
+
 pub struct Postgres {
     pub bin: PathBuf,
     pub data: PathBuf,
@@ -31,7 +38,8 @@ fn run(exe: &Path, args: &[&OsStr], label: &str) -> Result<Output, String> {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        command.creation_flags(0x0800_0000);
+        // 新进程组：pg_ctl stop 的 Ctrl+C/控制台事件不会波及桌面壳与其他程序。
+        command.creation_flags(DETACHED_FLAGS);
     }
     let output = command
         .output()
@@ -160,7 +168,8 @@ impl Postgres {
         }
         // postgres 会继承 pg_ctl 的 stdout/stderr；用管道会导致读取端永远等不到 EOF。
         // pg_ctl 自身的输出丢弃，服务日志由 -l 写入 postgresql.log。
-        let status = Command::new(tool(&self.bin, "pg_ctl"))
+        let mut command = Command::new(tool(&self.bin, "pg_ctl"));
+        command
             .args([
                 OsStr::new("start"),
                 OsStr::new("-D"),
@@ -173,7 +182,14 @@ impl Postgres {
             ])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::null());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            // 新进程组：pg_ctl stop 的控制台事件不会波及桌面壳与其他程序。
+            command.creation_flags(DETACHED_FLAGS);
+        }
+        let status = command
             .status()
             .map_err(|err| format!("无法执行 pg_ctl start：{err}"))?;
         if !status.success() {
@@ -190,7 +206,7 @@ impl Postgres {
         if !self.running() {
             return Ok(());
         }
-        let timeout = OsStr::new("30");
+        let timeout = OsStr::new("10");
         let fast = run(
             &tool(&self.bin, "pg_ctl"),
             &[
@@ -208,7 +224,7 @@ impl Postgres {
         if fast.is_ok() {
             return Ok(());
         }
-        run(
+        let immediate = run(
             &tool(&self.bin, "pg_ctl"),
             &[
                 OsStr::new("stop"),
@@ -218,10 +234,45 @@ impl Postgres {
                 OsStr::new("immediate"),
                 OsStr::new("-w"),
                 OsStr::new("-t"),
-                timeout,
+                OsStr::new("5"),
             ],
             "pg_ctl stop -m immediate",
-        )
-        .map(|_| ())
+        );
+        if immediate.is_ok() {
+            return Ok(());
+        }
+        // 最后兜底：读取 postmaster.pid 第一行，强制结束进程树并清理陈旧锁文件。
+        self.force_stop();
+        Ok(())
+    }
+
+    fn force_stop(&self) {
+        let pid_file = self.data.join("postmaster.pid");
+        let pid = fs::read_to_string(&pid_file)
+            .ok()
+            .and_then(|text| text.lines().next()?.trim().parse::<u32>().ok());
+        if let Some(pid) = pid {
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                let _ = Command::new("taskkill")
+                    .args(["/PID", &pid.to_string(), "/T", "/F"])
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status();
+            }
+            #[cfg(not(windows))]
+            {
+                let _ = Command::new("kill")
+                    .args(["-9", &pid.to_string()])
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status();
+            }
+        }
+        let _ = fs::remove_file(pid_file);
     }
 }

@@ -163,8 +163,9 @@ LS_HOME="$TMP/ls-smoke-home" \
 ## 进程与数据安全
 
 - PostgreSQL 只监听 `127.0.0.1`，使用 `scram-sha-256`；密钥保存在 `LS_HOME/.env`。
-- 退出时先停 sidecar，再 `pg_ctl stop -m fast`；异常退出后下次启动会按 `run/state.json`
-  清理残留 sidecar，并复用仍在运行的数据库。
+- 退出时先停 sidecar（最多等 5 秒，超时按进程树强杀），再 `pg_ctl stop -m fast`（10 秒）→ `-m immediate`（5 秒）→ 按 `postmaster.pid` 强制结束；PostgreSQL 以独立进程组启动，避免控制台 Ctrl+C 波及桌面壳。
+- 如果托盘「退出」无响应，可执行 `learning-space-desktop.exe --quit`，会走同一套清理流程。
+- 异常退出后下次启动会按 `run/state.json` 清理残留 sidecar，并复用仍在运行的数据库。
 - 启动失败时窗口会显示日志目录，也可从托盘选择“打开日志目录”。
 - 桌面模式是 HTTP（不是 HTTPS）；局域网共享默认关闭，开启后仅应用端口对外，数据库仍只监听 `127.0.0.1`。
 

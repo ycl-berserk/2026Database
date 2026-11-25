@@ -93,6 +93,7 @@ python scripts/evaluate_retrieval.py --user alice --k 10
 1. 安装并启动“Learning Space”；首次启动会初始化本机数据库（仅监听 `127.0.0.1`）、应用迁移与视图，然后进入 `/setup` 创建本地管理员账号。
 2. 手机与电脑在同一 Wi-Fi 时，托盘菜单 →“手机访问…”打开开关，扫码用同一账号登录；多网卡可手动选择地址，连不上时窗口内提供只读网络诊断（网络位置、防火墙、AP 隔离等）。关闭开关或退出应用后手机立即不可访问，数据库从不对外暴露。
 3. 数据目录：Windows `%LOCALAPPDATA%\com.learningspace.desktop`，macOS `~/Library/Application Support/com.learningspace.desktop`；含 `pgdata/`、`logs/`、`backups/`（保留 7 份）。卸载默认保留数据。
+4. 退出：托盘「退出」会先停 sidecar，再停止 PostgreSQL；如果窗口无响应，可在安装目录执行 `learning-space-desktop.exe --quit`，走同一套清理流程。sidecar 最多等待 5 秒，PostgreSQL 先 fast 10 秒、再 immediate 5 秒，最后按 `postmaster.pid` 强制结束，避免无限卡住。
 
 安装包目前未签名：Windows 首次运行会被 SmartScreen 提示（“更多信息 → 仍要运行”），macOS 需在“应用程序”中右键“打开”或在终端执行 `xattr -dr com.apple.quarantine "/Applications/Learning Space.app"`。局域网共享是明文 HTTP，只应在可信 Wi-Fi 下开启。构建方法、体积预算与安全边界见 [desktop/README.md](desktop/README.md) 与 [docs/desktop-packaging.md](docs/desktop-packaging.md)。
 

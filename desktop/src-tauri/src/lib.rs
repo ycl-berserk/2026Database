@@ -37,6 +37,7 @@ struct DesktopState {
     config: Mutex<DesktopConfig>,
     server: Mutex<Option<Child>>,
     starting: AtomicBool,
+    stopping: AtomicBool,
     status: Mutex<String>,
     diagnostics: Mutex<Option<(Instant, diagnostics::ShareDiagnostics)>>,
     init_error: Option<String>,
@@ -112,11 +113,44 @@ fn toggle_window(app: &AppHandle) {
 }
 
 fn stop_child(state: &DesktopState) {
-    if let Ok(mut slot) = state.server.lock() {
-        if let Some(mut child) = slot.take() {
-            let _ = child.kill();
-            let _ = child.wait();
+    let child = state.server.lock().ok().and_then(|mut slot| slot.take());
+    let Some(mut child) = child else {
+        return;
+    };
+    let pid = child.id();
+    let _ = child.kill();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => return,
+            Ok(None) if Instant::now() < deadline => {
+                thread::sleep(Duration::from_millis(100));
+            }
+            _ => break,
         }
+    }
+    // TerminateProcess 失败或子进程卡住时，按进程树强杀，避免退出无限等待。
+    force_kill_tree(pid);
+}
+
+fn force_kill_tree(pid: u32) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        use std::process::Stdio;
+        let _ = std::process::Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .creation_flags(0x0800_0000)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = std::process::Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .status();
     }
 }
 
@@ -237,7 +271,12 @@ fn show_share_window(app: &AppHandle) {
 
 fn stop_runtime(app: &AppHandle) {
     let state = app.state::<DesktopState>();
+    if state.stopping.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    boot_note(&state.home, "开始退出：停止本地服务");
     stop_child(&state);
+    boot_note(&state.home, "本地服务已停止：请求停止 PostgreSQL");
     config::clear_state(&state.home);
 
     let port = state
@@ -255,6 +294,7 @@ fn stop_runtime(app: &AppHandle) {
         .hint(state.home.join("logs").join("postgresql.log"));
         let _ = pg.stop();
     }
+    boot_note(&state.home, "退出清理完成");
 }
 
 fn boot(app: &AppHandle) -> Result<(), String> {
@@ -639,6 +679,10 @@ pub fn run() {
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if argv.iter().any(|arg| arg == "--quit") {
+                app.exit(0);
+                return;
+            }
             if argv.iter().any(|arg| arg == "--share") {
                 show_share_window(app);
                 return;
@@ -716,6 +760,7 @@ pub fn run() {
                 config: Mutex::new(config),
                 server: Mutex::new(None),
                 starting: AtomicBool::new(false),
+                stopping: AtomicBool::new(false),
                 status: Mutex::new(String::new()),
                 diagnostics: Mutex::new(None),
                 init_error,

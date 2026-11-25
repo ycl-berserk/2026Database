@@ -29,7 +29,11 @@ def form_text_list(form: FormData, name: str) -> list[str]:
 
 
 def _asset_version() -> str:
-    files = (settings.static_dir / "app.css", settings.static_dir / "app.js")
+    files = (
+        settings.static_dir / "app.css",
+        settings.static_dir / "neo.css",
+        settings.static_dir / "app.js",
+    )
     newest = max(int(path.stat().st_mtime) for path in files if path.exists())
     return format(newest, "x")
 

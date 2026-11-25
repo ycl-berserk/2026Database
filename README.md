@@ -20,7 +20,7 @@
 | 整理建议 | 配置大模型后可一键生成“会话摘要 + 标签建议”，只填入整理表单；用户检查并点击保存后才写入数据库。新标签按用户去重，摘要复用已有“总结”批注更新而非重复插入；无 Key 时按钮隐藏，表单仍可手动填写 |
 | 检索阅读 | 全局搜索（`/` 或 `Ctrl/Cmd+K`）、课程 / 标签 / 日期 / 关键词筛选、游标分页、消息上下文、关键词高亮、命中片段；配置向量模型后启用 pgvector + RRF 混合检索，否则自动退回词法检索 |
 | AI 学习 | 选择课程进入「理论答疑」或「出题练习」：上下文来自该课程已导入的全部平台对话；理论对话不改变掌握度，出题对话按知识点掌握度调整难度，作答评分后写入 1–10 分掌握度；无模型时退回离线检索、模板题与关键词覆盖评分 |
-| AI 设置 | 管理员图形化配置对话模型 / 向量模型：Provider 预设、Base URL、模型、API Key、掩码显示、测试连接、保存与清除；密钥使用 `pgcrypto` 加密存库，保存后立即生效 |
+| AI 设置 | 选择服务商、填一个 Key 即可连接；不填自动降级；OpenAI 等可复用 Key 做语义检索，Base URL/模型/维度收在高级设置；密钥加密保存 |
 | 批注与复习 | 笔记 / 疑问 / 纠错 / 总结四类批注、解决状态、加入复习队列、FSRS 风格四档评分调度（重来/困难/良好/容易）、逾期提示、掌握/重置、近 5 周复习热力图 |
 | 统计与导出 | 概览、课程排名、月度活跃补零、标签 TopN、批注解决率、复习状态、重复内容检测；统计 CSV、单会话 Markdown |
 | 用户与权限 | Session 登录、PBKDF2 密码哈希、CSRF、系统角色 + 课程角色、应用层与数据库层双重防护 |
@@ -240,7 +240,7 @@ ls import data/samples/qoder_db.json --course-code DB --json
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（244 单元 + 174 集成，共 418 项）；集成测试需先初始化测试库
+# 全量测试（247 单元 + 175 集成，共 422 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest
 
 # 静态检查与提交钩子（uv sync 已安装 Ruff / pyright / pre-commit）
@@ -289,7 +289,7 @@ node scripts/screenshots.mjs
 node scripts/extension_smoke.mjs
 ```
 
-> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、418 项测试、43 项验收与 12 项 Playwright E2E，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
+> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、422 项测试、43 项验收与 12 项 Playwright E2E，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
 
 ## 目录结构
 
@@ -379,19 +379,20 @@ SQL 先经 `sqlglot` PostgreSQL 方言 AST 校验（单条 SELECT/WITH、拒绝�
 
 离线模式的行为：理论答疑返回与该课程问题最相关的已导入对话片段；出题使用知识点模板题；评分按参考要点覆盖率估算 1–10 分，并在反馈中标注“离线规则评分”。页面顶栏始终显示 `AI：云端模型` 或 `AI：离线规则`。
 
-### AI 设置（图形化）
+### 连接 AI 服务
 
-管理员登录后，侧边栏「AI 设置」提供标准供应商配置：
+管理员（桌面个人模式下是本地管理员）在侧边栏「AI 设置」里看到的是一个简单的“连接 AI 服务”页面，而不是一堆工程参数：
 
-- **对话模型**：Provider 预设（DeepSeek / OpenAI / Ollama）、Base URL、模型、API Key、启用开关。
-- **向量模型**：Base URL、模型、维度、API Key、启用开关。
-- **测试连接**：只发送一个最小请求，返回 HTTP 状态、延迟或维度检查结果，不写入日志。
-- **密钥安全**：API Key 使用 PostgreSQL `pgcrypto`（AES-256）加密后写入 `app.ai_settings`；页面只显示 `••••末四位`，留空表示保持原密钥，勾选“清除”才删除。
-- **立即生效**：保存后无需重启。环境变量仍是默认值/强制降级开关（`SUGGEST_MODE`、`TUTOR_MODE`、`TEXT2SQL_MODE`、`EMBEDDING_MODE`、`HYBRID_SEARCH`）。
+- 选择 **DeepSeek / OpenAI / 自定义**，粘贴一个 API Key，点「保存并启用」即可。
+- 不填 Key 也能用：AI 学习走离线规则、检索走关键词、Text2SQL 使用本地示例；页面会直接显示当前能力状态。
+- OpenAI 等支持向量模型的服务可勾选「语义检索也使用这个 Key」；Base URL、模型名称、向量维度和单独的向量 Key 收在「高级设置」里，默认不打扰普通使用。
+- 「测试连接」只发送一个最小请求，返回成功/失败与延迟，不写入日志。
+- API Key 使用 PostgreSQL `pgcrypto`（AES-256）加密后写入 `app.ai_settings`；页面只显示 `••••末四位`，留空表示保持原密钥。
+- 保存后无需重启；环境变量仍是默认值/强制降级开关（`SUGGEST_MODE`、`TUTOR_MODE`、`TEXT2SQL_MODE`、`EMBEDDING_MODE`、`HYBRID_SEARCH`）。
 
-**Key 读取优先级**：数据库保存的 Key > 环境变量 `LLM_API_KEY` / `EMBEDDING_API_KEY` > 未配置。只使用环境变量时，把设置页的 Key 留空或点击清除即可；环境变量修改需要重启进程，页面保存的 Key 立即生效。
+**Key 读取优先级**：数据库保存的 Key > 环境变量 `LLM_API_KEY` / `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` > `EMBEDDING_API_KEY`（向量）> 未配置。只使用环境变量时，把设置页的 Key 留空或点击清除即可；环境变量修改需要重启进程，页面保存的 Key 立即生效。
 
-完全不用设置页也可以：在 `.env` 写入 `LLM_API_KEY=...`、`EMBEDDING_API_KEY=...` 后重启；Docker Compose 已透传 `LLM_*`、`EMBEDDING_*`、`SUGGEST_MODE`、`TUTOR_MODE` 与 `AI_SETTINGS_KEY`。
+完全不用设置页也可以：在 `.env` 或系统环境变量写入 `LLM_API_KEY`、`DEEPSEEK_API_KEY`、`OPENAI_API_KEY` 后重启；Docker Compose 已透传 `LLM_*`、`EMBEDDING_*`、`SUGGEST_MODE`、`TUTOR_MODE` 与 `AI_SETTINGS_KEY`。
 
 桌面个人模式下本地管理员同时是学习者，可以直接配置；Web 多用户部署中这是部署级配置，普通学生只使用管理员配置的能力。
 

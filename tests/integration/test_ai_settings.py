@@ -172,6 +172,21 @@ def test_env_key_is_fallback_and_database_key_wins(
     assert ai_settings_service.public_config(conn)["llm_key_masked"] == "••••3333"
 
 
+def test_share_key_reuses_llm_key_for_embeddings(conn, base, ai_settings_clean):
+    ai_settings_service.save(
+        conn,
+        _actor(base),
+        _payload(
+            llm_api_key="sk-shared-7777",
+            embedding_api_key="",
+            share_key=True,
+        ),
+    )
+    config = ai_settings_service.get_config(conn)
+    assert config.llm_api_key == "sk-shared-7777"
+    assert config.embedding_api_key == "sk-shared-7777"
+
+
 def test_secret_rotation_reports_error_instead_of_crashing(
     conn, base, ai_settings_clean, ai_modes
 ):

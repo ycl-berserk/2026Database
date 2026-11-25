@@ -20,6 +20,7 @@ def _payload(form) -> dict:
         "llm_model": form_text(form, "llm_model"),
         "llm_api_key": form_text(form, "llm_api_key"),
         "clear_llm_key": form_text(form, "clear_llm_key") == "on",
+        "share_key": form_text(form, "share_key") == "on",
         "embedding_enabled": form_text(form, "embedding_enabled") == "on",
         "embedding_base_url": form_text(form, "embedding_base_url"),
         "embedding_model": form_text(form, "embedding_model"),

@@ -207,6 +207,15 @@ def save(conn, actor: dict, form) -> dict:
     embedding_new_key = _encrypt(conn, form.get("embedding_api_key"))
     clear_llm = bool(form.get("clear_llm_key"))
     clear_embedding = bool(form.get("clear_embedding_key"))
+    share_key = bool(form.get("share_key"))
+
+    if share_key and not clear_llm and not clear_embedding:
+        if embedding_new_key is None and llm_new_key is not None:
+            embedding_new_key = llm_new_key
+        elif embedding_new_key is None:
+            existing = get_config(conn)
+            if existing.llm_api_key and not existing.embedding_api_key:
+                embedding_new_key = _encrypt(conn, existing.llm_api_key)
 
     with conn.transaction():
         conn.execute(

@@ -34,7 +34,7 @@
 | 触发器 | 13 个 |
 | 索引 | 65 个 |
 | 知识先修边 | 32 条，6 个连通分量 |
-| pytest | 417 个（244 单元 + 174 集成） |
+| pytest | 422 个（247 单元 + 175 集成） |
 | Playwright E2E | 12 个带断言的用例 |
 | `scripts/verify.py` | 43/43 PASS |
 | 演示规模 | 5 门课、30 个会话、420 条消息、66 条批注、59 个标签、5 个导入批次 |
@@ -44,11 +44,11 @@
 ```bash
 .venv/Scripts/python.exe -m ruff check .        # 全绿
 .venv/Scripts/python.exe -m pyright app         # 0 errors
-.venv/Scripts/python.exe -m pytest -q           # 418 passed
+.venv/Scripts/python.exe -m pytest -q           # 422 passed
 .venv/Scripts/python.exe scripts/verify.py      # 43/43 PASS
 ```
 
-注：`docs/roadmap.md` 的测试数字与 E2E 数量已于 2026-11-24 对齐到 418 / 12，R1 也补记了三条向量工程机制；继续维护时以本文件第 2 节和 `scripts/verify.py` 输出为准。
+注：`docs/roadmap.md` 的测试数字与 E2E 数量已于 2026-11-24 对齐到 422 / 12，R1 也补记了三条向量工程机制；继续维护时以本文件第 2 节和 `scripts/verify.py` 输出为准。
 
 ---
 
@@ -106,7 +106,7 @@ tests/unit|integration|e2e/
 - 批注四类（笔记/疑问/纠错/总结）、复习队列、FSRS 风格四档调度、5 周热力图。
 - 知识先修图：`tag_edges` DAG，递归 CTE 闭包、最短路径、触发器防环、SVG 可视化。
 - AI 学习（K4）：`conversations.mode` 区分理论 / 出题两类对话；`knowledge_mastery` 保存用户 × 课程 × 知识点的 1–10 分掌握度；`quiz_attempts` 保存题目、参考答案与评分，评分触发器按 0.6×旧分 + 0.4×本次更新掌握度。应用内会话写入同一对 `conversations` / `messages` 基表，来源平台为 `learning_space`；配置向量模型后，上下文同时使用语义召回与词法兜底。
-- AI 设置（K5）：`/settings/ai` 管理端图形化配置对话模型 / 向量模型；`ai_settings` 单例表保存 Base URL、模型、启用开关与 `pgcrypto` 加密后的 Key；页面只显示末四位掩码，支持测试连接、保存与清除。环境变量仍是默认值与强制降级开关。
+- AI 设置（K5）：`/settings/ai` 管理端图形化配置对话模型 / 向量模型；`ai_settings` 单例表保存 Base URL、模型、启用开关与 `pgcrypto` 加密后的 Key；页面只显示末四位掩码，支持测试连接、保存与清除。环境变量仍作为默认值：支持 `LLM_API_KEY`、`DEEPSEEK_API_KEY`、`OPENAI_API_KEY`，数据库 Key 优先。
 - 单会话 Markdown、统计 CSV、本人全量 zip 导出。
 
 ### 4.3 检索与 AI
@@ -203,8 +203,8 @@ npm run build
 
 ### P0：答辩材料与基线一致性
 
-1. **更新 `docs/roadmap.md` 的旧数字与状态**：已于 2026-11-24 完成（334 → 418 测试、11 → 12 项 E2E、R1 补记三条向量机制）。`docs/report.md` 与 `docs/汇报.pptx` 按用户要求暂未更新，答辩前如需一致再单独同步。
-2. **检查报告/PPT 与代码计数一致**：20 表、18 视图、13 触发器、65 索引、418 测试、43 验收；当前 `docs/report.md` 仍是旧基线，重新生成 PPT 前先决定是否同步。
+1. **更新 `docs/roadmap.md` 的旧数字与状态**：已于 2026-11-24 完成（334 → 422 测试、11 → 12 项 E2E、R1 补记三条向量机制）。`docs/report.md` 与 `docs/汇报.pptx` 按用户要求暂未更新，答辩前如需一致再单独同步。
+2. **检查报告/PPT 与代码计数一致**：20 表、18 视图、13 触发器、65 索引、422 测试、43 验收；当前 `docs/report.md` 仍是旧基线，重新生成 PPT 前先决定是否同步。
 3. **按 `docs/demo-script.md` 完整彩排 8 分钟版本**，重点确认两个现场操作：alice 403 / bob 2 条视图过滤；重复导入预览 6/84/new 0/dup 6。
 
 ### P1：直接增强现有差异化

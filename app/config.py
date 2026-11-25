@@ -27,6 +27,42 @@ ENV_FILE = Path(os.getenv("LS_ENV_FILE") or BASE_DIR / ".env")
 load_dotenv(ENV_FILE)
 
 
+def env_value(*names: str, default: str = "") -> str:
+    for name in names:
+        raw = os.getenv(name)
+        if raw is not None and raw.strip():
+            return raw.strip()
+    return default
+
+
+def llm_key_from_env() -> str:
+    """兼容常见供应商变量名；显式 LLM_API_KEY 优先。"""
+    return env_value("LLM_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY", "MOONSHOT_API_KEY")
+
+
+def llm_base_url_from_env() -> str:
+    explicit = env_value("LLM_BASE_URL")
+    if explicit:
+        return explicit
+    if env_value("OPENAI_API_KEY") and not env_value("DEEPSEEK_API_KEY"):
+        return "https://api.openai.com/v1"
+    return "https://api.deepseek.com/v1"
+
+
+def llm_model_from_env() -> str:
+    explicit = env_value("LLM_MODEL")
+    if explicit:
+        return explicit
+    if env_value("OPENAI_API_KEY") and not env_value("DEEPSEEK_API_KEY"):
+        return "gpt-4o-mini"
+    return "deepseek-chat"
+
+
+def embedding_key_from_env() -> str:
+    # DeepSeek Key 不用于 embeddings；只有显式变量或 OpenAI Key 才自动启用向量模型。
+    return env_value("EMBEDDING_API_KEY", "OPENAI_API_KEY", "LLM_API_KEY")
+
+
 @dataclass(frozen=True)
 class Settings:
     base_dir: Path = BASE_DIR
@@ -98,11 +134,9 @@ class Settings:
     )
 
     text2sql_mode: str = field(default_factory=lambda: os.getenv("TEXT2SQL_MODE", "auto"))
-    llm_base_url: str = field(
-        default_factory=lambda: os.getenv("LLM_BASE_URL", "https://api.deepseek.com/v1")
-    )
-    llm_api_key: str = field(default_factory=lambda: os.getenv("LLM_API_KEY", ""))
-    llm_model: str = field(default_factory=lambda: os.getenv("LLM_MODEL", "deepseek-chat"))
+    llm_base_url: str = field(default_factory=llm_base_url_from_env)
+    llm_api_key: str = field(default_factory=llm_key_from_env)
+    llm_model: str = field(default_factory=llm_model_from_env)
     ai_settings_key: str = field(
         default_factory=lambda: os.getenv("AI_SETTINGS_KEY", "").strip()
     )
@@ -128,13 +162,10 @@ class Settings:
         default_factory=lambda: os.getenv("EMBEDDING_MODE", "auto").lower()
     )
     embedding_base_url: str = field(
-        default_factory=lambda: os.getenv("EMBEDDING_BASE_URL")
-        or os.getenv("LLM_BASE_URL", "https://api.deepseek.com/v1")
+        default_factory=lambda: env_value("EMBEDDING_BASE_URL")
+        or llm_base_url_from_env()
     )
-    embedding_api_key: str = field(
-        default_factory=lambda: os.getenv("EMBEDDING_API_KEY")
-        or os.getenv("LLM_API_KEY", "")
-    )
+    embedding_api_key: str = field(default_factory=embedding_key_from_env)
     embedding_model: str = field(
         default_factory=lambda: os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
     )

@@ -1,27 +1,52 @@
-const PRESETS = {
-  llm: {
-    deepseek: { base: "https://api.deepseek.com/v1", model: "deepseek-chat" },
-    openai: { base: "https://api.openai.com/v1", model: "gpt-4o-mini" },
-    ollama: { base: "http://127.0.0.1:11434/v1", model: "qwen2.5:7b" },
+const PROVIDERS = {
+  deepseek: {
+    llmBase: "https://api.deepseek.com/v1",
+    llmModel: "deepseek-chat",
+    embedding: false,
+    shareKey: false,
   },
-  embedding: {
-    openai: { base: "https://api.openai.com/v1", model: "text-embedding-3-small" },
-    ollama: { base: "http://127.0.0.1:11434/v1", model: "nomic-embed-text" },
+  openai: {
+    llmBase: "https://api.openai.com/v1",
+    llmModel: "gpt-4o-mini",
+    embedding: true,
+    embeddingBase: "https://api.openai.com/v1",
+    embeddingModel: "text-embedding-3-small",
+    embeddingDim: "1536",
+    shareKey: true,
   },
+  custom: {},
 };
 
 const form = document.querySelector("[data-ai-form]");
+const embeddingConfigured = form?.dataset.embeddingConfigured === "1";
 
-document.querySelectorAll("[data-preset]").forEach((select) => {
-  select.addEventListener("change", () => {
-    const kind = select.dataset.preset;
-    const preset = PRESETS[kind] && PRESETS[kind][select.value];
-    if (!preset) return;
-    const section = select.closest("section");
-    const base = section.querySelector(`[name="${kind}_base_url"]`);
-    const model = section.querySelector(`[name="${kind}_model"]`);
-    if (base) base.value = preset.base;
-    if (model) model.value = preset.model;
+function field(name) {
+  return form?.querySelector(`[name="${name}"]`);
+}
+
+function applyProvider(name) {
+  const provider = PROVIDERS[name];
+  if (!form || !provider) return;
+
+  if (provider.llmBase) field("llm_base_url").value = provider.llmBase;
+  if (provider.llmModel) field("llm_model").value = provider.llmModel;
+
+  if (provider.embeddingBase) field("embedding_base_url").value = provider.embeddingBase;
+  if (provider.embeddingModel) field("embedding_model").value = provider.embeddingModel;
+  if (provider.embeddingDim) field("embedding_dim").value = provider.embeddingDim;
+
+  const embeddingEnabled = field("embedding_enabled");
+  if (embeddingEnabled) embeddingEnabled.checked = Boolean(provider.embedding);
+
+  const shareKey = field("share_key");
+  if (shareKey) {
+    shareKey.checked = Boolean(provider.shareKey) && !embeddingConfigured;
+  }
+}
+
+document.querySelectorAll("[data-provider]").forEach((radio) => {
+  radio.addEventListener("change", () => {
+    if (radio.checked) applyProvider(radio.value);
   });
 });
 

@@ -75,6 +75,7 @@ mkdir -p "$PREFIX"
         --without-icu \
         --without-readline \
         --without-libxml \
+        --without-openssl \
         --without-lz4 \
         --without-zstd \
         --disable-nls

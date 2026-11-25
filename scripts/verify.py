@@ -596,10 +596,16 @@ def build_checks(conn, t2s_conn, report: Report) -> dict:
     report.run("review.activity", "复习：事件流水与 5 周热力图", review_activity)
 
     def t2s_mock_run():
-        result = asyncio.run(
-            text2sql_service.run("我的复习队列", alice["id"], t2s_conn, conn)
-        )
-        _ok(result["mode"] == "mock", f"未配置 LLM 时应为 mock，实际 {result['mode']}")
+        # 本机可能配置了真实 Key（环境变量或设置页），此处强制 mock，保证验收可重复。
+        original = settings.text2sql_mode
+        object.__setattr__(settings, "text2sql_mode", "mock")
+        try:
+            result = asyncio.run(
+                text2sql_service.run("我的复习队列", alice["id"], t2s_conn, conn)
+            )
+        finally:
+            object.__setattr__(settings, "text2sql_mode", original)
+        _ok(result["mode"] == "mock", f"强制 mock 时应为 mock，实际 {result['mode']}")
         _ok(result["row_count"] == 28, f"alice 待复习应为 28 条，实际 {result['row_count']}")
         _ok(result["columns"][0] == "annotation_content", "结果列不符合预期")
         return "自然语言→SQL→执行返回 28 条复习项（mock 模式）"

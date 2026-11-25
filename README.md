@@ -390,6 +390,8 @@ SQL 先经 `sqlglot` PostgreSQL 方言 AST 校验（单条 SELECT/WITH、拒绝�
 
 **Key 读取优先级**：数据库保存的 Key > 环境变量 `LLM_API_KEY` / `EMBEDDING_API_KEY` > 未配置。只使用环境变量时，把设置页的 Key 留空或点击清除即可；环境变量修改需要重启进程，页面保存的 Key 立即生效。
 
+完全不用设置页也可以：在 `.env` 写入 `LLM_API_KEY=...`、`EMBEDDING_API_KEY=...` 后重启；Docker Compose 已透传 `LLM_*`、`EMBEDDING_*`、`SUGGEST_MODE`、`TUTOR_MODE` 与 `AI_SETTINGS_KEY`。
+
 桌面个人模式下本地管理员同时是学习者，可以直接配置；Web 多用户部署中这是部署级配置，普通学生只使用管理员配置的能力。
 
 ### 金标准评测

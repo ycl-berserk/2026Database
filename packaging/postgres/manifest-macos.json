@@ -12,7 +12,7 @@
     "--without-zstd",
     "--disable-nls"
   ],
-  "contrib": ["pg_trgm", "pg_stat_statements"],
+  "contrib": ["pg_trgm", "pg_stat_statements", "pgcrypto"],
   "license": "PostgreSQL License",
   "source": "https://www.postgresql.org/ftp/source/"
 }

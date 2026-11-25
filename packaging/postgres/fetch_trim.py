@@ -38,7 +38,7 @@ DROP_SHARE = {"locale", "man"}
 KEEP_TOP_LEVEL = {"bin", "lib", "share", "include"}
 # Everything else under lib/ is kept: the client tools depend on OpenSSL, ICU,
 # libpq, zlib and friends, and their absence only shows up at runtime.
-KEEP_EXTENSIONS = {"pg_trgm", "vector", "pg_stat_statements", "plpgsql"}
+KEEP_EXTENSIONS = {"pg_trgm", "vector", "pg_stat_statements", "pgcrypto", "plpgsql"}
 
 
 def sha256(path: Path) -> str:

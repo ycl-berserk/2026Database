@@ -34,7 +34,7 @@ def text2sql_page(
     request: Request, user=Depends(require_user), conn=Depends(get_conn)
 ):
     _require_student(user)
-    mode = text2sql_service.provider_mode()
+    mode = text2sql_service.provider_mode(conn)
     return render(
         request,
         "text2sql/index.html",

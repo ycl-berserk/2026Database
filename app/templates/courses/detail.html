@@ -93,6 +93,7 @@
     {% endif %}
   </section>
 
+  <div class="stack">
   <section class="panel">
     <div class="panel-head">
       <h2>课程标签</h2>
@@ -112,6 +113,30 @@
       <p class="empty">该课程下的会话还没有标签。</p>
     {% endif %}
   </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>知识点掌握度</h2>
+      <a class="link" href="/tutor?course_id={{ course.id }}">进入 AI 学习 →</a>
+    </div>
+    {% if mastery %}
+      <ul class="mastery-list">
+        {% for item in mastery %}
+          <li>
+            <div class="mastery-head">
+              <strong>{{ item.name }}</strong>
+              <span class="chip {% if item.score < 5 %}chip-seal{% elif item.score >= 8 %}chip-ok{% endif %}">{{ item.score }}/10</span>
+            </div>
+            <div class="progress-track" aria-hidden="true"><span style="width: {{ item.score * 10 }}%"></span></div>
+            <small class="muted">{{ item.sample_count }} 次作答 · 最近得分 {{ item.last_score }}/10</small>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">还没有掌握度记录。进入「AI 学习」做一道出题练习，评分后这里会显示进度。</p>
+    {% endif %}
+  </section>
+  </div>
 </div>
 
 <section class="panel">

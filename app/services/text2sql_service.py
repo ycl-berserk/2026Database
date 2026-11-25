@@ -15,6 +15,7 @@ from sqlglot.errors import SqlglotError
 
 from ..config import settings
 from ..errors import ValidationError
+from . import ai_settings_service
 
 VIEWS = (
     "v_my_courses",
@@ -32,13 +33,16 @@ VIEWS = (
     "v_my_t2s_stats",
     "v_my_tag_edges",
     "v_my_tag_prerequisites",
+    "v_my_theory_conversations",
+    "v_my_quiz_conversations",
+    "v_my_knowledge_mastery",
 )
 
 SCHEMA_DOC = """
 只读视图（均在 t2s schema，可直接不带前缀引用）：
 - v_my_courses(course_id, code, name, semester, instructor, description, my_role, conversation_count, message_count)
-- v_my_conversations(conversation_id, title, external_id, course_id, course_code, course_name, source_platform, account_label, started_at, ended_at, is_archived, message_count, tag_names)
-- v_my_messages(message_id, conversation_id, conversation_title, course_id, course_name, seq_no, sender, content, created_at)
+- v_my_conversations(conversation_id, title, external_id, course_id, course_code, course_name, source_platform, account_label, started_at, ended_at, is_archived, message_count, tag_names, mode)
+- v_my_messages(message_id, conversation_id, conversation_title, course_id, course_name, seq_no, sender, content, created_at, conversation_mode)
 - v_my_tags(tag_id, name, kind, color, conversation_count)
 - v_my_conversation_tags(conversation_id, conversation_title, tag_id, tag_name, tag_kind, created_by, created_by_name, created_at)
 - v_my_annotations(annotation_id, kind, status, content, created_at, updated_at, message_id, message_content, sender, conversation_id, conversation_title, course_name, author_name, is_mine)
@@ -51,6 +55,9 @@ SCHEMA_DOC = """
 - v_my_t2s_stats(log_id, question, status, latency_ms, row_count, created_at)
 - v_my_tag_edges(edge_id, prerequisite_tag_id, prerequisite_tag, tag_id, tag_name, created_at)
 - v_my_tag_prerequisites(tag_id, tag_name, prerequisite_tag_id, prerequisite_tag, depth)
+- v_my_theory_conversations(conversation_id, title, course_id, course_code, course_name, source_platform, started_at, ended_at, message_count, last_message_at, tag_names)
+- v_my_quiz_conversations(conversation_id, title, course_id, course_code, course_name, source_platform, started_at, ended_at, message_count, last_message_at, attempt_count, avg_score, last_answered_at, tag_names)
+- v_my_knowledge_mastery(mastery_id, course_id, course_code, course_name, tag_id, knowledge_point, tag_kind, score, last_score, sample_count, updated_at)
 
 约束：
 1. 只生成一条 SELECT 或 WITH 查询，不要写分号，不要注释。
@@ -330,13 +337,15 @@ def history(conn, user_id: int, limit: int = 10) -> list[dict]:
     ).fetchall()
 
 
-def provider_mode() -> str:
+def provider_mode(conn=None, config=None) -> str:
     mode = (settings.text2sql_mode or "auto").lower()
     if mode == "mock":
         return "mock"
     if mode == "llm":
         return "llm"
-    return "llm" if settings.llm_api_key else "mock"
+    if config is None:
+        config = ai_settings_service.get_config(conn)
+    return "llm" if config.llm_enabled and config.llm_api_key else "mock"
 
 
 def _mock_sql(question: str) -> tuple[str, str]:
@@ -452,7 +461,9 @@ def _mock_sql(question: str) -> tuple[str, str]:
     )
 
 
-async def _llm_sql(question: str) -> tuple[str, str]:
+async def _llm_sql(
+    config: ai_settings_service.AIConfig, question: str
+) -> tuple[str, str]:
     system = (
         "你是 PostgreSQL 查询生成器。根据用户问题生成只读 SQL。"
         "只输出 JSON 对象，字段为 sql 和 explanation，不要 Markdown 代码块。"
@@ -460,7 +471,7 @@ async def _llm_sql(question: str) -> tuple[str, str]:
         + FEW_SHOT
     )
     payload = {
-        "model": settings.llm_model,
+        "model": config.llm_model,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": question},
@@ -468,10 +479,10 @@ async def _llm_sql(question: str) -> tuple[str, str]:
         "temperature": 0,
         "response_format": {"type": "json_object"},
     }
-    headers = {"Authorization": f"Bearer {settings.llm_api_key}"}
+    headers = {"Authorization": f"Bearer {config.llm_api_key}"}
     async with httpx.AsyncClient(timeout=20) as client:
         response = await client.post(
-            f"{settings.llm_base_url.rstrip('/')}/chat/completions",
+            f"{config.llm_base_url.rstrip('/')}/chat/completions",
             json=payload,
             headers=headers,
         )
@@ -485,13 +496,17 @@ async def _llm_sql(question: str) -> tuple[str, str]:
     return sql, explanation
 
 
-async def generate_sql(question: str) -> tuple[str, str, str]:
-    mode = provider_mode()
+async def generate_sql(
+    question: str, config: ai_settings_service.AIConfig | None = None
+) -> tuple[str, str, str]:
+    if config is None:
+        config = ai_settings_service.get_config()
+    mode = provider_mode(config=config)
     if mode == "mock":
         sql, explanation = _mock_sql(question)
         return sql, explanation, "mock"
     try:
-        sql, explanation = await _llm_sql(question)
+        sql, explanation = await _llm_sql(config, question)
         return sql, explanation, "llm"
     except Exception as exc:
         sql, explanation = _mock_sql(question)
@@ -502,7 +517,8 @@ async def run(question: str, user_id: int, t2s_conn, main_conn) -> dict:
     started = time.perf_counter()
     sql = None
     try:
-        sql, explanation, mode = await generate_sql(question)
+        config = ai_settings_service.get_config(main_conn)
+        sql, explanation, mode = await generate_sql(question, config)
     except Exception as exc:
         latency = int((time.perf_counter() - started) * 1000)
         record_log(

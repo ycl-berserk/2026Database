@@ -11,7 +11,7 @@ from app.services import text2sql_service as svc
 
 
 def _fake_generate(sql: str, explanation: str = "测试查询"):
-    async def generate(_question: str):
+    async def generate(_question: str, _config=None):
         return sql, explanation, "mock"
 
     return generate

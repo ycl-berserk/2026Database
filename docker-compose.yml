@@ -38,9 +38,18 @@ services:
       INIT_DB: ${INIT_DB:-1}
       SEED_DEMO: ${SEED_DEMO:-1}
       TEXT2SQL_MODE: ${TEXT2SQL_MODE:-auto}
+      SUGGEST_MODE: ${SUGGEST_MODE:-auto}
+      TUTOR_MODE: ${TUTOR_MODE:-auto}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com/v1}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
+      EMBEDDING_MODE: ${EMBEDDING_MODE:-auto}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-1536}
+      # 用于解密设置页保存的 Key；留空时由 SESSION_SECRET 派生
+      AI_SETTINGS_KEY: ${AI_SETTINGS_KEY:-}
     ports:
       - "8000:8000"
     healthcheck:

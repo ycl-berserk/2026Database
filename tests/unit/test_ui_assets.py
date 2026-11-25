@@ -164,12 +164,14 @@ def test_static_assets_are_compressed_versioned_and_cacheable():
     assert versioned.headers["cache-control"].endswith("immutable")
     assert page.headers["cache-control"] == "no-store"
     assert "/static/app.css?v=" in page.text
+    assert "/static/neo.css?v=" in page.text
     assert "/static/app.js?v=" in page.text
 
 
 def test_frontend_budget_and_reduced_motion():
     assert (STATIC / "app.js").stat().st_size < 100 * 1024
     assert (STATIC / "app.css").stat().st_size < 100 * 1024
-    css = _read(STATIC / "app.css")
+    assert (STATIC / "neo.css").stat().st_size < 100 * 1024
+    css = _read(STATIC / "app.css") + _read(STATIC / "neo.css")
     assert "prefers-reduced-motion" in css
     assert ":focus-visible" in css

@@ -7,11 +7,13 @@
   <meta name="theme-color" content="#232b25">
   <meta name="description" content="把与大模型的问答记录整理成可检索、可批注、可复习的课程资料。">
   <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/static/icons/icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>{% block title %}{{ app_name }}{% endblock %} · {{ app_name }}</title>
   <link rel="stylesheet" href="/static/app.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/neo.css?v={{ asset_version }}">
 </head>
 <body>
 {% include "partials/desktop_frame.html" %}
@@ -57,6 +59,7 @@
         {% endif %}
         <a class="nav-link {% if active_path == '/admin' %}active{% endif %}" href="/admin" {% if active_path == '/admin' %}aria-current="page"{% endif %}>用户与系统</a>
         <a class="nav-link {% if active_path.startswith('/admin/observability') %}active{% endif %}" href="/admin/observability" {% if active_path.startswith('/admin/observability') %}aria-current="page"{% endif %}>数据库观测</a>
+        <a class="nav-link {% if active_path.startswith('/settings/ai') %}active{% endif %}" href="/settings/ai" {% if active_path.startswith('/settings/ai') %}aria-current="page"{% endif %}>AI 设置</a>
       {% endif %}
       {% if can_learn %}
         <span class="nav-label">学习</span>
@@ -65,6 +68,7 @@
         <a class="nav-link {% if active_path.startswith('/share') %}active{% endif %}" href="/share" {% if active_path.startswith('/share') %}aria-current="page"{% endif %}>快速收录</a>
         <a class="nav-link {% if active_path.startswith('/courses') %}active{% endif %}" href="/courses" {% if active_path.startswith('/courses') %}aria-current="page"{% endif %}>课程</a>
         <a class="nav-link {% if active_path.startswith('/conversations') %}active{% endif %}" href="/conversations" {% if active_path.startswith('/conversations') %}aria-current="page"{% endif %}>会话</a>
+        <a class="nav-link {% if active_path.startswith('/tutor') %}active{% endif %}" href="/tutor" {% if active_path.startswith('/tutor') %}aria-current="page"{% endif %}>AI 学习</a>
         <a class="nav-link {% if active_path == '/tags' or (active_path.startswith('/tags/') and not active_path.startswith('/tags/graph')) %}active{% endif %}" href="/tags" {% if active_path == '/tags' or (active_path.startswith('/tags/') and not active_path.startswith('/tags/graph')) %}aria-current="page"{% endif %}>标签</a>
         <a class="nav-link {% if active_path.startswith('/tags/graph') %}active{% endif %}" href="/tags/graph" {% if active_path.startswith('/tags/graph') %}aria-current="page"{% endif %}>知识先修图</a>
         <a class="nav-link {% if active_path.startswith('/imports') %}active{% endif %}" href="/imports" {% if active_path.startswith('/imports') %}aria-current="page"{% endif %}>导入记录</a>

@@ -122,7 +122,7 @@ def initialize_database(
             row[0]
             for row in conn.execute(
                 "SELECT table_name FROM information_schema.tables "
-                "WHERE table_schema = 'app' ORDER BY table_name"
+                "WHERE table_schema = 'app' AND table_type = 'BASE TABLE' ORDER BY table_name"
             ).fetchall()
         ]
         views = [

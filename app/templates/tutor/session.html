@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}{{ session.title }}{% endblock %}
+{% block page_title %}{{ session.title }}{% endblock %}
+{% block page_subtitle %}
+  {{ session.course_code }} · {{ session.course_name }} ·
+  {{ '出题练习会更新掌握度' if session.mode == 'quiz' else '理论答疑不改变掌握度' }}
+{% endblock %}
+
+{% block topbar_actions %}
+  <span class="chip {% if ai_enabled %}chip-soft{% else %}chip-warn{% endif %}">AI：{{ mode_label }}</span>
+  <a class="btn btn-ghost" href="/tutor{% if session.course_id %}?course_id={{ session.course_id }}{% endif %}">返回 AI 学习</a>
+{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="record-meta">
+    <span class="chip {% if session.mode == 'quiz' %}chip-seal{% else %}chip-soft{% endif %}">
+      {{ '出题练习' if session.mode == 'quiz' else '理论答疑' }}
+    </span>
+    {% if session.course_code %}<span class="chip">{{ session.course_code }}</span>{% endif %}
+    <span class="muted">创建于 {{ session.created_at | dt }}</span>
+  </div>
+
+  <div class="chat-log" aria-live="polite">
+    {% for message in messages %}
+      <article class="chat-msg chat-{{ message.sender }}">
+        <div class="chat-meta">
+          {% if message.sender == 'user' %}我{% elif message.sender == 'assistant' %}AI{% else %}系统{% endif %}
+          {% if message.knowledge_point %} · {{ message.knowledge_point }}{% endif %}
+          {% if message.score is not none %} · 得分 {{ message.score }}/10{% endif %}
+        </div>
+        <div class="chat-body">{{ message.content }}</div>
+      </article>
+    {% endfor %}
+  </div>
+
+  {% if session.mode == 'theory' %}
+    <form method="post" action="/tutor/{{ session.id }}/message" class="stack-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="field">
+        <span>继续提问</span>
+        <textarea name="content" rows="3" maxlength="4000" required
+                  placeholder="例如：可重复读和串行化有什么区别？"></textarea>
+      </label>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">发送</button>
+        <span class="muted hint">上下文来自该课程已导入的对话；离线模式下返回检索片段。</span>
+      </div>
+    </form>
+  {% elif pending %}
+    <form method="post" action="/tutor/{{ session.id }}/answer" class="stack-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="attempt_id" value="{{ pending.id }}">
+      <label class="field">
+        <span>作答 · {{ pending.knowledge_point }}</span>
+        <textarea name="answer" rows="5" maxlength="4000" required
+                  placeholder="先写结论，再解释理由。"></textarea>
+      </label>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">提交作答并评分</button>
+        <span class="muted hint">评分后会写入掌握度；同一道题只能提交一次。</span>
+      </div>
+    </form>
+  {% else %}
+    <form method="post" action="/tutor/{{ session.id }}/question" class="stack-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="field">
+        <span>下一个知识点</span>
+        <select name="tag_id">
+          {% for point in knowledge_points %}
+            <option value="{{ point.id }}">
+              {{ point.name }}{% if point.score is not none %}（{{ point.score }}/10）{% else %}（未评估）{% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">生成下一题</button>
+        <span class="muted hint">掌握度低时出基础题，掌握度高时出对比 / 应用题。</span>
+      </div>
+    </form>
+  {% endif %}
+</section>
+
+{% if session.course_id %}
+<section class="panel">
+  <div class="panel-head">
+    <h2>本课程掌握度</h2>
+    <span class="muted">
+      {% if mastery_summary.average is not none %}平均 {{ mastery_summary.average }}/10 · {% endif %}
+      {{ mastery_summary.count }} 个知识点已评估
+    </span>
+  </div>
+  {% if mastery %}
+    <ul class="mastery-list">
+      {% for item in mastery %}
+        <li>
+          <div class="mastery-head">
+            <strong>{{ item.name }}</strong>
+            <span class="chip {% if item.score < 5 %}chip-seal{% elif item.score >= 8 %}chip-ok{% endif %}">{{ item.score }}/10</span>
+          </div>
+          <div class="progress-track" aria-hidden="true"><span style="width: {{ item.score * 10 }}%"></span></div>
+          <small class="muted">{{ item.sample_count }} 次作答 · 最近得分 {{ item.last_score }}/10</small>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="empty">还没有掌握度记录。完成一道出题练习后，这里会显示分数。</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

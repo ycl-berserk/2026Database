@@ -44,7 +44,8 @@ def verify_roles(db_name: str) -> dict[str, object]:
 
     with psycopg.connect(base, autocommit=True) as conn:
         checks["schema_tables"] = conn.execute(
-            "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'app'"
+            "SELECT count(*) FROM information_schema.tables "
+            "WHERE table_schema = 'app' AND table_type = 'BASE TABLE'"
         ).fetchone()[0]
     return checks
 

@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 from ..config import settings
 from ..errors import NotFoundError, PermissionDenied, ValidationError
 from ..permissions import get_course_role
-from . import embedding_service, tag_service
+from . import ai_settings_service, embedding_service, tag_service
 
 PAGE_SIZE = 10
 SENDERS = ("user", "assistant", "system")
@@ -268,7 +268,9 @@ def list_conversations(
         )
 
     if q and query_vector is None and settings.hybrid_search_enabled:
-        query_vector = embedding_service.embed_query(q)
+        query_vector = embedding_service.embed_query(
+            q, ai_settings_service.get_config(conn)
+        )
     hybrid = bool(q and query_vector and settings.hybrid_search_enabled)
 
     page = max(1, page)
@@ -329,7 +331,7 @@ def list_conversations(
             assert query_vector is not None
             rows = conn.execute(
                 f"""
-                SELECT v.id, v.title, v.course_id, v.started_at, v.is_archived,
+                SELECT v.id, v.title, v.course_id, v.started_at, v.is_archived, v.mode,
                        c.name AS course_name, c.code AS course_code,
                        s.platform, s.account_label,
                        (SELECT count(*) FROM app.messages m WHERE m.conversation_id = v.id) AS message_count,
@@ -396,7 +398,7 @@ def list_conversations(
             tail_sql = " OFFSET %(offset)s"
         rows = conn.execute(
             f"""
-            SELECT v.id, v.title, v.course_id, v.started_at, v.is_archived,
+            SELECT v.id, v.title, v.course_id, v.started_at, v.is_archived, v.mode,
                    c.name AS course_name, c.code AS course_code,
                    s.platform, s.account_label,
                    (SELECT count(*) FROM app.messages m WHERE m.conversation_id = v.id) AS message_count,
@@ -503,7 +505,7 @@ def get_conversation(conn, conversation_id: int, user: dict) -> dict:
     row = conn.execute(
         """
         SELECT v.id, v.title, v.external_id, v.started_at, v.ended_at,
-               v.course_id, v.is_archived, v.created_at,
+               v.course_id, v.mode, v.is_archived, v.created_at,
                c.name AS course_name, c.code AS course_code,
                s.id AS source_id, s.owner_id, s.platform, s.account_label
           FROM app.conversations v

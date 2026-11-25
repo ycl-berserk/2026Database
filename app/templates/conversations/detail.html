@@ -25,6 +25,7 @@
       <span class="chip">未归类</span>
     {% endif %}
     <span class="chip">{{ platform_label(conversation.platform) }}</span>
+    <span class="chip {% if conversation.mode == 'quiz' %}chip-seal{% else %}chip-soft{% endif %}">{{ '出题练习' if conversation.mode == 'quiz' else '理论对话' }}</span>
     <span class="chip mono">{{ conversation.account_label }}</span>
     {% if conversation.is_archived %}<span class="badge">已归档</span>{% endif %}
     {% if can_edit %}

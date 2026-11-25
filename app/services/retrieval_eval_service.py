@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from ..config import settings
-from . import conversation_service, embedding_service
+from . import ai_settings_service, conversation_service, embedding_service
 
 
 def load_cases(path: str | Path) -> list[dict]:
@@ -102,6 +102,7 @@ def _summary(results: list[dict]) -> dict | None:
 
 
 def evaluate(conn, user_id: int, cases: list[dict], k: int = 10) -> dict:
+    config = ai_settings_service.get_config(conn)
     external_ids = sorted({item for case in cases for item in case["expected"]})
     mapping = _conversation_ids(conn, user_id, external_ids)
     case_results: list[dict] = []
@@ -130,7 +131,7 @@ def evaluate(conn, user_id: int, cases: list[dict], k: int = 10) -> dict:
             lexical_ids = _top_ids(conn, user_id, case["query"], None)
         result["lexical"] = rank_metrics(lexical_ids, expected_ids, k)
 
-        query_vector = embedding_service.embed_query(case["query"])
+        query_vector = embedding_service.embed_query(case["query"], config)
         if query_vector is None:
             result["status"] = "hybrid_skipped"
         else:
@@ -147,8 +148,8 @@ def evaluate(conn, user_id: int, cases: list[dict], k: int = 10) -> dict:
     )
     return {
         "k": max(1, k),
-        "model": settings.embedding_model,
-        "hybrid_configured": embedding_service.enabled(),
+        "model": config.embedding_model,
+        "hybrid_configured": embedding_service.enabled(config),
         "lexical": lexical,
         "hybrid": hybrid,
         "cases": case_results,

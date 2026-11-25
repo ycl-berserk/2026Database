@@ -1,6 +1,6 @@
 # v2 改进路线图
 
-> 状态：Phase 1、Phase 2、Phase 3、Phase 4 已完成（T1、T2、T5、R1、R6、K2、A1、A2、D1、D2、D3）。当前基线为 334 项测试（204 单元 + 130 集成）与 42 项端到端验收，本路线图的任何后续项都不得破坏这些基线。
+> 状态：Phase 1、Phase 2、Phase 3、Phase 4 已完成（T1、T2、T5、R1、R6、K2、A1、A2、D1、D2、D3）。当前基线为 422 项测试（247 单元 + 175 集成）、12 项 Playwright E2E 与 43 项端到端验收，本路线图的任何后续项都不得破坏这些基线。
 >
 > 面向对象：课程小组全体成员。每项都有编号，可据此开 Issue、分任务、写周报。
 
@@ -86,7 +86,7 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 
 | # | 事项 | 价值 | 量 | 状态 | 说明 |
 | --- | --- | --- | --- | --- | --- |
-| R1 | pgvector 混合检索：trgm + 向量 + RRF 融合 | 答辩 + 用户 | M | 完成 | 迁移 004 增加 `vector(1536)` 与 HNSW（cosine）；词法候选与向量候选各取 100，RRF(k=60) 融合；无 Key、调用失败、维度不符均退回词法，页面标注模式；搜索页显示向量覆盖率并可分批补齐（每次 64 条）。新增 7 项单元 + 5 项集成测试与 `verify.search.hybrid`；镜像切换后的排序规则问题由 `verify.schema.index_health` 守护 |
+| R1 | pgvector 混合检索：trgm + 向量 + RRF 融合 | 答辩 + 用户 | M | 完成 | 迁移 004 增加 `vector(1536)` 与 HNSW（cosine）；词法候选与向量候选各取 100，RRF(k=60) 融合；无 Key、调用失败、维度不符均退回词法，页面标注模式；搜索页显示向量覆盖率并可分批补齐（每次 64 条）。新增 7 项单元 + 5 项集成测试与 `verify.search.hybrid`；镜像切换后的排序规则问题由 `verify.schema.index_health` 守护。2026-11 补充三项向量工程机制：过滤感知 ANN（`hnsw.iterative_scan=relaxed_order` + 消息级 Top-N 后按会话折叠）、`Recall@K`/`MRR` 离线评测、SHA-256 内容哈希复用；详见 README「答辩重点」 |
 | R2 | 本地 embedding（Ollama / sentence-transformers / 浏览器端） | 实验 | M | 待办 | 可选能力，绝不作为依赖 |
 | R3 | ParadeDB `pg_search` BM25 + 中文分词 | 实验 | M/L | 待办 | 需更换镜像，扩展可用性有风险 |
 | R4 | zhparser / pg_jieba 分词 + tsvector | 答辩 | M | 待办 | 需自建镜像，比 trgm 更贴近课程内容 |
@@ -98,7 +98,7 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 
 | # | 事项 | 价值 | 量 | 状态 | 说明 |
 | --- | --- | --- | --- | --- | --- |
-| T1 | AST 校验（pglast / sqlglot）替换正则黑名单 | 答辩 | M | 完成 | `sqlglot` PostgreSQL 方言解析：单条 SELECT/WITH/UNION、拒绝嵌套 DML/`SELECT INTO`/`FOR UPDATE`/表函数/`pg_*` 等函数、15 个视图 + CTE 白名单；字符串与引用标识符先屏蔽再跑正则黑名单；新增 16 项单元测试，`verify.t2sql.guard` 覆盖嵌套 DML 与表函数 |
+| T1 | AST 校验（pglast / sqlglot）替换正则黑名单 | 答辩 | M | 完成 | `sqlglot` PostgreSQL 方言解析：单条 SELECT/WITH/UNION、拒绝嵌套 DML/`SELECT INTO`/`FOR UPDATE`/表函数/`pg_*` 等函数、18 个视图 + CTE 白名单；字符串与引用标识符先屏蔽再跑正则黑名单；新增 16 项单元测试，`verify.t2sql.guard` 覆盖嵌套 DML 与表函数 |
 | T2 | EXPLAIN 预检：估算行数 / 成本超阈值直接拒绝 | 答辩 | S/M | 完成 | `preflight_query` 在只读事务内执行 `EXPLAIN (FORMAT JSON)`，不取数；默认代价上限 500000、估算行数上限 200000、预检超时 1s，可用 `TEXT2SQL_MAX_COST` / `TEXT2SQL_MAX_EST_ROWS` 调整；拒绝写 `rejected` 日志；页面展示预检代价与估算行数；新增 3 项集成测试与 `verify.t2s.preflight` |
 | T3 | 结构化输出 / 工具调用 + few-shot | 答辩 | S/M | 待办 | 不同 provider 需适配 |
 | T4 | Schema RAG：只向模型提供相关视图与列 | 答辩 | S/M | 待办 | 视图数量少，收益有限但便于讲解 |
@@ -130,7 +130,7 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 | # | 事项 | 价值 | 量 | 状态 | 说明 |
 | --- | --- | --- | --- | --- | --- |
 | E1 | Dockerfile + compose 增加 app 服务（多阶段、非 root） | 答辩 | S/M | 完成 | 多阶段 `python:3.13-slim` 构建，运行用户 `app`（uid 999）；入口脚本按 `INIT_DB` / `SEED_DEMO` 自动迁移与空库播种，等 db healthy 后启动；`docker compose up -d --build` 一条命令起全栈 |
-| E2 | CI：GitHub Actions + Postgres service + pytest + verify | 答辩 | S/M | 完成 | `.github/workflows/ci.yml`：`pgvector/pgvector:pg16` 服务、Python 3.13 缓存依赖、初始化/播种、334 项测试 + 42 项验收，上传 JUnit 与验收 JSON；离线模式与 concurrency 取消旧任务 |
+| E2 | CI：GitHub Actions + Postgres service + pytest + verify | 答辩 | S/M | 完成 | `.github/workflows/ci.yml`：`pgvector/pgvector:pg16` 服务、Python 3.13 缓存依赖、初始化/播种、422 项测试 + 43 项验收，上传 JUnit 与验收 JSON；离线模式与 concurrency 取消旧任务 |
 | E3 | uv + lockfile、Ruff、pyright、pre-commit | 答辩 | S | 完成 | `pyproject.toml` 声明运行/开发依赖，`uv.lock` 锁定完整依赖图（当前 57 个包）；Ruff `E/F/I/UP/B/SIM/RUF/C4` 全绿，pyright basic 0 error；pre-commit 校验 YAML/TOML、Ruff 与 pyright；CI 用 `uv sync --frozen` 并检查锁文件 |
 | E4 | Hypothesis 属性测试（解析器 / SQL 守卫） | 答辩 | S/M | 完成 | `tests/unit/test_properties.py` 随机生成 JSON/字节/文本与 SQL，验证解析器不抛异常、导入结果不变量、守卫拒绝集合与幂等、字面量掩码与行数上限；新增 28 项测试，并修复随机化暴露的非字符串字段、混合时间戳、非字典节点/作者与词法错误泄漏 |
 | E5 | Playwright E2E 进 CI | 答辩 | M | 完成 | `playwright.config.mjs` + `tests/e2e/app.spec.mjs`：12 项带断言的用例（匿名跳转、学生/管理员/只读权限、会话与全局搜索、粘贴预览、Text2SQL、游标翻页、全量导出、四档复习、手机端溢出与 manifest），收集控制台错误、失败保留 trace；CI 安装 Chromium、启动 uvicorn 并上传 JUnit |
@@ -148,6 +148,8 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 | K1 | `review_logs` 复习事件表 + 幂等键 | 用户 + 答辩 | S/M | 完成 | `sql/migrations/001_add_review_logs.sql`；每次复习/掌握/重置写事件，`(user_id,event_id)` 唯一键支持离线重放；复习页展示近 5 周热力图 |
 | K2 | 知识先修图：`tag_edges` + 递归 CTE + 可视化 | 用户 + 答辩 | M | 完成 | 迁移 005 新增 `tag_edges`（第 15 张表，同属主、禁自环、触发器递归 CTE 防环）；`/tags/graph` 按课程合并连通分量渲染 SVG，最长路径分层 + 贝塞尔曲线；`t2s.v_my_tag_edges` / `v_my_tag_prerequisites` 暴露给 Text2SQL，闭包用 `DISTINCT ON` 取最短深度；种子 32 条边，新增 2 项布局单元 + 5 项集成测试与 `verify.graph.prerequisites` |
 | K3 | FSRS / 可插拔复习算法 | 实验 | M | 完成 | `services/fsrs.py` 实现 FSRS-6 风格长期调度（稳定性/难度/遗忘次数），复习页四档评分，迁移 009 保存状态并在 `review_logs` 记录 rating/algorithm；`REVIEW_ALGORITHM=simple` 保留间隔翻倍回退；新增 8 项单元 + 1 项集成 + 1 项 E2E |
+| K4 | 两类对话视图 + 知识点掌握度 + AI 学习 | 用户 + 答辩 | M | 完成 | 迁移 013 新增 `conversations.mode`、`knowledge_mastery`（1–10 分）与 `quiz_attempts`；`app.v_theory_dialogues` / `v_quiz_dialogues` 与 3 个 `t2s` 视图；`/tutor` 提供理论答疑与出题练习，评分触发器按 0.6×旧分 + 0.4×本次更新掌握度；无模型时离线检索、模板题与关键词覆盖评分；新增 8 项单元 + 8 项集成测试与 `verify.learning.mastery` |
+| K5 | AI 设置页：图形化 Provider / Key / 测试连接 | 用户 + 答辩 | M | 完成 | `/settings/ai` 管理端页面：对话模型与向量模型的 Provider 预设、Base URL、模型、API Key、掩码显示、测试连接、保存/清除；密钥用 `pgcrypto` AES-256 加密存 `app.ai_settings`，保存后立即生效；环境变量保留默认值与强制降级；新增 6 项集成测试 |
 
 ### 9. 体验专项
 
@@ -190,9 +192,9 @@ Ollama 只出现在设置页的“高级 / 隐私模式”，不进入首次使�
 
 **Phase 3 进度**：T1 AST 校验、T2 EXPLAIN 预检、T5 金标准评测、R1 pgvector 混合检索、R6 自动标签/摘要建议已完成，Phase 3 收尾。
 
-**Phase 4 进度**：K2 知识先修图、A1 MCP 工具接口、A2 命令行、D1 RLS 对比实验、D2 审计历史与 D3 数据库观测页已完成（17 张表、15 个视图、10 个触发器；334 项测试、42 项验收）。Phase 4 收尾。
+**Phase 4 进度**：K2 知识先修图、A1 MCP 工具接口、A2 命令行、D1 RLS 对比实验、D2 审计历史与 D3 数据库观测页已完成（20 张表、18 个视图、13 个触发器、65 个索引；422 项测试、43 项验收）。Phase 4 收尾。
 
-**Phase 5 进度**：E1 容器化、E2 GitHub Actions CI、E3 工程工具链、E4 属性测试、E5 Playwright E2E、E6 备份/恢复与全量导出、D8 物化视图统计实验、E9 游标分页、E7 安全加固、K3 FSRS 复习调度、E10 个人版桌面安装包（内置 PostgreSQL + sidecar + 局域网手机访问，Windows 已验收、macOS DMG 由 CI 构建）已完成；下一步 E11 静态展示页。
+**Phase 5 进度**：E1 容器化、E2 GitHub Actions CI、E3 工程工具链、E4 属性测试、E5 Playwright E2E、E6 备份/恢复与全量导出、D8 物化视图统计实验、E9 游标分页、E7 安全加固、K3 FSRS 复习调度、K4 两类对话视图与知识点掌握度、K5 AI 设置页、E10 个人版桌面安装包（内置 PostgreSQL + sidecar + 局域网手机访问，Windows 已验收、macOS DMG 由 CI 构建）已完成；下一步 E11 静态展示页。
 
 每个阶段的统一验收：
 

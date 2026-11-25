@@ -18,7 +18,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from app.config import settings
-from app.services import embedding_service
+from app.services import ai_settings_service, embedding_service
 
 
 def main() -> int:
@@ -28,12 +28,12 @@ def main() -> int:
     parser.add_argument("--batch", type=int, default=64, help="每批提交的消息数")
     args = parser.parse_args()
 
-    if not embedding_service.enabled():
-        print("未启用向量模型：请配置 EMBEDDING_API_KEY / EMBEDDING_BASE_URL，"
-              "或设置 EMBEDDING_MODE=llm。检索会继续使用词法模式。")
-        return 2
-
     with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
+        config = ai_settings_service.get_config(conn)
+        if not embedding_service.enabled(config):
+            print("未启用向量模型：请在「AI 设置」中配置向量模型 Key，"
+                  "或配置 EMBEDDING_API_KEY / EMBEDDING_BASE_URL。检索会继续使用词法模式。")
+            return 2
         if args.user:
             rows = conn.execute(
                 "SELECT id, username FROM app.users "
@@ -50,16 +50,21 @@ def main() -> int:
             return 1
 
         for user in rows:
-            before = embedding_service.coverage(conn, user["id"])
-            remaining = min(args.limit, embedding_service.pending_count(conn, user["id"]))
+            before = embedding_service.coverage(conn, user["id"], config)
+            remaining = min(
+                args.limit,
+                embedding_service.pending_count(conn, user["id"], config),
+            )
             done = 0
             while done < remaining:
                 size = min(args.batch, remaining - done)
-                result = embedding_service.backfill(conn, user["id"], limit=size)
+                result = embedding_service.backfill(
+                    conn, user["id"], limit=size, config=config
+                )
                 if not result["embedded"]:
                     break
                 done += result["embedded"]
-            after = embedding_service.coverage(conn, user["id"])
+            after = embedding_service.coverage(conn, user["id"], config)
             print(
                 f"{user['username']}: 本次 {done} 条，"
                 f"覆盖 {after['embedded']}/{after['total']}（之前 {before['embedded']}/{before['total']}）"

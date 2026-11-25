@@ -19,6 +19,8 @@
 | 知识先修图 | 用 `tag_edges` 维护标签之间的先修关系（有向无环图），数据库触发器校验同属主与无环；按课程分组渲染 SVG，支持递归查询全部先修链、查看后继与相关会话 |
 | 整理建议 | 配置大模型后可一键生成“会话摘要 + 标签建议”，只填入整理表单；用户检查并点击保存后才写入数据库。新标签按用户去重，摘要复用已有“总结”批注更新而非重复插入；无 Key 时按钮隐藏，表单仍可手动填写 |
 | 检索阅读 | 全局搜索（`/` 或 `Ctrl/Cmd+K`）、课程 / 标签 / 日期 / 关键词筛选、游标分页、消息上下文、关键词高亮、命中片段；配置向量模型后启用 pgvector + RRF 混合检索，否则自动退回词法检索 |
+| AI 学习 | 选择课程进入「理论答疑」或「出题练习」：上下文来自该课程已导入的全部平台对话；理论对话不改变掌握度，出题对话按知识点掌握度调整难度，作答评分后写入 1–10 分掌握度；无模型时退回离线检索、模板题与关键词覆盖评分 |
+| AI 设置 | 选择服务商、填一个 Key 即可连接；不填自动降级；OpenAI 等可复用 Key 做语义检索，Base URL/模型/维度收在高级设置；密钥加密保存 |
 | 批注与复习 | 笔记 / 疑问 / 纠错 / 总结四类批注、解决状态、加入复习队列、FSRS 风格四档评分调度（重来/困难/良好/容易）、逾期提示、掌握/重置、近 5 周复习热力图 |
 | 统计与导出 | 概览、课程排名、月度活跃补零、标签 TopN、批注解决率、复习状态、重复内容检测；统计 CSV、单会话 Markdown |
 | 用户与权限 | Session 登录、PBKDF2 密码哈希、CSRF、系统角色 + 课程角色、应用层与数据库层双重防护 |
@@ -91,6 +93,7 @@ python scripts/evaluate_retrieval.py --user alice --k 10
 1. 安装并启动“Learning Space”；首次启动会初始化本机数据库（仅监听 `127.0.0.1`）、应用迁移与视图，然后进入 `/setup` 创建本地管理员账号。
 2. 手机与电脑在同一 Wi-Fi 时，托盘菜单 →“手机访问…”打开开关，扫码用同一账号登录；多网卡可手动选择地址，连不上时窗口内提供只读网络诊断（网络位置、防火墙、AP 隔离等）。关闭开关或退出应用后手机立即不可访问，数据库从不对外暴露。
 3. 数据目录：Windows `%LOCALAPPDATA%\com.learningspace.desktop`，macOS `~/Library/Application Support/com.learningspace.desktop`；含 `pgdata/`、`logs/`、`backups/`（保留 7 份）。卸载默认保留数据。
+4. 退出：托盘「退出」会先停 sidecar，再停止 PostgreSQL；如果窗口无响应，可在安装目录执行 `learning-space-desktop.exe --quit`，走同一套清理流程。sidecar 最多等待 5 秒，PostgreSQL 先 fast 10 秒、再 immediate 5 秒，最后按 `postmaster.pid` 强制结束，避免无限卡住。
 
 安装包目前未签名：Windows 首次运行会被 SmartScreen 提示（“更多信息 → 仍要运行”），macOS 需在“应用程序”中右键“打开”或在终端执行 `xattr -dr com.apple.quarantine "/Applications/Learning Space.app"`。局域网共享是明文 HTTP，只应在可信 Wi-Fi 下开启。构建方法、体积预算与安全边界见 [desktop/README.md](desktop/README.md) 与 [docs/desktop-packaging.md](docs/desktop-packaging.md)。
 
@@ -237,7 +240,7 @@ ls import data/samples/qoder_db.json --course-code DB --json
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（204 单元 + 130 集成，共 334 项）；集成测试需先初始化测试库
+# 全量测试（247 单元 + 175 集成，共 422 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest
 
 # 静态检查与提交钩子（uv sync 已安装 Ruff / pyright / pre-commit）
@@ -246,7 +249,7 @@ uv run pyright app
 uv run pre-commit install
 uv run pre-commit run --all-files
 
-# 端到端验收：42 项 PASS/FAIL，写入 data/verification/report.json
+# 端到端验收：43 项 PASS/FAIL，写入 data/verification/report.json
 .venv/Scripts/python.exe scripts/verify.py --json data/verification/report.json
 
 # RLS / 视图 / 应用层 WHERE 隔离对比实验（全部回滚，输出 JSON）
@@ -275,7 +278,7 @@ uv run pre-commit run --all-files
 npm install
 npx playwright install chromium
 
-# 页面 E2E（11 项断言用例，需要先启动网站；默认 http://127.0.0.1:8000）
+# 页面 E2E（12 项断言用例，需要先启动网站；默认 http://127.0.0.1:8000）
 npm run e2e
 # 或指定地址：BASE_URL=http://127.0.0.1:8000 npm run e2e
 
@@ -286,7 +289,7 @@ node scripts/screenshots.mjs
 node scripts/extension_smoke.mjs
 ```
 
-> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、334 项测试、42 项验收与 12 项 Playwright E2E，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
+> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、422 项测试、43 项验收与 12 项 Playwright E2E，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
 
 ## 目录结构
 
@@ -317,7 +320,7 @@ learning-space/
 │   └── static/              # CSS / JS / PWA manifest、Service Worker、离线页与图标
 ├── sql/
 │   ├── schema.sql           # 12 张基线表、约束、索引、触发器
-│   ├── views.sql            # 15 个 t2s 只读权限视图
+│   ├── views.sql            # 18 个 t2s 只读权限视图（含两类对话与掌握度）
 │   ├── roles.sql            # ls_app / t2s_reader 最小权限
 │   ├── migrations/          # 增量迁移（review_logs、api_tokens、tag_edges、audit_log、观测扩展等，记录到 meta.schema_migrations）
 │   └── showcase.sql         # 报告用关键 SQL（带注释）
@@ -329,7 +332,7 @@ learning-space/
 └── docs/                    # 报告、设计、需求、SQL 展示、桌面与移动端截图
 ```
 
-> 数据库共 17 张表：`schema.sql` 的 12 张基线表 + 迁移新增的 `review_logs`（复习事件流水，含评分与算法）、`api_tokens`（采集令牌，仅存 SHA-256）、`tag_edges`（知识先修关系）、`audit_log`（结构变更审计，只记元数据）与 `user_onboarding`（新手指南收起状态）。复习项在迁移 009 中增加 FSRS 稳定性/难度/遗忘次数。
+> 数据库共 20 张表：`schema.sql` 的 12 张基线表 + 迁移新增的 `review_logs`（复习事件流水，含评分与算法）、`api_tokens`（采集令牌，仅存 SHA-256）、`tag_edges`（知识先修关系）、`audit_log`（结构变更审计，只记元数据）、`user_onboarding`（新手指南收起状态）、`knowledge_mastery`（用户 × 课程 × 知识点的 1–10 分掌握度）、`quiz_attempts`（出题、参考答案、作答与评分）与 `ai_settings`（AI 供应商配置，密钥加密）。复习项在迁移 009 中增加 FSRS 稳定性/难度/遗忘次数；`t2s` 共 18 个视图，新增 `v_my_theory_conversations`、`v_my_quiz_conversations` 与 `v_my_knowledge_mastery`。
 
 ## 数据与安全说明
 
@@ -349,6 +352,8 @@ learning-space/
 - **数据库观测边界**：`/admin/observability` 只展示 PostgreSQL 统计视图与 4 个白名单执行计划，不接受任意 SQL；慢查询展示归一化语句与指标，不包含参数值，也不关联消息或批注内容。`pg_stat_statements` 由迁移 008 条件安装；若容器未预加载扩展，页面会降级提示，I/O、表访问与执行计划仍可用。
 - **混合检索与隐私**：向量能力默认关闭。只有部署方配置 `EMBEDDING_API_KEY` 后，系统才会把可见消息正文发送到该嵌入服务；未配置时检索完全在本地数据库内完成。向量只用于本人可见范围，管理员没有向量召回入口。
 - **整理建议与隐私**：`SUGGEST_MODE=auto`（默认）下，只有配置了 `LLM_API_KEY` 且具备会话编辑权的用户点击「生成 AI 建议」时，系统才会把该会话前 40 条消息的节选发送到大模型；建议只回填表单，不自动写入。未配置 Key 时按钮隐藏，可手动填写标签与摘要。管理员没有该入口。
+- **AI 学习与隐私**：`TUTOR_MODE=auto` 时，只有配置了 `LLM_API_KEY` 才会把当前用户可见的该课程对话节选（最多 12 条、约 7000 字）发送给模型；出题、评分同理。未配置时使用离线检索、模板题与关键词覆盖评分，页面标注「AI：离线规则」。掌握度只按本人记录，共享课程中不读取他人的作答。
+- **AI 设置与密钥**：管理员在 `/settings/ai` 保存的 Key 使用 `pgcrypto` 加密存 `app.ai_settings`，页面只返回掩码；测试连接只发最小请求，不记录 Key。解密密钥优先 `AI_SETTINGS_KEY`，否则从 `SESSION_SECRET` 派生；两者轮换后需要重新保存 Key。普通学生没有设置入口。
 
 ## Text2SQL 两种模式
 
@@ -365,6 +370,31 @@ SQL 先经 `sqlglot` PostgreSQL 方言 AST 校验（单条 SELECT/WITH、拒绝�
 - `SUGGEST_MODE=llm`：强制启用（仍需 Key 才能调用成功）。
 
 接口 `POST /api/conversations/{id}/suggest` 会先检查会话编辑权，再把前 40 条消息（每条最多 800 字、总计 6000 字）发给 OpenAI 兼容接口，要求返回 `{summary, tags}`。服务端清洗标签（最多 3 个）、复用同名标签、限制摘要 500 字；结果只回填页面表单，保存动作仍走原有归类事务。
+
+### AI 学习模式
+
+- `TUTOR_MODE=auto`（默认）：配置 `LLM_API_KEY` 时使用云端模型；否则自动进入离线规则模式。
+- `TUTOR_MODE=off`：强制离线，适合演示时避免任何外部调用。
+- `TUTOR_MODE=llm`：强制模型；调用失败时单次退回归则评分并提示，不会静默改分。
+
+离线模式的行为：理论答疑返回与该课程问题最相关的已导入对话片段；出题使用知识点模板题；评分按参考要点覆盖率估算 1–10 分，并在反馈中标注“离线规则评分”。页面顶栏始终显示 `AI：云端模型` 或 `AI：离线规则`。
+
+### 连接 AI 服务
+
+管理员（桌面个人模式下是本地管理员）在侧边栏「AI 设置」里看到的是一个简单的“连接 AI 服务”页面，而不是一堆工程参数：
+
+- 选择 **DeepSeek / OpenAI / 自定义**，粘贴一个 API Key，点「保存并启用」即可。
+- 不填 Key 也能用：AI 学习走离线规则、检索走关键词、Text2SQL 使用本地示例；页面会直接显示当前能力状态。
+- OpenAI 等支持向量模型的服务可勾选「语义检索也使用这个 Key」；Base URL、模型名称、向量维度和单独的向量 Key 收在「高级设置」里，默认不打扰普通使用。
+- 「测试连接」只发送一个最小请求，返回成功/失败与延迟，不写入日志。
+- API Key 使用 PostgreSQL `pgcrypto`（AES-256）加密后写入 `app.ai_settings`；页面只显示 `••••末四位`，留空表示保持原密钥。
+- 保存后无需重启；环境变量仍是默认值/强制降级开关（`SUGGEST_MODE`、`TUTOR_MODE`、`TEXT2SQL_MODE`、`EMBEDDING_MODE`、`HYBRID_SEARCH`）。
+
+**Key 读取优先级**：数据库保存的 Key > 环境变量 `LLM_API_KEY` / `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` > `EMBEDDING_API_KEY`（向量）> 未配置。只使用环境变量时，把设置页的 Key 留空或点击清除即可；环境变量修改需要重启进程，页面保存的 Key 立即生效。
+
+完全不用设置页也可以：在 `.env` 或系统环境变量写入 `LLM_API_KEY`、`DEEPSEEK_API_KEY`、`OPENAI_API_KEY` 后重启；Docker Compose 已透传 `LLM_*`、`EMBEDDING_*`、`SUGGEST_MODE`、`TUTOR_MODE` 与 `AI_SETTINGS_KEY`。
+
+桌面个人模式下本地管理员同时是学习者，可以直接配置；Web 多用户部署中这是部署级配置，普通学生只使用管理员配置的能力。
 
 ### 金标准评测
 
@@ -401,3 +431,4 @@ v1 已定稿并推送。下一阶段的方向与验收标准统一记录在 [`do
 - 模拟数据中多个会话共享常用追问句，因此“重复消息检测”会命中这些模板句；这是刻意保留的查重演示素材，不代表真实用户行为。
 - Playwright E2E 与截图脚本会临时创建导入预览批次、采集令牌和 Text2SQL 审计记录；演示库验收前可用 `scripts/verify.py` 的事务回滚检查，运行后可按需清理这些演示痕迹。
 - 整理建议的输出由外部模型决定，同样的问题不保证每次一致；服务端只做 JSON 解析、去重与长度限制，并在 25 秒超时后返回可读错误。建议永远不会自动落库，必须由用户点击保存。
+- AI 学习的掌握度由 `quiz_attempts` 评分聚合而成，只反映本人在该课程出题对话中的表现；理论答疑不会改变分数。无模型时的离线评分是参考要点覆盖率的近似值，页面会标注「离线规则」，不适合当作严格的学业评价。

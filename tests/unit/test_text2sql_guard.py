@@ -152,10 +152,10 @@ def test_provider_mode_falls_back_to_mock(monkeypatch):
 
 
 def test_generate_sql_falls_back_when_llm_fails(monkeypatch):
-    async def boom(_question: str):
+    async def boom(_question: str, _config=None):
         raise RuntimeError("network down")
 
-    monkeypatch.setattr(svc, "provider_mode", lambda: "llm")
+    monkeypatch.setattr(svc, "provider_mode", lambda **_kwargs: "llm")
     monkeypatch.setattr(svc, "_llm_sql", boom)
     sql, explanation, mode = asyncio.run(svc.generate_sql("复习"))
     assert mode == "mock-fallback"

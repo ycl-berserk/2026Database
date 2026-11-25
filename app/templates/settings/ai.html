@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}AI 服务{% endblock %}
+{% block page_title %}连接 AI 服务{% endblock %}
+{% block page_subtitle %}填一次 Key，AI 学习、整理建议和 Text2SQL 就能用；不填也能用，系统会自动降级。{% endblock %}
+
+{% block topbar_actions %}
+  <a class="btn btn-ghost" href="/admin">返回管理</a>
+{% endblock %}
+
+{% block content %}
+{% set provider = 'deepseek' if 'deepseek' in config.llm_base_url else ('openai' if 'openai' in config.llm_base_url else 'custom') %}
+{% if config.secrets_error %}
+  <div class="flash flash-error" role="alert">
+    <span>已保存的密钥无法用当前密钥解密（通常是 SESSION_SECRET / AI_SETTINGS_KEY 变更）。请重新填写并保存 API Key。</span>
+  </div>
+{% endif %}
+
+<form method="post" action="/settings/ai" data-ai-form data-embedding-configured="{{ '1' if config.embedding_key_configured else '0' }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="llm_enabled" value="on">
+
+  <section class="panel ai-connect">
+    <div class="panel-head">
+      <h2>AI 服务</h2>
+      <span class="chip {% if config.llm_key_configured %}chip-ok{% else %}chip-warn{% endif %}">
+        {% if config.llm_key_configured %}已连接{% else %}未连接{% endif %}
+      </span>
+    </div>
+    <p class="lead">
+      学习空间不绑定某一家模型。选择服务商并填入 API Key 即可；Key 只在本机使用，
+      保存时加密，页面只显示末四位。
+    </p>
+
+    <div class="provider-grid" role="radiogroup" aria-label="AI 服务商">
+      <label class="provider-card">
+        <input type="radio" name="provider" value="deepseek" data-provider {% if provider == 'deepseek' %}checked{% endif %}>
+        <strong>DeepSeek</strong>
+        <small>中文对话 · 推荐</small>
+      </label>
+      <label class="provider-card">
+        <input type="radio" name="provider" value="openai" data-provider {% if provider == 'openai' %}checked{% endif %}>
+        <strong>OpenAI</strong>
+        <small>对话 + 语义检索</small>
+      </label>
+      <label class="provider-card">
+        <input type="radio" name="provider" value="custom" data-provider {% if provider == 'custom' %}checked{% endif %}>
+        <strong>自定义</strong>
+        <small>任意 OpenAI 兼容服务</small>
+      </label>
+    </div>
+
+    <label class="field">
+      <span>API Key</span>
+      <input name="llm_api_key" type="password" maxlength="4096" autocomplete="new-password"
+             placeholder="{% if config.llm_key_configured %}已保存：{{ config.llm_key_masked }}{% else %}粘贴你的 API Key{% endif %}">
+      <small class="muted">
+        {% if config.llm_key_configured %}
+          已保存 {{ config.llm_key_masked }}{% if config.llm_key_source == 'environment' %}（来自环境变量）{% endif %}，留空表示不修改。
+        {% else %}
+          还没有配置 Key。不填也可以继续使用，AI 能力会自动走离线规则。
+        {% endif %}
+      </small>
+    </label>
+
+    <label class="check-row">
+      <input type="checkbox" name="share_key" {% if not config.embedding_key_configured and provider == 'openai' %}checked{% endif %}>
+      <span>语义检索也使用这个 Key（推荐，支持 OpenAI 等服务）</span>
+    </label>
+
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">保存并启用</button>
+      <button class="btn btn-ghost" type="button" data-test="llm">测试连接</button>
+      <span class="test-status" data-test-status="llm" aria-live="polite"></span>
+    </div>
+
+    <p class="muted hint">
+      {% if config.llm_key_configured %}
+        当前服务：{{ config.llm_model }} · 来源：{% if config.llm_key_source == 'database' %}数据库{% elif config.llm_key_source == 'environment' %}环境变量{% else %}未配置{% endif %}
+      {% else %}
+        未连接。保存 API Key 后会自动启用；不保存也能继续使用。
+      {% endif %}
+    </p>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>连接后可以做什么</h2>
+      <span class="muted">未连接时自动降级，不会报错</span>
+    </div>
+    <div class="capability-grid">
+      <div class="capability">
+        <div><strong>AI 学习</strong><span>理论答疑、出题与评分</span></div>
+        <b class="{% if not config.llm_key_configured %}off{% endif %}">{{ '云端模型' if config.llm_key_configured else '离线规则' }}</b>
+      </div>
+      <div class="capability">
+        <div><strong>整理建议</strong><span>自动建议摘要与标签</span></div>
+        <b class="{% if not config.llm_key_configured %}off{% endif %}">{{ '自动生成' if config.llm_key_configured else '手动整理' }}</b>
+      </div>
+      <div class="capability">
+        <div><strong>Text2SQL</strong><span>自然语言查数据库</span></div>
+        <b class="{% if not config.llm_key_configured %}off{% endif %}">{{ '自然语言' if config.llm_key_configured else '本地示例' }}</b>
+      </div>
+      <div class="capability">
+        <div><strong>语义检索</strong><span>按意思找会话，不只靠关键词</span></div>
+        <b class="{% if not config.embedding_key_configured %}off{% endif %}">{{ '语义 + 关键词' if config.embedding_key_configured else '关键词' }}</b>
+      </div>
+    </div>
+  </section>
+
+  <details class="panel ai-advanced">
+    <summary>
+      <span>高级设置</span>
+      <small>服务地址、模型名称、向量模型</small>
+    </summary>
+    <div class="advanced-body">
+      <h3>对话模型</h3>
+      <div class="form-grid">
+        <label class="field">
+          <span>Base URL</span>
+          <input name="llm_base_url" value="{{ config.llm_base_url }}" maxlength="200" required>
+        </label>
+        <label class="field">
+          <span>模型名称</span>
+          <input name="llm_model" value="{{ config.llm_model }}" maxlength="120" required>
+        </label>
+        <label class="check-row">
+          <input type="checkbox" name="clear_llm_key">
+          <span>清除已保存的对话模型 Key</span>
+        </label>
+      </div>
+
+      <h3>向量模型</h3>
+      <p class="muted">用于按意思检索相关内容。OpenAI 等服务可复用上方 Key；不填只影响语义检索，其他 AI 能力不受影响。</p>
+      <div class="form-grid">
+        <label class="check-row">
+          <input type="checkbox" name="embedding_enabled" {% if config.embedding_enabled %}checked{% endif %}>
+          <span>启用向量模型</span>
+        </label>
+        <label class="field">
+          <span>Base URL</span>
+          <input name="embedding_base_url" value="{{ config.embedding_base_url }}" maxlength="200" required>
+        </label>
+        <label class="field">
+          <span>模型名称</span>
+          <input name="embedding_model" value="{{ config.embedding_model }}" maxlength="120" required>
+        </label>
+        <label class="field">
+          <span>向量维度</span>
+          <input name="embedding_dim" type="number" min="1" max="4096" value="{{ config.embedding_dim }}" required>
+          <small class="muted">当前数据库是 1536 维；修改维度需要迁移表结构。</small>
+        </label>
+        <label class="field">
+          <span>向量模型 Key</span>
+          <input name="embedding_api_key" type="password" maxlength="4096" autocomplete="new-password"
+                 placeholder="{% if config.embedding_key_configured %}已保存：{{ config.embedding_key_masked }}{% else %}未配置（可复用上方 Key）{% endif %}">
+        </label>
+        <label class="check-row">
+          <input type="checkbox" name="clear_embedding_key">
+          <span>清除已保存的向量模型 Key</span>
+        </label>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-ghost" type="button" data-test="embedding">测试语义检索</button>
+        <span class="test-status" data-test-status="embedding" aria-live="polite"></span>
+      </div>
+    </div>
+  </details>
+
+  <details class="panel ai-advanced">
+    <summary>
+      <span>部署与安全</span>
+      <small>普通用户不需要看这里</small>
+    </summary>
+    <div class="advanced-body">
+      <ul class="plain-list muted">
+        <li>这是部署级配置；Web 部署由管理员维护，桌面个人模式下本地管理员同时是学习者。</li>
+        <li>Key 使用 PostgreSQL <code>pgcrypto</code>（AES-256）加密保存，页面、日志和审计都不会返回明文。</li>
+        <li>不填 Key 也能用：AI 学习走离线规则，检索走关键词，Text2SQL 使用本地示例。</li>
+        <li>部署方仍可用环境变量预置 Key，或用 <code>SUGGEST_MODE / TUTOR_MODE / TEXT2SQL_MODE / EMBEDDING_MODE</code> 强制关闭对应能力。</li>
+      </ul>
+    </div>
+  </details>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/ai-settings.js?v={{ asset_version }}"></script>
+{% endblock %}

@@ -131,14 +131,14 @@ def test_without_query_vector_search_falls_back_to_lexical(conn, base):
     try:
         object.__setattr__(settings, "embedding_mode", "auto")
         object.__setattr__(settings, "embedding_api_key", "")
-        embedding_service._cached_query.cache_clear()
+        embedding_service.clear_query_cache()
         result = conversation_service.list_conversations(
             conn, base["users"]["alice"], q="完全不存在的关键词xyz"
         )
     finally:
         object.__setattr__(settings, "embedding_mode", original_mode)
         object.__setattr__(settings, "embedding_api_key", original_key)
-        embedding_service._cached_query.cache_clear()
+        embedding_service.clear_query_cache()
 
     assert result["retrieval"]["mode"] == "lexical"
     assert result["rows"] == []

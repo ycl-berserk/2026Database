@@ -68,6 +68,11 @@ if [ ! -d "$SOURCE" ]; then
 fi
 
 mkdir -p "$PREFIX"
+OPENSSL_PREFIX="${OPENSSL_PREFIX:-$(brew --prefix openssl@3 2>/dev/null || true)}"
+if [ -z "$OPENSSL_PREFIX" ] || [ ! -f "$OPENSSL_PREFIX/include/openssl/evp.h" ]; then
+    echo "[pg] OpenSSL headers not found; pgcrypto requires OpenSSL on PostgreSQL 16" >&2
+    exit 1
+fi
 (
     cd "$SOURCE"
     ./configure \
@@ -75,7 +80,9 @@ mkdir -p "$PREFIX"
         --without-icu \
         --without-readline \
         --without-libxml \
-        --without-openssl \
+        --with-openssl \
+        --with-includes="$OPENSSL_PREFIX/include" \
+        --with-libraries="$OPENSSL_PREFIX/lib" \
         --without-lz4 \
         --without-zstd \
         --disable-nls
@@ -85,4 +92,20 @@ make -C "$SOURCE" install
 make -C "$SOURCE/contrib/pg_trgm" install
 make -C "$SOURCE/contrib/pg_stat_statements" install
 make -C "$SOURCE/contrib/pgcrypto" install
-echo "[pg] installed into $PREFIX"
+
+# Bundle OpenSSL dylibs and rewrite absolute Homebrew paths so the app is self-contained.
+for lib in "$OPENSSL_PREFIX"/lib/libssl*.dylib "$OPENSSL_PREFIX"/lib/libcrypto*.dylib; do
+    [ -f "$lib" ] || continue
+    cp -L "$lib" "$PREFIX/lib/"
+done
+for binary in "$PREFIX"/bin/* "$PREFIX"/lib/*.dylib "$PREFIX"/lib/postgresql/*.dylib; do
+    [ -f "$binary" ] || continue
+    otool -L "$binary" 2>/dev/null | awk '/libssl|libcrypto/ {print $1}' | while read -r dep; do
+        install_name_tool -change "$dep" "@rpath/$(basename "$dep")" "$binary" 2>/dev/null || true
+    done
+done
+for lib in "$PREFIX"/lib/libssl*.dylib "$PREFIX"/lib/libcrypto*.dylib; do
+    [ -f "$lib" ] || continue
+    install_name_tool -id "@rpath/$(basename "$lib")" "$lib" 2>/dev/null || true
+done
+echo "[pg] installed into $PREFIX (OpenSSL: $OPENSSL_PREFIX)"

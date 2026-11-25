@@ -2,7 +2,7 @@
 
 开始任何任务前，先读 **`docs/handoff.md`**（项目是什么、已完成什么、下一步建议、运行与验收命令）。随后按任务读 `README.md` 的“答辩重点”、`docs/report.md`、`docs/demo-script.md` 或对应代码。
 
-当前基线：`v0.4.0`（Windows NSIS / macOS DMG 已发布）；20 张表、18 个视图、13 个触发器、65 个索引、422 个 pytest、43/43 验收。
+当前基线：`v0.4.1`（Windows NSIS / macOS DMG 已发布）；20 张表、18 个视图、13 个触发器、65 个索引、423 个 pytest、43/43 验收。
 
 硬性约定：
 

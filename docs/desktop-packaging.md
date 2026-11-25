@@ -267,12 +267,12 @@ CI（`.github/workflows/desktop.yml`，仅 `workflow_dispatch` 与 `v*` 触发�
 
 | 项目 | 预算 | 当前实测 | 判断 |
 | --- | --- | --- | --- |
-| Windows 安装包 | ≤120 MB | **37.5 MiB**（NSIS，x64，0.4.0） | 通过 |
+| Windows 安装包 | ≤120 MB | **37.5 MiB**（NSIS，x64，0.4.1） | 通过 |
 | Windows 安装后 | ≤350 MB | 约 115 MiB（资源 105.5 MiB + 主程序约 9.6 MiB） | 通过 |
-| macOS DMG | ≤150 MB | **57.1 MiB**（DMG，arm64，0.4.0） | 通过 |
-| 首次启动 | 可接受 | 构建内 `--smoke` Windows 7.8 s / macOS 4.2 s（含 initdb） | 通过 |
+| macOS DMG | ≤150 MB | **55.9 MiB**（DMG，arm64，0.4.1） | 通过 |
+| 首次启动 | 可接受 | 构建内 `--smoke` Windows 8.0 s / macOS 4.0 s（含 initdb） | 通过 |
 
-安装包体积与构建内 `--smoke` 耗时来自 0.4.0 的 Windows / macOS CI 构建（2026-11-25）；安装后首次启动
+安装包体积与构建内 `--smoke` 耗时来自 0.4.1 的 Windows / macOS CI 构建（2026-11-25）；安装后首次启动
 与热启动数据来自本机 Windows 11 x64 安装实测（2026-10-29，0.2.0，流程未变）。安装到含中文的目录、
 数据目录也使用中文路径时，`--smoke` 同样通过；`initdb` 前会为两者建立 `subst` 盘符。
 
@@ -322,4 +322,10 @@ NSIS 37.5 MiB（SHA-256 `483ccd67…eb034c`）、DMG 57.1 MiB（`25abbeb3…db72
 本版新增 AI 学习、知识点掌握度、AI 服务配置、供应商环境变量兼容与 Neo UI；修复桌面退出卡死；
 macOS 运行时补齐 `pgcrypto` / OpenSSL。从 0.3.0 升级时首次启动自动备份并执行迁移 013/014；
 Mac 真机人工验收仍待完成。
+
+2026-11-25 发布 [v0.4.1](https://github.com/ycl-berserk/2026Database/releases/tag/v0.4.1)：
+NSIS 37.5 MiB（SHA-256 `e0e75c1e…415d1a`）、DMG 55.9 MiB（`893cc882…f30630f`），
+体积报告与 `SHA256SUMS.txt` 一并上传。构建内 smoke：Windows 8.0 s、macOS 4.0 s。
+本版修复理论答疑上下文自引用：上下文只取该课程已导入的对话，AI 学习会话不计入；
+新建理论会话显示实际载入片段数。0.4.0 → 0.4.1 无新迁移，覆盖安装即可。
 

@@ -1,9 +1,9 @@
 # 项目交接：Learning Space（下一个对话先读这里）
 
-> 更新时间：2026-11-24
-> 当前基线：`v0.4.0`（tag `a4dd7d5`，Windows NSIS / macOS DMG 已发布）
+> 更新时间：2026-11-25
+> 当前基线：`v0.4.1`（tag `8db9b28`，Windows NSIS / macOS DMG 已发布）
 > 远程：`https://github.com/ycl-berserk/2026Database`
-> 工作区：当前分支 `feat/K4-mastery-tutor`；feat1 已提交 `ebd6ce9`，K5 改动见本次提交；`main` 与 `origin/main` 仍同步。
+> 工作区：`main` 与 `origin/main` 同步；v0.4.1 修复理论答疑上下文自引用。
 >
 > 给下一个对话的建议顺序：**本文件 → `README.md` 的“答辩重点” → `docs/report.md` → `docs/demo-script.md` → `docs/design.md`**。涉及具体任务时再读对应代码。
 
@@ -128,17 +128,18 @@ tests/unit|integration|e2e/
 - 数据库观测页：大小、缓存命中、连接、`pg_stat_io`、慢查询、白名单 `EXPLAIN JSON`。
 - 备份/恢复、登录限流、会话轮换、生产安全头、GZip、游标分页。
 - Docker Compose 一条命令起全栈；GitHub Actions 在 `pgvector/pgvector:pg16` 上跑测试 + 验收。
-- Windows 桌面个人版已本地构建并安装：内置 PostgreSQL + sidecar + 局域网手机访问；0.4.0 已发布 Windows NSIS 37.5 MiB / macOS DMG 57.1 MiB，macOS 运行时补齐 `pgcrypto`/OpenSSL；0.3.0 的 Text2SQL 500 已修复（PyInstaller 需显式收集 `sqlglot.dialects`）。macOS DMG 由 CI 构建，未在本机人工验收。
+- Windows 桌面个人版已本地构建并安装：内置 PostgreSQL + sidecar + 局域网手机访问；0.4.1 已发布 Windows NSIS 37.5 MiB / macOS DMG 55.9 MiB，修复理论答疑上下文只取已导入对话；0.4.0 补齐 macOS 运行时 `pgcrypto`/OpenSSL；0.3.0 的 Text2SQL 500 已修复（PyInstaller 需显式收集 `sqlglot.dialects`）。macOS DMG 由 CI 构建，未在本机人工验收。
 
 ### 4.5 最近两次关键提交
 | 提交 | 内容 |
 | --- | --- |
-| `feat/K4-mastery-tutor`（本次提交） | K5：图形化 AI 设置、pgcrypto 密钥加密与测试连接 |
-| `feat/K4-mastery-tutor`（已提交 `ebd6ce9`） | feat1：两类对话视图、知识点掌握度与 AI 学习 |
+| `524b9c1` | 修复理论答疑上下文：只取已导入对话，AI 学习会话不计入 |
+| `8db9b28` | 发布 0.4.1 桌面产物（Windows NSIS / macOS DMG） |
+| `ebdd2db` | 验收脚本 Text2SQL 固定 mock 模式 |
+| `a4dd7d5` | 0.4.0 发布：AI 学习、AI 设置、Neo UI、macOS pgcrypto/OpenSSL |
 | `6bf030b` | 过滤感知 ANN、Recall@K/MRR 评测、内容哈希复用、README 答辩重点 |
-| `d3d29c8` | 修复桌面版 Text2SQL 500：PyInstaller 收集 `sqlglot.dialects` |
 
-再往前：`648b778` 重写 8 分钟数据库版演示脚本与 PPT；`8c4a322` 用延迟约束触发器保证每门课恰好一个 owner；`1e10b01` / `9d3d3c6` 发布 0.3.0 桌面产物。
+再往前：`d3d29c8` 修复桌面版 Text2SQL 500（PyInstaller 收集 `sqlglot.dialects`）；`648b778` 重写 8 分钟数据库版演示脚本与 PPT；`1e10b01` / `9d3d3c6` 发布 0.3.0 桌面产物。
 
 ---
 

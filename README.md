@@ -240,7 +240,7 @@ ls import data/samples/qoder_db.json --course-code DB --json
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（247 单元 + 175 集成，共 422 项）；集成测试需先初始化测试库
+# 全量测试（247 单元 + 176 集成，共 423 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest
 
 # 静态检查与提交钩子（uv sync 已安装 Ruff / pyright / pre-commit）
@@ -289,7 +289,7 @@ node scripts/screenshots.mjs
 node scripts/extension_smoke.mjs
 ```
 
-> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、422 项测试、43 项验收与 12 项 Playwright E2E，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
+> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、423 项测试、43 项验收与 12 项 Playwright E2E，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
 
 ## 目录结构
 

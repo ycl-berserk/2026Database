@@ -125,6 +125,38 @@ def test_theory_session_uses_imported_context(conn, base, tutor_off):
         tutor_service.session_detail(conn, _student(base, "bob"), conversation_id)
 
 
+def test_theory_context_excludes_ai_sessions(conn, base, tutor_off):
+    """AI 学习会话不能成为自己的上下文：问题只出现在当前会话时，仍回退到导入对话。"""
+    alice = _student(base, "alice")
+    conversation_id = asyncio.run(
+        tutor_service.create_session(
+            conn,
+            alice,
+            course_id=base["courses"]["DB"],
+            session_mode="theory",
+        )
+    )
+    detail = tutor_service.session_detail(conn, alice, conversation_id)
+    greeting = detail["messages"][0]["content"]
+    assert "理论对话上下文" in greeting
+    assert "AI 学习会话本身不计入上下文" in greeting
+
+    marker = "ZZZ仅当前AI会话出现的关键词"
+    asyncio.run(
+        tutor_service.send_theory_message(
+            conn, alice, conversation_id, f"{marker}隔离级别有哪些？"
+        )
+    )
+
+    # 词法匹配只命中刚插入的 AI 会话消息时，必须回退到导入对话，而不是只剩自己。
+    context = tutor_service.build_context(
+        conn, alice["id"], base["courses"]["DB"], query=marker
+    )
+    assert context["snippets"], "导入的理论对话应作为上下文"
+    assert all(marker not in item["content"] for item in context["snippets"])
+    assert {item["title"] for item in context["snippets"]} == {"事务与隔离级别"}
+
+
 def test_quiz_answer_updates_mastery_and_creates_next_question(conn, base, tutor_off):
     alice = _student(base, "alice")
     conversation_id = asyncio.run(

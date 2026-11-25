@@ -105,7 +105,7 @@ tests/unit|integration|e2e/
 - 课程、来源、标签、收件箱、批量归类。
 - 批注四类（笔记/疑问/纠错/总结）、复习队列、FSRS 风格四档调度、5 周热力图。
 - 知识先修图：`tag_edges` DAG，递归 CTE 闭包、最短路径、触发器防环、SVG 可视化。
-- AI 学习（K4）：`conversations.mode` 区分理论 / 出题两类对话；`knowledge_mastery` 保存用户 × 课程 × 知识点的 1–10 分掌握度；`quiz_attempts` 保存题目、参考答案与评分，评分触发器按 0.6×旧分 + 0.4×本次更新掌握度。应用内会话写入同一对 `conversations` / `messages` 基表，来源平台为 `learning_space`；配置向量模型后，上下文同时使用语义召回与词法兜底。
+- AI 学习（K4）：`conversations.mode` 区分理论 / 出题两类对话；`knowledge_mastery` 保存用户 × 课程 × 知识点的 1–10 分掌握度；`quiz_attempts` 保存题目、参考答案与评分，评分触发器按 0.6×旧分 + 0.4×本次更新掌握度。应用内会话写入同一对 `conversations` / `messages` 基表，来源平台为 `learning_space`；配置向量模型后，上下文同时使用语义召回与词法兜底。上下文只取该课程**已导入**的对话（`platform <> 'learning_space'`），AI 学习会话永远不会成为自己的上下文，避免自引用与反馈循环；新建理论会话时提示实际载入的片段数。
 - AI 设置（K5）：`/settings/ai` 管理端图形化配置对话模型 / 向量模型；`ai_settings` 单例表保存 Base URL、模型、启用开关与 `pgcrypto` 加密后的 Key；页面只显示末四位掩码，支持测试连接、保存与清除。环境变量仍作为默认值：支持 `LLM_API_KEY`、`DEEPSEEK_API_KEY`、`OPENAI_API_KEY`，数据库 Key 优先。
 - 单会话 Markdown、统计 CSV、本人全量 zip 导出。
 

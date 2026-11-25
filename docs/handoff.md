@@ -1,7 +1,7 @@
 # 项目交接：Learning Space（下一个对话先读这里）
 
 > 更新时间：2026-11-24
-> 当前基线：`main` @ `6bf030b feat(search): 引入过滤感知 ANN、召回评测与内容哈希复用`
+> 当前基线：`v0.4.0`（tag `a4dd7d5`，Windows NSIS / macOS DMG 已发布）
 > 远程：`https://github.com/ycl-berserk/2026Database`
 > 工作区：当前分支 `feat/K4-mastery-tutor`；feat1 已提交 `ebd6ce9`，K5 改动见本次提交；`main` 与 `origin/main` 仍同步。
 >
@@ -128,7 +128,7 @@ tests/unit|integration|e2e/
 - 数据库观测页：大小、缓存命中、连接、`pg_stat_io`、慢查询、白名单 `EXPLAIN JSON`。
 - 备份/恢复、登录限流、会话轮换、生产安全头、GZip、游标分页。
 - Docker Compose 一条命令起全栈；GitHub Actions 在 `pgvector/pgvector:pg16` 上跑测试 + 验收。
-- Windows 桌面个人版已本地构建并安装：内置 PostgreSQL + sidecar + 局域网手机访问；0.3.0 的 Text2SQL 500 已修复（PyInstaller 需显式收集 `sqlglot.dialects`）。macOS DMG 由 CI 构建，未在本机验收。
+- Windows 桌面个人版已本地构建并安装：内置 PostgreSQL + sidecar + 局域网手机访问；0.4.0 已发布 Windows NSIS 37.5 MiB / macOS DMG 57.1 MiB，macOS 运行时补齐 `pgcrypto`/OpenSSL；0.3.0 的 Text2SQL 500 已修复（PyInstaller 需显式收集 `sqlglot.dialects`）。macOS DMG 由 CI 构建，未在本机人工验收。
 
 ### 4.5 最近两次关键提交
 | 提交 | 内容 |

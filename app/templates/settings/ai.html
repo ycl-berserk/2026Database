@@ -144,6 +144,7 @@
     <li>密钥使用 PostgreSQL <code>pgcrypto</code>（AES-256）加密后写入 <code>app.ai_settings</code>；页面、日志和审计都不会返回明文。</li>
     <li>解密密钥优先取 <code>AI_SETTINGS_KEY</code>，未设置时从 <code>SESSION_SECRET</code> 派生。更换这两个值后，需要在本页重新保存 Key。</li>
     <li>测试连接只发送一个最小请求，不会把 Key 写入日志；失败时只返回 HTTP 状态或异常类型。</li>
+    <li>读取顺序：数据库保存的 Key 优先；留空或清除后回退 <code>LLM_API_KEY</code> / <code>EMBEDDING_API_KEY</code>。环境变量修改需重启，页面保存立即生效。</li>
   </ul>
 </section>
 {% endblock %}

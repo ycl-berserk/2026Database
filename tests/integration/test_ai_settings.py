@@ -38,6 +38,8 @@ def ai_modes():
         "embedding_mode",
         "hybrid_search_enabled",
         "session_secret",
+        "llm_api_key",
+        "embedding_api_key",
     )
     original = {name: getattr(settings, name) for name in names}
 
@@ -137,6 +139,37 @@ def test_modes_follow_database_settings(conn, base, ai_settings_clean, ai_modes)
     assert tutor_service.mode(conn) == "off"
     assert text2sql_service.provider_mode(conn) == "mock"
     assert not embedding_service.enabled(ai_settings_service.get_config(conn))
+
+
+def test_env_key_is_fallback_and_database_key_wins(
+    conn, base, ai_settings_clean, ai_modes
+):
+    ai_modes(llm_api_key="sk-env-1111", embedding_api_key="sk-env-2222")
+    config = ai_settings_service.get_config(conn)
+    assert config.llm_source == "environment"
+    assert config.llm_api_key == "sk-env-1111"
+    assert config.embedding_source == "environment"
+    assert config.embedding_api_key == "sk-env-2222"
+
+    ai_settings_service.save(
+        conn,
+        _actor(base),
+        _payload(llm_api_key="", embedding_api_key=""),
+    )
+    config = ai_settings_service.get_config(conn)
+    assert config.llm_source == "environment"
+    assert config.llm_api_key == "sk-env-1111"
+
+    ai_settings_service.save(
+        conn,
+        _actor(base),
+        _payload(llm_api_key="sk-db-3333", embedding_api_key="sk-db-4444"),
+    )
+    config = ai_settings_service.get_config(conn)
+    assert config.llm_source == "database"
+    assert config.llm_api_key == "sk-db-3333"
+    assert config.embedding_source == "database"
+    assert ai_settings_service.public_config(conn)["llm_key_masked"] == "••••3333"
 
 
 def test_secret_rotation_reports_error_instead_of_crashing(

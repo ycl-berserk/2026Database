@@ -239,7 +239,7 @@ ls import data/samples/qoder_db.json --course-code DB --json
 .venv/Scripts/python.exe scripts/migrate.py
 .venv/Scripts/python.exe scripts/migrate.py --check
 
-# 全量测试（244 单元 + 173 集成，共 417 项）；集成测试需先初始化测试库
+# 全量测试（244 单元 + 174 集成，共 418 项）；集成测试需先初始化测试库
 .venv/Scripts/python.exe -m pytest
 
 # 静态检查与提交钩子（uv sync 已安装 Ruff / pyright / pre-commit）
@@ -288,7 +288,7 @@ node scripts/screenshots.mjs
 node scripts/extension_smoke.mjs
 ```
 
-> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、417 项测试、43 项验收与 12 项 Playwright E2E，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
+> CI 在 GitHub Actions 上用 `pgvector/pgvector:pg16` 服务跑同一套初始化、418 项测试、43 项验收与 12 项 Playwright E2E，结果作为构建产物上传；配置见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
 
 ## 目录结构
 
@@ -387,6 +387,8 @@ SQL 先经 `sqlglot` PostgreSQL 方言 AST 校验（单条 SELECT/WITH、拒绝�
 - **测试连接**：只发送一个最小请求，返回 HTTP 状态、延迟或维度检查结果，不写入日志。
 - **密钥安全**：API Key 使用 PostgreSQL `pgcrypto`（AES-256）加密后写入 `app.ai_settings`；页面只显示 `••••末四位`，留空表示保持原密钥，勾选“清除”才删除。
 - **立即生效**：保存后无需重启。环境变量仍是默认值/强制降级开关（`SUGGEST_MODE`、`TUTOR_MODE`、`TEXT2SQL_MODE`、`EMBEDDING_MODE`、`HYBRID_SEARCH`）。
+
+**Key 读取优先级**：数据库保存的 Key > 环境变量 `LLM_API_KEY` / `EMBEDDING_API_KEY` > 未配置。只使用环境变量时，把设置页的 Key 留空或点击清除即可；环境变量修改需要重启进程，页面保存的 Key 立即生效。
 
 桌面个人模式下本地管理员同时是学习者，可以直接配置；Web 多用户部署中这是部署级配置，普通学生只使用管理员配置的能力。
 
